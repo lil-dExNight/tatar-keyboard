@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Version:** 1.12 — 2026-11-02
+**Version:** 1.13 — 2026-11-09
 
 Tatar Keyboard keeps what you type **on your device**.
 
@@ -8,7 +8,7 @@ Russian version: [PRIVACY.ru.md](PRIVACY.ru.md) (the policy linked in the RuStor
 
 - The app's manifest contains no INTERNET permission, so the app itself sends nothing to any server. You can check this by running `aapt2 dump permissions` on the APK; a CI check also validates both the source manifest and the built APK on every commit. The only permission the app uses is VIBRATE (haptic feedback on key press).
 - Everything you type is processed on your device only. The keyboard works fully offline.
-- The text of a password field is never read into the keyboard's memory, not even by a cache reload that was queued before the password field opened.
+- The keyboard never reads existing password-field text from the host app, not even through a cache reload queued before the field opened. Text typed through the keyboard itself can remain temporarily in its local memory cache until the input session ends.
 - The clipboard is read only while the keyboard is open on screen, never in the background and never on the lock screen: when you tap the paste key, and to offer a clip you copied moments ago as a one-tap cell in the suggestion strip. That cell lives in memory only (the clip is dropped when the keyboard closes and expires after about two minutes), is never offered in password or other private fields or on the lock screen, never shows a clip that the app you copied it from marked as sensitive (password managers mark the passwords and card numbers they copy), and the keyboard never stores what is on the clipboard.
 - There are no analytics, advertising or tracking SDKs.
 - **Nothing is backed up off your device.** The app sets `android:allowBackup="false"`, and its backup rules exclude the files, settings and databases domains (regular and device-protected) and the external-storage domain from the cloud backup and from the transfer to a new device. Everything this page calls personal lives in a “no-backup” folder that Android never includes in either. CI checks this on the manifest and on the built APK, the same way it checks for the INTERNET permission. The only backup is the one you make yourself, when you ask for it; see Backup below.
@@ -41,7 +41,7 @@ If you turn the personal dictionary on (it is off by default), the keyboard save
 
 - **What is saved.** The word itself, spelled the way you typed it, plus two numbers: how often it has been used, and when it was last used, as a counter rather than a clock time. No other data is stored.
 - A word is stored in plaintext only after its third clean completion. A clean completion means the word was typed letter by letter, with no backspace, cursor move, paste or accepted suggestion in between. The first and second clean completions write only a salted, truncated SHA-256 hash of the word (`pending-<subtype>-s1-f1.bin` next to the store; the salt is the store's own `salt-<subtype>-s1-f1.bin`, 16 random bytes created on first use and destroyed by “Erase everything saved”). The third clean completion writes the word itself to `personal-<subtype>-s1-f1.tpers`. Each language holds at most 2,000 words; the word unused for the longest time is evicted silently when the store is full.
-- Words you add yourself skip that step: on the “Saved words” screen, “Add word…” saves a word right away.
+- Words you add yourself skip that step: on the “Saved words” screen, “Add word…” saves a word right away. Manual addition is refused from postal-address fields and while Pause learning is on.
 - **Where.** In an internal app folder that is decrypted only after you enter your device's lock code (PIN, pattern or password). Before the first unlock after a restart, nothing there is read or written.
 - While the lock screen is shown (a quick reply to a notification, for example), also after the first unlock, the keyboard shows no suggestion strip, glide typing is off and nothing is learned, so no saved word can be seen or added there.
 - It never leaves your device on its own: it is excluded from cloud backup and from the transfer to a new device, and there is no sync. The only way it leaves the device is a backup file you save yourself (see Backup).
@@ -56,7 +56,7 @@ If you turn the personal dictionary on (it is off by default), the keyboard save
 
 If the personal dictionary is on, the keyboard can also learn which word follows which. After you type the same word pair cleanly twice, the second word starts appearing in the suggestions after the first one.
 
-- A pair stores the first word (the context) in normalized form only (lowercased, with accents folded; it is used for matching and is never displayed), the second word exactly as you typed it (this is what the cell shows), and three counters: how often the pair was typed, how often its suggestion was tapped, and a last-use counter, a counter rather than a clock time. No other data is stored.
+- A pair stores the first word (the context) in normalized form only (NFC, lowercase; it is used for matching and is never displayed), the second word exactly as you typed it (this is what the cell shows), and three counters: how often the pair was typed, how often its suggestion was tapped, and a last-use counter, a counter rather than a clock time. No other data is stored.
 - A pair is stored in plaintext only after its second clean observation. The first observation writes only a salted, truncated SHA-256 hash of the pair (`pending-bigrams-…-s1-f1.bin` next to the store; the salt is the store's own `salt-bigrams-…-s1-f1.bin`, 16 random bytes created on first use and destroyed by “Erase everything saved”). The second clean observation writes the pair itself to `personal-bigrams-…-s1-f1.tpersb`. Each language holds at most 1,000 pairs; the pair unused for the longest time is evicted silently.
 - The pairs live in the same credential-protected `no_backup/` folder as the saved words, separately per language. Before the first unlock after a restart, nothing is read or written. They are never backed up by Android and never synced; the only way they leave the device is a backup file you save yourself (see Backup).
 - **How it ranks.** The bundled prediction table's words come first, and learned pairs fill the cells it left free, at most three. A pair you have typed cleanly at least five times can also take the third cell ahead of the table's third word. A pair that duplicates a table prediction is never shown twice.
@@ -68,7 +68,7 @@ If the personal dictionary is on, the keyboard can also learn which word follows
 
 If the personal dictionary is on and emoji suggestions are on, the keyboard can also learn which emoji you insert after which word. After the same emoji has followed the same word twice, that emoji leads the emoji cell of the suggestion strip for that word, ahead of the bundled table's entry.
 
-- An entry stores the word in normalized form only (lowercased; it is the lookup key, and the list shows it in that form), the emoji exactly as you picked it, and three counters: how often the pair was observed, how often its learned cell was tapped, and a last-use counter, a counter rather than a clock time. No other data is stored.
+- An entry stores the word in normalized form only (NFC, lowercase; it is the lookup key, and the list shows it in that form), the emoji exactly as you picked it, and three counters: how often the pair was observed, how often its learned cell was tapped, and a last-use counter, a counter rather than a clock time. No other data is stored.
 - An entry is stored in plaintext only after its second observation. The first observation writes only a salted, truncated SHA-256 hash of the pair (`pending-emoji-…-s1-f1.bin` next to the store; the salt is in `salt-emoji-…-s1-f1.bin`, 16 random bytes created on first use and destroyed by “Erase everything saved”). The second observation writes the entry itself to `personal-emoji-…-s1-f1.tpersem`. Each language holds at most 500 entries; the entry unused for the longest time is evicted silently. A word is at most 24 code points, an emoji at most 32 UTF-16 units, and the whole file is capped at 64 KiB.
 - Only the keyboard's own insertions teach it. There are exactly three learning events: picking an emoji in the emoji panel, picking one in the emoji search, and tapping the emoji cell of the suggestion strip. Each counts only when the emoji lands right after a word you finished. Pasted text never reaches these paths, so the clipboard teaches nothing.
 - A learned entry changes only the emoji shown in the strip's last cell: where the strip would offer the bundled table's emoji for a word, it offers yours instead. It is inserted only when you tap it. A tap on the learned cell also increases its usage counter; ranking is learned entries first, then most-tapped, then most-observed. The cell appears only while all three switches are on: word suggestions, emoji suggestions and the personal dictionary.
@@ -81,7 +81,7 @@ If the personal dictionary is on and emoji suggestions are on, the keyboard can 
 
 Undo an autocorrection (one backspace right after it, or the quoted typed-word cell in the strip) and it does not fire again in that text field. Undo the same correction, the same typed word replaced with the same word, a second time, in any session, and the keyboard remembers the pair on the device: that correction never fires again. A refusal only ever suppresses a correction; it never inserts or suggests anything.
 
-- A pair stores the word you typed and the rejected replacement, both lowercased and accent-folded (the lookup form), and a refusal count. No other data is stored. Each language holds at most 500 pairs; the least recently refused pair is evicted silently when the store is full.
+- A pair stores the word you typed and the rejected replacement, both normalized to NFC lowercase (the lookup form), and a refusal count. No other data is stored. Each language holds at most 500 pairs; the least recently refused pair is evicted silently when the store is full.
 - The pairs live in the same credential-protected `no_backup/` folder as the saved words, separately per language, under exactly the same rules: nothing is recorded in password or other private fields, in postal-address fields, before the first unlock after a restart, or while Pause learning is on, and the list stops suppressing while the personal dictionary switch is off.
 - **How to erase it.** “Erase everything saved” on the “Saved words” screen covers it. It travels in a backup file you save yourself (see Backup).
 
@@ -98,7 +98,7 @@ If the personal dictionary is on, the keyboard also remembers the few words you 
 
 Keyboard settings → Preferences → “Text shortcuts” holds the shortcuts you add yourself: a short word and the longer text it turns into.
 
-- Each shortcut and its text are stored exactly as you entered them. Nothing is added from your typing: a shortcut exists only if you saved it on this screen or restored it from a backup file. At most 500 shortcuts, one list for all languages.
+- Leading and trailing whitespace is trimmed from each shortcut and its expansion before saving. Nothing is added from your typing: a shortcut exists only if you saved it on this screen or restored it from a backup file. At most 500 shortcuts, one list for all languages.
 - The shortcuts live in the same credential-protected `no_backup/` folder as the saved words. Before the first unlock after a restart, nothing is read or written. They are never backed up by Android and never synced; they travel in a backup file you save yourself (see Backup).
 - **How to erase it.** “Delete” on each shortcut, or “Erase everything saved.”
 
@@ -121,7 +121,7 @@ Keyboard settings → “Backup” can write one backup file with your settings 
 - The app never uploads it. The app has no INTERNET permission; the file moves only if you move it, with whatever app you trust for that. That choice is yours and happens outside the keyboard.
 - **Restoring replaces.** Restoring a file replaces the current settings, saved words, learned pairs, learned emoji, refused corrections and text shortcuts on this device with the file's contents; what was here before is lost. The screen asks for confirmation first. A file that fails any integrity check is rejected whole: nothing is changed.
 - Damaged files stay out. Before saving or restoring, the keyboard opens every saved store, so a damaged file is moved aside into its quarantined copy (as described above) and is not put into the backup. If a store cannot be read at all, saving fails and restoring is refused before anything changes.
-- **What is not in the file.** The recently used emoji list, the sentence starts, the half-learned words, pairs and emoji that have not crossed the learning threshold yet (with their salts), the quarantined copies, and your organization's device-policy values.
+- **What is not in the file.** The recently used emoji list, the sentence starts, the half-learned words, pairs and emoji that have not crossed the learning threshold yet (with their salts), the quarantined copies, and the restriction cache that records your organization's device-policy restrictions. All setting values are included, even policy-managed ones; after a restore, device policy is read again and takes precedence.
 - An interrupted restore is undone. Before a restore changes anything, the keyboard writes a private journal of the old and the new state. If the restore is cut off (the phone restarts, the app is closed), the old state is restored the next time the keyboard starts or the settings open. “Erase everything saved” deletes this journal first, so an undo can never bring erased words back.
 - Android's own backup stays off. Cloud backup and device-to-device transfer keep excluding everything, as described above; this file is the only backup, and it exists only when you make it.
 

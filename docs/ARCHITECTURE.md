@@ -65,8 +65,10 @@ Protections (in `RichInputConnection` and `InputLogic` unless noted):
   `reloadTextCache` methods ask `EditorHost.mayReadEditorText()` (no password field) before any
   read, which covers the field-start fill, the coalesced follow-up and the reload a refused glide
   commit requests; a password field start binds the connection without reading
-  (`RichInputConnection.onStartInput`). The background reader reads only the connection captured
-  at that check, and clearing the caches also drops a follow-up request folded in before it;
+  (`RichInputConnection.onStartInput`). Password fields block host reads only: text typed through
+  the IME can remain in the local memory cache until the session ends. The background reader reads
+  only the connection captured at that check, and clearing the caches also drops a follow-up
+  request folded in before it;
 - the end of an input session drops the cached text and the selection; a hide that keeps the
   session drops only the text, so the next show re-reads it from the editor instead of the
   session's first `EditorInfo`;
@@ -144,7 +146,8 @@ candidate nearest the right thumb; undo, recent-clip and emoji-only offers keep 
 order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry. A tap
 commits the word with a space; a long press on a word cell offers to forget the word when the
 personal dictionary holds it and to add it when the manual-add filter accepts it, and answers
-with an explanation otherwise (`LatinIME.onStripWordLongPress`). A punctuation mark that
+with an explanation otherwise (`LatinIME.onStripWordLongPress`). The filter rejects manual
+addition from postal-address fields and while Pause learning is on. A punctuation mark that
 attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
 "сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and
 counts as the first space of a double-space period. Two quick spaces give a period only in a
@@ -160,8 +163,10 @@ and hosted cells use the dock content rectangle and keep platform order.
 `LatinIME.onInlineSuggestionsResponse` hosts the platform's content views in
 `InlineAutofillStripView`, a container inflated only then (`InlineAutofillBinder` keeps every
 autofill class behind the API gate). While a session is up the word strip is hidden but keeps
-updating. An empty response, field finish or window hide empties the host and puts current words
-back (`InputView.hideInlineAutofillStrip`). Responses require an unlocked user and no keyguard;
+updating. Inflate callbacks attach non-null cells in response order even when they finish out of
+order. An empty response, field finish, window hide, or an inflation pass whose cells all fail or
+return null empties the host and puts current words back (`InputView.hideInlineAutofillStrip`).
+Responses require an unlocked user and no keyguard;
 a response while hidden is refused, and after a return only a newly delivered response can host
 content. A late inflate from an ended session is rejected. Password fields host chips like any
 other field, because login forms are the feature's main use; a response arriving while the emoji
@@ -233,8 +238,9 @@ inactive at a sentence start). The engine withholds it, on its
 worker, for a word in the personal dictionary and for an exact entry of the companion's dictionary
 (`CompanionLexicon`: the companion's bundled cold-companion word list first — it answers from the
 first keystroke and keeps protecting after a release — plus the companion's live engine while it
-is warm). On a space or punctuation
-`LatinImeAutocorrect` has the controller replace the word before the separator reaches
+is warm). Verdict publication requires a current lookup token. A late result is discarded after
+`finishInput()`, a language change, an editor-session change, or engine teardown. On a space or
+punctuation `LatinImeAutocorrect` has the controller replace the word before the separator reaches
 `InputLogic`; one backspace right after undoes it (`RevertWindow`). While the undo window is open,
 the strip's first cell offers the typed word back in quotes (a tap reverts, like the backspace).
 An undone correction is not repeated or previewed for that word again in the same field session.
@@ -251,7 +257,8 @@ its expansion in the first cell; a space or punctuation replaces the word throug
 separator-time commit path as autocorrect, so the same undo window covers it. A tap on the cell
 commits like an accepted suggestion. An expansion is never learned from, and an undone expansion
 is not offered again in the same field session. A settings row opens a prefilled expansion editor;
-deletion and replacement of an existing normalized shortcut each require their own confirmation.
+leading and trailing whitespace is trimmed from both fields before saving. Deletion and
+replacement of an existing normalized shortcut each require their own confirmation.
 
 The recent-clip cell: while the strip is otherwise idle (an empty prefix and no next-word context)
 and the clipboard holds a fresh text clip, the strip's first cell offers the clip's first line,
@@ -309,11 +316,13 @@ from the settings screen, with no counters, no pending hashes and no learning.
 - Learning gates: `PersonalLearningGates.mayLearn` passes only when suggestions are eligible
   for the field (which excludes `IME_FLAG_NO_PERSONALIZED_LEARNING`), the personal dictionary is
   on, the user is unlocked since boot, the field is not a postal-address field and learning is
-  not paused. `CleanRunMachine` reports only cleanly typed
-  words and pairs; the paste key and the edit-menu paste mark the run dirty
-  (`SuggestionsController.onClipboardPaste`). A word counts as unknown to the dictionary when the
-  exact pass for one of its proper prefixes was empty, whatever typo recovery showed
-  (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
+  not paused. `CleanRunMachine` reports only cleanly typed words and pairs. The paste key and the
+  edit-menu paste mark the run dirty before insertion
+  (`SuggestionsController.onClipboardPaste`), so pasted text is not learned as a word or as either
+  side of a pair. A typed successor cannot complete a pair with a pasted context; at its own
+  boundary it becomes a trusted context for the following pair. A word counts as unknown to the
+  dictionary when the exact pass for one of its proper prefixes was empty, whatever typo recovery
+  showed (`CompositePrefixComputer.lastExactMissPrefix`). A pair is learned only where the first word
   would be the next-word context of the second, so never across a sentence end, a line break, a
   number or an emoji.
 - Pending counters: an entry is saved in plain text only after
@@ -343,8 +352,9 @@ from the settings screen, with no counters, no pending hashes and no learning.
   refused corrections) and the text-shortcut store run its `clearAll` (memory, file and whichever
   pending counters, salt, quarantined copy and notice marks it keeps), and finally sweeps whatever
   is left in the personal directory, queued behind those erasures on the store worker and without
-  following links out of it. Success means every store reported success, the directory is empty and
-  the recent-emoji file is absent or empty. The row is offered whenever the directory holds any file
+  following links out of it. Success means every store reported success, the directory is empty,
+  the recent-emoji file is durably absent or empty, and `recent_emoji_v1.tmp` is absent. The row is
+  offered whenever the directory holds any file
   (`PersonalErasure.hasSavedFiles`), also when the screen lists nothing.
 - Pause learning (`PREF_INCOGNITO_MODE`) stops all writes; saved entries keep appearing.
 - Backup restore: `replaceAll` swaps a store's file for bytes from a backup archive (or deletes
@@ -361,8 +371,11 @@ from the settings screen, with no counters, no pending hashes and no learning.
   cache), words, pairs, learned emoji, refused corrections and text shortcuts; sentence starts,
   recent emoji, pending counters, salts and quarantined copies stay out. Pending counters and the
   salt survive a restore, and quarantined copies stay in their own flow. Export also fails before
-  writing if any recognized personal file cannot be read and validated. Import reports
-  personal-dictionary and pause-learning switch changes.
+  writing if any recognized personal file cannot be read and validated. After every successful
+  preference replacement during import, rollback, or journal recovery, restrictions are re-applied
+  first. The replacement then waits for
+  `RichInputMethodManager.reloadSubtypesAndNotifyIfInitialized()` to finish on the main thread.
+  Import also reports personal-dictionary and pause-learning switch changes.
 
 Settings screens list, delete and erase entries for every supported language, including disabled
 ones. Manual word addition still targets an enabled language.
@@ -452,8 +465,10 @@ font cannot draw. Skin-tone bases are probed once per process in the background
 draw gets no tone picker, and none of its toned forms is recorded in or shown from recents or
 offered as a learned emoji. Recents (`RecentEmojiStore`) record only sequences the panel's set
 holds, are credential-protected, hidden while the keyguard is shown and not recorded while
-learning is paused (`RecentEmojiGateState`). The panel opens from
-the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
+learning is paused (`RecentEmojiGateState`). Recent-emoji writes use temp fsync → rename →
+directory fsync. A failure before the rename preserves the previous file; a failure after it
+leaves the list `dirty` for a later hide retry. Only a durable write clears `dirty`. The panel
+opens from the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
 
 ## Settings
 
