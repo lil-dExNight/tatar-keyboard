@@ -57,8 +57,8 @@ internal class CompositePrefixComputer(
     // The glide decode side. Null: glide typing returns no candidates. The host wraps the
     // personal dictionary itself (see GlideDecoderHost).
     private val glideHost: GlideDecoderHost? = null,
-) : ContextAwarePrefixComputer, KeyNeighborSink, NextWordComputer, GlideComputer,
-    GlideGeometrySink, GlideIndexPrewarmer, GlideIndexReleaser, EmptyPrefixProber {
+) : ContextAwarePrefixComputer, ClassifiedPrefixComputer, KeyNeighborSink, NextWordComputer,
+    GlideComputer, GlideGeometrySink, GlideIndexPrewarmer, GlideIndexReleaser, EmptyPrefixProber {
 
     init {
         // The glide bigram channel reranks the N-best against the context word's successors:
@@ -95,12 +95,12 @@ internal class CompositePrefixComputer(
     }
 
     /**
-     * The autocorrect verdict as it leaves the engine: the primary's, unless the typed word is in
-     * the personal dictionary or in the companion language's dictionary. Written by the worker
-     * after each lookup, read on the UI thread.
+     * The autocorrect verdict as it leaves the computer: the primary's, unless the typed word is
+     * in the personal dictionary or in the companion language's dictionary. The worker reads it
+     * after each lookup; the engine publishes it only with that lookup's current token.
      */
     @Volatile
-    var lastAutocorrectAdvice: AutocorrectAdvice? = null
+    override var lastAutocorrectAdvice: AutocorrectAdvice? = null
         private set
 
     /**
@@ -125,7 +125,7 @@ internal class CompositePrefixComputer(
      * exact-lead rule splits the companion answer with it.
      */
     @Volatile
-    var lastExactCount: Int = 0
+    override var lastExactCount: Int = 0
         private set
 
     /**

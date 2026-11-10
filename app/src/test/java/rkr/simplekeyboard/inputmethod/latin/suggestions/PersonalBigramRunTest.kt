@@ -23,6 +23,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramStore
 
 /**
  * The pair-run machine: which typing produces a "this PAIR was completed cleanly" event and, far
@@ -352,7 +353,7 @@ class PersonalBigramRunTest {
     fun aPastedWordTeachesNoPairNoMatterHowOftenItIsPasted() {
         // The paste rule itself: «дөнья» appearing WHOLE in one text event is the clipboard's
         // shape, not typing's — the pair machine must not learn from it, neither the first nor the
-        // second time, even though the boundary it ends still re-arms the run.
+        // second time, and its boundary must not make it a trusted context.
         val h = Harness()
         h.witnessABoundary()
         repeat(2) {
@@ -371,6 +372,25 @@ class PersonalBigramRunTest {
         h.paste("🙂") // a lone emoji: one key, two UTF-16 units
         h.endWord("сәләм")
         assertEquals(listOf("сәләм" to "🙂"), h.pairs)
+    }
+
+    @Test
+    fun aPastedContextNeverPairsWithTheFollowingTypedWord() {
+        val h = Harness()
+        h.witnessABoundary()
+
+        repeat(PersonalBigramStore.LEARN_THRESHOLD) {
+            h.pasteOnto("сәләм")
+            h.endWord("баш")
+            h.type("дөнья")
+            h.endWord("сәләм") // a leaked pair would use the pasted context here
+        }
+        assertTrue("no pasted-context pair may reach the plaintext threshold", h.pairs.isEmpty())
+
+        // The last successor was typed, so it is a clean context for the next ordinary pair.
+        h.type("китап")
+        h.endWord("дөнья")
+        assertEquals(listOf("дөнья" to "китап"), h.pairs)
     }
 
     @Test

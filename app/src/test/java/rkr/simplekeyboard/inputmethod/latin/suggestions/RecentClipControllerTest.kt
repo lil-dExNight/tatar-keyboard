@@ -213,6 +213,8 @@ class RecentClipControllerTest {
         /** When true, the sentence-start table answers (the production default); the clip's
          * precedence over it is part of the contract under test. */
         var withSentStart = false
+        var deferSentStart = false
+        private var pendingSentStart: ((SentStartSource?) -> Unit)? = null
         val strip = FakeStrip()
         val editor = FakeEditor()
         val engine = FakeEngine()
@@ -233,7 +235,13 @@ class RecentClipControllerTest {
             // is part of the contract under test.
             sentStartPreparationFactory = { _, _ ->
                 if (withSentStart) {
-                    SentStartPreparation { onResult -> onResult(SentStartSource { SENT_START }) }
+                    SentStartPreparation { onResult ->
+                        if (deferSentStart) {
+                            pendingSentStart = onResult
+                        } else {
+                            onResult(SentStartSource { SENT_START })
+                        }
+                    }
                 } else {
                     null
                 }
@@ -256,6 +264,11 @@ class RecentClipControllerTest {
         /** A clipboard change event, as LatinIME's listener delivers it. */
         fun clip(text: String?) {
             controller.onPrimaryClipChanged(text, now)
+        }
+
+        fun finishSentStartLoad() {
+            requireNotNull(pendingSentStart).invoke(SentStartSource { SENT_START })
+            pendingSentStart = null
         }
 
         fun type(text: String) {
@@ -286,6 +299,22 @@ class RecentClipControllerTest {
         h.start()
 
         assertEquals(listOf("сәләм дөнья", null, null, null), h.strip.lastBand())
+    }
+
+    @Test
+    fun aLateSentenceStartLoadDoesNotReplaceTheClipCell() {
+        val h = Harness()
+        h.withSentStart = true
+        h.deferSentStart = true
+        h.start()
+        h.clip("сәләм")
+        h.controller.onTextChanged()
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
+
+        h.finishSentStartLoad()
+
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
+        assertTrue(h.controller.isRecentClipCell("сәләм"))
     }
 
     @Test

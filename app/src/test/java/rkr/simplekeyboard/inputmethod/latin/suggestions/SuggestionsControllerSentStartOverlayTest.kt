@@ -25,6 +25,7 @@ import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentenceStartSink
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PendingCounters
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PreparationResult
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionary
@@ -246,6 +247,12 @@ class SuggestionsControllerSentStartOverlayTest {
             controller.onTextChanged()
         }
 
+        /** A clipboard paste: the controller is told first, then [text] appears in one event. */
+        fun pasteFromClipboard(text: String) {
+            controller.onClipboardPaste()
+            paste(text)
+        }
+
         /** One backspace. */
         fun backspace() {
             editor.rawText = editor.rawText.dropLast(1)
@@ -384,6 +391,26 @@ class SuggestionsControllerSentStartOverlayTest {
         h.endWord()
 
         assertTrue(h.learned.isEmpty())
+    }
+
+    @Test
+    fun aOneCharacterClipboardPasteNeverReachesThePlaintextThreshold() {
+        val h = Harness()
+        h.startAtSentenceStart()
+
+        repeat(PendingCounters.LEARN_THRESHOLD) {
+            h.pasteFromClipboard("С")
+            h.type("әләм")
+            h.type(".") // a typed separator completes the pasted run at a sentence start
+            h.endWord() // the next repetition starts at the following sentence start
+        }
+        assertTrue("no pending counter may receive the pasted word", h.learned.isEmpty())
+
+        // The same text spelled out after the last boundary remains ordinary typed learning.
+        h.type("Сәләм")
+        h.type(".")
+        h.endWord()
+        assertEquals(listOf("Сәләм"), h.learned)
     }
 
     @Test

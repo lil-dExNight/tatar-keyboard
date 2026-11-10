@@ -132,6 +132,7 @@ class LatestOnlyPrefixEngine internal constructor(
     private var state = State.ACTIVE
     private var computer: PrefixComputer? = computer
     private var requestSerial = 0L
+    @Volatile
     private var currentToken: LookupToken? = null
     private var pendingRequest: Request? = null
     private var activeWorkerId = 0L
@@ -140,6 +141,12 @@ class LatestOnlyPrefixEngine internal constructor(
     private var resourcesReleased = false
     private var suppressedStaleResultCountValue = 0L
     private var handoffCountValue = 0L
+    // Publish the verdict before its token and read them in the opposite order. The second token
+    // read closes a race with a new request, keeping separator reads lock-free and allocation-free.
+    @Volatile
+    private var autocorrectToken: LookupToken? = null
+    @Volatile
+    private var autocorrectAdvice: AutocorrectAdvice? = null
 
     val suppressedStaleResultCount: Long
         get() = synchronized(lock) { suppressedStaleResultCountValue }
@@ -153,6 +160,13 @@ class LatestOnlyPrefixEngine internal constructor(
             token == currentToken &&
             token.engineInstanceId == engineInstanceId &&
             token.dictionary == dictionaryIdentity
+    }
+
+    /** The verdict published by the current lookup, or null while that lookup is unfinished. */
+    fun autocorrectAdvice(): AutocorrectAdvice? {
+        val token = autocorrectToken ?: return null
+        val advice = autocorrectAdvice
+        return if (token == autocorrectToken && token == currentToken) advice else null
     }
 
     /**
@@ -269,6 +283,8 @@ class LatestOnlyPrefixEngine internal constructor(
             )
             val request = Request(token, glidePath, traceCookie)
             currentToken = token
+            autocorrectToken = null
+            autocorrectAdvice = null
             if (activeWorkerId != 0L) {
                 pendingRequest = request
             } else {
@@ -439,8 +455,9 @@ class LatestOnlyPrefixEngine internal constructor(
             while (true) {
                 traceHook.workerStart(request.traceCookie)
                 val lookup = synchronized(lock) { computer }
+                var autocorrectAdvice: AutocorrectAdvice? = null
                 val suggestions = try {
-                    when (request.token.kind) {
+                    val computed = when (request.token.kind) {
                         LookupKind.PREFIX -> {
                             val query = request.token.normalizedQuery
                             val context = request.token.normalizedContext
@@ -464,12 +481,16 @@ class LatestOnlyPrefixEngine internal constructor(
                             )
                                 ?: emptyList()
                     }
+                    if (request.token.kind == LookupKind.PREFIX) {
+                        autocorrectAdvice = (lookup as? ClassifiedPrefixComputer)?.lastAutocorrectAdvice
+                    }
+                    computed
                 } catch (_: Throwable) {
                     emptyList()
                 }
 
                 val completion = synchronized(lock) {
-                    val handoff = prepareHandoffLocked(request, suggestions)
+                    val handoff = prepareHandoffLocked(request, suggestions, autocorrectAdvice)
                     val next = if (state == State.ACTIVE) pendingRequest else null
                     pendingRequest = null
 
@@ -495,11 +516,15 @@ class LatestOnlyPrefixEngine internal constructor(
     private fun prepareHandoffLocked(
         request: Request,
         suggestions: List<String>,
+        autocorrectAdvice: AutocorrectAdvice? = null,
     ): LookupResult? {
         if (!isCurrent(request.token)) {
             suppressedStaleResultCountValue++
             return null
         }
+        this.autocorrectAdvice =
+            if (request.token.kind == LookupKind.PREFIX) autocorrectAdvice else null
+        autocorrectToken = request.token
         handoffCountValue++
         return LookupResult(request.token, suggestions)
     }
@@ -541,6 +566,8 @@ class LatestOnlyPrefixEngine internal constructor(
         requestSerial = nextSerial(requestSerial)
         currentToken = null
         pendingRequest = null
+        autocorrectToken = null
+        autocorrectAdvice = null
     }
 
     private fun nextSerial(value: Long): Long = if (value == Long.MAX_VALUE) 1L else value + 1L

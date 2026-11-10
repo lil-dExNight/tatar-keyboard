@@ -1341,6 +1341,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         return false;
     }
 
+    /** Postal-address and pause-learning exclusions shared with automatic learning. */
+    static final class ManualPersonalWordPolicy {
+        private ManualPersonalWordPolicy() {}
+
+        static boolean mayAdd(final boolean postalAddressField, final boolean pauseLearning) {
+            return PersonalLearningGates.mayLearn(
+                    true, true, true, postalAddressField, pauseLearning);
+        }
+    }
+
     /**
      * The strip long-press router for a word cell: a word the personal dictionary holds gets
      * "Forget «X»?", a word the manual-add filter accepts gets "Add «X»?", and every other
@@ -1371,6 +1381,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             showForgetPersonalWordDialog(subtypeId, savedForm, shownWord);
             return;
         case ADD:
+            final int blockedMessage = manualPersonalWordAddBlockMessage();
+            if (blockedMessage != 0) {
+                showPersonalWordAddBlockedDialog(blockedMessage);
+                return;
+            }
             showAddPersonalWordDialog(subtypeId, shownWord);
             return;
         default:
@@ -1378,6 +1393,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             showPersonalWordNotAddableDialog(subtypeId);
             return;
         }
+    }
+
+    /** Returns the dialog message that blocks a strip add, or zero when the add is allowed. */
+    private int manualPersonalWordAddBlockMessage() {
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        final boolean postalAddressField = settingsValues == null
+                || settingsValues.mInputAttributes.mIsPostalAddressField;
+        final boolean pauseLearning = Settings.readIncognitoModeEnabled(mDevicePrefs);
+        if (ManualPersonalWordPolicy.mayAdd(postalAddressField, pauseLearning)) {
+            return 0;
+        }
+        return pauseLearning ? R.string.personal_dictionary_learning_paused
+                : R.string.personal_dictionary_add_postal_address;
     }
 
     /**
@@ -1430,9 +1458,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final AlertDialog dialog = new AlertDialog.Builder(
                 DialogUtils.getPlatformDialogThemeContext(this))
                 .setTitle(getString(R.string.personal_dictionary_add_title, trimmed))
-                .setPositiveButton(R.string.personal_dictionary_add_action, (di, which) ->
-                        PersonalAdd.confirmAdd(this, subtypeId, trimmed,
-                                () -> mHandler.post(this::showPersonalAddFailedDialog)))
+                .setPositiveButton(R.string.personal_dictionary_add_action, (di, which) -> {
+                    // The field or pause-learning setting can change while the dialog is open.
+                    final int blockedMessage = manualPersonalWordAddBlockMessage();
+                    if (blockedMessage != 0) {
+                        showPersonalWordAddBlockedDialog(blockedMessage);
+                        return;
+                    }
+                    PersonalAdd.confirmAdd(this, subtypeId, trimmed,
+                            () -> mHandler.post(this::showPersonalAddFailedDialog));
+                })
                 .setNegativeButton(android.R.string.cancel, null)
                 .create();
         dialog.setCancelable(true);
@@ -1441,6 +1476,28 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // The title names the word, so the dialog window also gets FLAG_SECURE, as the settings
         // screen's word dialogs do.
         DialogUtils.securePersonalContent(dialog);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /** Explains why the current field or pause-learning state does not permit a manual add. */
+    private void showPersonalWordAddBlockedDialog(final int messageId) {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(messageId)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
         mOptionsDialog = dialog;
         dialog.show();
     }

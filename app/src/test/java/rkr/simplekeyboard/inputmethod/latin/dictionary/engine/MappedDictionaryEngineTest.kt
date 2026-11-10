@@ -229,6 +229,36 @@ class MappedDictionaryEngineTest {
     }
 
     @Test
+    fun autocorrectAdviceBelongsToTheCurrentCompletedLookupOnly() {
+        val executor = ManualEngineExecutor()
+        val engine = requireNotNull(
+            MappedDictionaryEngine.start(
+                SingleLeaseCatalog(DictionaryFileLease(autocorrectDictionaryFixture()) {}),
+                ResultHandoff {},
+                executorFactory = { executor },
+                mapper = DictionaryMapper { file, _ -> ByteBuffer.wrap(file.readBytes()) },
+                autocorrectMinCandidateFrequency = 0L,
+            )
+        )
+        engine.updateKeyNeighbors(LongPressTestFixtures.tatarNeighborTable())
+        engine.request(1, "tt", utf8("китәп"))
+        executor.runAll()
+        assertEquals("китап", engine.autocorrectAdvice?.replacement)
+
+        engine.request(2, "tt", utf8("китәп"))
+        assertNull("a pending token must not expose the previous verdict", engine.autocorrectAdvice)
+        executor.runAll()
+        assertEquals("китап", engine.autocorrectAdvice?.replacement)
+
+        engine.request(3, "tt", utf8("китәп"))
+        engine.finishInput()
+        executor.runAll()
+        assertNull(engine.autocorrectAdvice)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+        assertNull(engine.autocorrectAdvice)
+    }
+
+    @Test
     fun corruptMappingFailsClosedReleasesLeaseAndNeverCreatesExecutor() {
         val fixture = dictionaryFixture(1)
         val events = mutableListOf<String>()
@@ -771,6 +801,21 @@ class MappedDictionaryEngineTest {
             override fun acquireLatestForActivation() = lease.also { lease = null }
             override fun cleanupReleasedVersions() = Unit
         }
+    }
+
+    private fun autocorrectDictionaryFixture(): PublishedDictionary {
+        val artifact = DictionaryTestFixtures.artifact(90, listOf("китап" to 5_000L))
+        val file = temporaryFolder.newFile("dictionary-autocorrect.tdict")
+        file.writeBytes(artifact.raw)
+        return PublishedDictionary(
+            90,
+            file,
+            artifact.spec.expectedRawSize,
+            artifact.spec.expectedEntryCount,
+            artifact.spec.schemaId,
+            artifact.spec.formatVersion,
+            artifact.spec.expectedRawSha256,
+        )
     }
 
     private fun dictionaryFixture(generation: Int): PublishedDictionary {

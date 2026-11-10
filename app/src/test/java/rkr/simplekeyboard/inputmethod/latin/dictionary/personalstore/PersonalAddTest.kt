@@ -169,6 +169,8 @@ class PersonalAddTest {
         assertTrue("the title takes the word as it will be saved",
             dialog.contains("getString(R.string.personal_dictionary_add_title, trimmed)"))
         assertTrue(dialog.contains("R.string.personal_dictionary_add_action"))
+        assertTrue("confirmation re-reads the postal-address and pause-learning state",
+            dialog.contains("manualPersonalWordAddBlockMessage()"))
         assertTrue(dialog.contains("PersonalAdd.confirmAdd(this, subtypeId, trimmed,"))
         assertTrue("the failure is marshalled onto the UI thread",
             dialog.contains("() -> mHandler.post(this::showPersonalAddFailedDialog)"))

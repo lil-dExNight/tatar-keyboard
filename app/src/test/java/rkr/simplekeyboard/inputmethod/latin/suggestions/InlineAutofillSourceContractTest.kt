@@ -96,11 +96,12 @@ class InlineAutofillSourceContractTest {
         val end = methodBody(host, "fun endSession()")
         assertTrue(end.contains("sessionId = NO_SESSION"))
         assertTrue(end.contains("removeAllViews()"))
-        val begin = methodBody(host, "fun beginSession(): Int")
+        val begin = methodBody(host, "fun beginSession(expectedCells: Int): Int")
         assertTrue("a fresh response never reuses the ended session's id",
             begin.contains("sessionId = nextSessionId"))
-        val hostCell = methodBody(host, "fun hostCell(forSession: Int, view: View)")
-        assertTrue(hostCell.contains("forSession != sessionId"))
+        val completeCell = methodBody(host,
+            "fun completeCell(forSession: Int, cellIndex: Int, view: View?)")
+        assertTrue(completeCell.contains("forSession != sessionId"))
     }
 
     @Test

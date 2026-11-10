@@ -57,7 +57,8 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     // accepted suggestion the next typed word may still be observed for pairs (a tapped word is a
     // valid context, and the cursor is known to sit right after it). Otherwise the rules are the
     // same: a fresh word inherits the bit, growth keeps it, a non-growth transition or a dirty
-    // event clears it, and a completed boundary re-arms it.
+    // event clears it. An ordinary completed boundary re-arms it; a pasted context keeps the next
+    // pair dirty until that next typed word reaches its own boundary.
     /** False as soon as anything but plain growth happens in the current run. */
     private var pairRunClean: Boolean = false
 
@@ -73,6 +74,9 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
     // pre-filled word the user merely extended.
     /** False as soon as anything but plain growth happens in the current run. */
     private var sentStartRunClean: Boolean = false
+
+    /** True while the current run is clipboard-originated, explicitly or by its first length. */
+    private var clipboardDirty: Boolean = false
 
     /** Where sentence-initial word commits go. Default writes nothing. */
     var sentenceStartSink: SentenceStartSink = SentenceStartSink.NONE
@@ -103,20 +107,21 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
             val parked = parkForDeferredProbe(previous)
             runWord = ""
             runClean = true
-            // A completed boundary is a position the pair machine trusts: whatever state the run
-            // that just ended was in, the NEXT word starts from an empty run.
-            pairRunClean = true
+            // An ordinary completed word is a trusted context for the next pair. A pasted word
+            // is not: keep the next pair dirty, then let that next typed word become a new trusted
+            // context at its own boundary.
+            pairRunClean = !clipboardDirty
             sentStartRunClean = true
+            clipboardDirty = false
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
             return parked
         }
         if (previous.isEmpty()) {
             // A fresh word begins; whether it stays clean is decided by what follows.
             runWord = word
-            // The sentence-initial machine saw this word start: its session-start caution is
-            // covered by the first-observation length cap below and by the commit-time
-            // sentence-start check.
-            sentStartRunClean = true
+            // Generic dirtying (including session initialization) still permits a typed sentence
+            // start; only an explicit clipboard run stays dirty through a short first observation.
+            sentStartRunClean = !clipboardDirty
             if (word.length > MAX_FIRST_OBSERVATION_UNITS) {
                 // Privacy: one observation may carry at most one keystroke of new text (1-2
                 // UTF-16 units; a surrogate pair is one key). More is a paste or a replacement,
@@ -124,6 +129,7 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
                 runClean = false
                 pairRunClean = false
                 sentStartRunClean = false
+                clipboardDirty = true
             }
             runEmptyResultPrefixLength = NO_EMPTY_RESULT
             return null
@@ -251,8 +257,15 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         runClean = false
         pairRunClean = false
         sentStartRunClean = false
+        clipboardDirty = false
         runEmptyResultPrefixLength = NO_EMPTY_RESULT
         deferredProbeAwaitingAnswer = null
+    }
+
+    /** Marks a clipboard run dirty for learning and for the pair context that follows it. */
+    fun markClipboardPasteDirty() {
+        markRunDirty()
+        clipboardDirty = true
     }
 
     /**

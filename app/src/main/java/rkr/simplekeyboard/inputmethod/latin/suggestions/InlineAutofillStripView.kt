@@ -39,6 +39,7 @@ class InlineAutofillStripView @JvmOverloads constructor(
      */
     private var sessionId = NO_SESSION
     private var nextSessionId = 1
+    private var responseState: InlineAutofillResponseState? = null
 
     private val stripHeightPx = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP,
@@ -58,8 +59,9 @@ class InlineAutofillStripView @JvmOverloads constructor(
     }
 
     /** Starts a fresh session: stale content goes, and the returned id owns the coming inflates. */
-    fun beginSession(): Int {
+    fun beginSession(expectedCells: Int): Int {
         removeAllViews()
+        responseState = InlineAutofillResponseState(expectedCells)
         sessionId = nextSessionId
         nextSessionId++
         if (nextSessionId == NO_SESSION) nextSessionId = 1
@@ -69,21 +71,22 @@ class InlineAutofillStripView @JvmOverloads constructor(
     /** Ends the session and drops every hosted view; the word strip becomes the surface again. */
     fun endSession() {
         sessionId = NO_SESSION
+        responseState = null
         removeAllViews()
     }
 
     /**
-     * Adds [view] as the next cell of the session [forSession]. Refused when the session has
-     * moved on or the cells are full — a refused view is simply never attached.
+     * Completes one platform cell in response order. Returns true when every inflate returned null,
+     * asking the binder to restore the word strip. Late callbacks change nothing.
      */
-    fun hostCell(forSession: Int, view: View): Boolean {
-        if (forSession == NO_SESSION || forSession != sessionId
-            || childCount >= InlineStripSpecs.CELL_COUNT
-        ) {
-            return false
+    fun completeCell(forSession: Int, cellIndex: Int, view: View?): Boolean {
+        val state = responseState
+        if (forSession == NO_SESSION || forSession != sessionId || state == null) return false
+        val restoreWordStrip = state.complete(cellIndex, view != null)
+        if (view != null && state.lastInsertionIndex >= 0) {
+            addView(view, state.lastInsertionIndex)
         }
-        addView(view)
-        return true
+        return restoreWordStrip
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

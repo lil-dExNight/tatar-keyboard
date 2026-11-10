@@ -47,6 +47,7 @@ class RevertCellControllerTest {
         /** The spoken labels of the last publication (null = speak the cell's text). */
         var spokenLabels = listOf<String?>(null, null, null, null)
         var listener: SuggestionTapListener? = null
+        var reserveCalls = 0
 
         override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
             bands.add(listOf(first, second, third, fourth))
@@ -56,7 +57,9 @@ class RevertCellControllerTest {
             spokenLabels = listOf(first, second, third, fourth)
         }
 
-        override fun reserve() = Unit
+        override fun reserve() {
+            reserveCalls++
+        }
 
         override fun hideSuggestions() = Unit
 
@@ -143,6 +146,16 @@ class RevertCellControllerTest {
         override fun destroy(timeoutMs: Long): Boolean = true
     }
 
+    private class FakeScheduler : RecentClipExpiryScheduler {
+        val tasks = mutableListOf<Runnable>()
+
+        override fun schedule(delayMillis: Long, task: Runnable) {
+            tasks.add(task)
+        }
+
+        fun run(index: Int) = tasks[index].run()
+    }
+
     private class DirectExecutorService : AbstractExecutorService() {
         override fun execute(command: Runnable) = command.run()
         override fun shutdown() = Unit
@@ -160,6 +173,8 @@ class RevertCellControllerTest {
         val editor = FakeEditor()
         val engine = FakeEngine()
         var autocorrectEnabled = autocorrectOn
+        var now = 10_000_000L
+        val scheduler = FakeScheduler()
 
         val controller = SuggestionsController(
             strip,
@@ -173,6 +188,7 @@ class RevertCellControllerTest {
 
         init {
             controller.setAutocorrectGate { autocorrectEnabled }
+            controller.replaceRecentClipCellForTest(RecentClipCell(scheduler) { now })
             // The production decorator reads the locale's quote pattern from a string resource;
             // the test pins the Tatar/Russian one.
             controller.setRevertCellDecorator { typedWord -> "«$typedWord»" }
@@ -185,6 +201,10 @@ class RevertCellControllerTest {
         fun type(text: String) {
             editor.before += text
             controller.onTextChanged()
+        }
+
+        fun clip(text: String) {
+            controller.onPrimaryClipChanged(text, now)
         }
 
         fun separator(separator: Char) {
@@ -223,6 +243,43 @@ class RevertCellControllerTest {
 
         assertEquals("китап ", h.editor.before)
         assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
+    }
+
+    @Test
+    fun clipExpiryDoesNotClearTheUndoCell() {
+        val h = Harness()
+        h.start()
+        h.clip("сәләм")
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+        h.separator(' ')
+        val reserveCalls = h.strip.reserveCalls
+
+        h.now += RecentClipCell.TTL_MILLIS + 1
+        h.scheduler.run(0)
+
+        assertEquals(reserveCalls, h.strip.reserveCalls)
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
+        h.tap("«китәп»")
+        assertEquals("китәп ", h.editor.before)
+    }
+
+    @Test
+    fun aClipboardUpdateMatchingTheUndoTextDoesNotTakeItsStrip() {
+        val h = Harness()
+        h.start()
+        h.clip("«китәп»")
+        h.advise("китәп", "китап")
+        h.typeWord("китәп")
+        h.separator(' ')
+        val reserveCalls = h.strip.reserveCalls
+
+        h.clip("яңа клип")
+
+        assertEquals(reserveCalls, h.strip.reserveCalls)
+        assertEquals(listOf("«китәп»", null, null, null), h.strip.lastBand())
+        h.tap("«китәп»")
+        assertEquals("китәп ", h.editor.before)
     }
 
     @Test

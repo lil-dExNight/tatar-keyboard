@@ -124,9 +124,9 @@ interface EngineHandle {
     fun setCompanionLexicon(lexicon: CompanionLexicon?) {}
 
     /**
-     * The autocorrect verdict of the newest completed lookup, or null when nothing may be replaced.
-     * Read on the UI thread when a word separator is pressed; no request or token is needed, since
-     * the lookup behind the current strip produced it. Default null: never autocorrects.
+     * The autocorrect verdict of the current completed lookup, or null when nothing may be
+     * replaced. Its generation is invalidated by a newer request, [finishInput] and teardown.
+     * Read on the UI thread when a word separator is pressed. Default null: never autocorrects.
      */
     fun autocorrectAdvice(): AutocorrectAdvice? = null
 

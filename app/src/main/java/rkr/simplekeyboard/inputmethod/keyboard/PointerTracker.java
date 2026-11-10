@@ -112,6 +112,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     // Last pointer position.
     private int mLastX;
     private int mLastY;
+    // Uptime of this tracker's previous up event, or -1 before the first up and after a cancel.
+    private long mPreviousUpEventTime = -1;
     private int mStartX;
     //private int mStartY;
     // Uptime of this gesture's touch down; the swipe windows compare it against event times.
@@ -208,6 +210,16 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
     public static void cancelAllPointerTrackers() {
         sPointerTrackerQueue.cancelAllPointerTrackers();
         endGlideFeedbackForAllTrackers();
+        resetPreviousUpForAllTrackers();
+    }
+
+    // A full-stream cancel or keyboard close also clears idle trackers because their instances
+    // and pointer IDs are reused by later streams.
+    private static void resetPreviousUpForAllTrackers() {
+        final int trackersSize = sTrackers.size();
+        for (int i = 0; i < trackersSize; ++i) {
+            sTrackers.get(i).mPreviousUpEventTime = -1;
+        }
     }
 
     // The close-mid-gesture paths reach the trackers without per-tracker CANCEL events, so
@@ -542,7 +554,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
             printTouchEvent("onDownEvent:", x, y, eventTime);
         }
         // Naive up-to-down noise filter.
-        final long deltaT = eventTime;
+        final long deltaT = mPreviousUpEventTime < 0
+                ? Long.MAX_VALUE : eventTime - mPreviousUpEventTime;
         if (deltaT < sParams.mTouchNoiseThresholdTime) {
             final int distance = getDistance(x, y, mLastX, mLastY);
             if (distance < sParams.mTouchNoiseThresholdDistance) {
@@ -1006,6 +1019,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         if (DEBUG_EVENT) {
             printTouchEvent("onUpEvent  :", x, y, eventTime);
         }
+        mPreviousUpEventTime = eventTime;
 
         if (mIsSpaceTrackpadSecondary) {
             final PointerTracker trackpadOwner = sSpaceTrackpadOwner;
@@ -1222,6 +1236,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element {
         // that releases the other pointers' pressed keys (and cancels their glides; everyone is
         // disabled first, so it delivers nothing) runs inside the same queue call. A
         // releaseAllPointers after it would iterate an empty queue.
+        resetPreviousUpForAllTrackers();
         sPointerTrackerQueue.cancelAllPointerTrackers(eventTime);
         endGlideFeedbackForAllTrackers();
         onCancelEventInternal();

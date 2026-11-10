@@ -22,13 +22,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectAdvice
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ClassifiedPrefixComputer
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ContextAwarePrefixComputer
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.EngineExecutor
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ExecutorServiceEngineExecutor
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ImmutableUtf8Prefix
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LatestOnlyPrefixEngine
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ResultHandoff
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PairCompletionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSink
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrections
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
 import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
@@ -126,6 +136,98 @@ class AutocorrectControllerTest {
             if (TatarWordUtils.startsWithWordCharacter(after)) return false
             return cachedWordBeforeCursor() == expectedPrefix
         }
+    }
+
+    /** A context-sensitive worker whose two lookups can be released independently. */
+    private class BlockingContextComputer : ContextAwarePrefixComputer, ClassifiedPrefixComputer {
+        val oldEntered = CountDownLatch(1)
+        val newEntered = CountDownLatch(1)
+        private val releaseOld = CountDownLatch(1)
+        private val releaseNew = CountDownLatch(1)
+
+        override val lastExactCount: Int = 0
+
+        @Volatile
+        override var lastAutocorrectAdvice: AutocorrectAdvice? = null
+            private set
+
+        override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+            throw AssertionError("the race requests always carry a context")
+
+        override fun lookup(
+            normalizedPrefixUtf8: ImmutableUtf8Prefix,
+            normalizedContextWordUtf8: ImmutableUtf8Prefix,
+        ): List<String> {
+            val replacement = when (normalizedContextWordUtf8.decodeUtf8()) {
+                "иске" -> {
+                    oldEntered.countDown()
+                    await(releaseOld)
+                    "китап"
+                }
+                "яңа" -> {
+                    newEntered.countDown()
+                    await(releaseNew)
+                    "китәб"
+                }
+                else -> throw AssertionError("unexpected context")
+            }
+            val typed = normalizedPrefixUtf8.decodeUtf8()
+            lastAutocorrectAdvice = AutocorrectAdvice(
+                typed, replacement, 5_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+            )
+            return listOf(replacement)
+        }
+
+        fun finishOldLookup() = releaseOld.countDown()
+
+        fun finishNewLookup() = releaseNew.countDown()
+
+        private fun await(latch: CountDownLatch) {
+            if (!latch.await(5, TimeUnit.SECONDS)) throw AssertionError("worker release timed out")
+        }
+    }
+
+    /** The production generation engine behind the controller's narrow handle interface. */
+    private class LatestEngineHandle(
+        computer: BlockingContextComputer,
+        executor: EngineExecutor,
+        callback: ResultCallback,
+    ) : EngineHandle {
+        private val resultDelivered = CountDownLatch(1)
+        private val engine = LatestOnlyPrefixEngine(
+            DictionaryIdentity(1, 2, 1, "a".repeat(64)),
+            computer,
+            executor,
+            ResultHandoff { result ->
+                callback.onResult(result.token, result.suggestions, result.kind)
+                resultDelivered.countDown()
+            },
+        )
+
+        override fun request(
+            editorSessionId: Long,
+            subtypeId: String,
+            prefixUtf8: ByteArray,
+        ): Any? = engine.request(editorSessionId, subtypeId, prefixUtf8)
+
+        override fun request(
+            editorSessionId: Long,
+            subtypeId: String,
+            prefixUtf8: ByteArray,
+            contextWordUtf8: ByteArray,
+        ): Any? = engine.request(editorSessionId, subtypeId, prefixUtf8, contextWordUtf8)
+
+        override fun isCurrent(token: Any): Boolean =
+            token is LookupToken && engine.isCurrent(token)
+
+        override fun finishInput() = engine.finishInput()
+
+        override fun autocorrectAdvice(): AutocorrectAdvice? = engine.autocorrectAdvice()
+
+        override fun destroy(timeoutMs: Long): Boolean =
+            engine.destroy(timeoutMs, TimeUnit.MILLISECONDS)
+
+        fun awaitResult(): Boolean = resultDelivered.await(5, TimeUnit.SECONDS)
     }
 
     private class FakeEngine : EngineHandle {
@@ -385,6 +487,50 @@ class AutocorrectControllerTest {
 
         assertEquals("китәп ", h.editor.before)
         assertTrue(h.editor.edits.isEmpty())
+    }
+
+    @Test
+    fun anOldContextCannotCorrectTheSameWordAfterAnEditorSessionBoundary() {
+        val computer = BlockingContextComputer()
+        val worker = ExecutorServiceEngineExecutor.singleThread()
+        val editor = FakeEditor().apply { before = "иске китәп" }
+        lateinit var engine: LatestEngineHandle
+        val controller = SuggestionsController(
+            FakeStrip(),
+            editor,
+            UiPoster { it.run() },
+            { callback ->
+                LatestEngineHandle(computer, worker, callback).also { engine = it }
+            },
+            DirectExecutorService(),
+            true,
+        )
+        controller.setAutocorrectGate { true }
+        try {
+            controller.onStartInput(eligible = true)
+            assertTrue(computer.oldEntered.await(5, TimeUnit.SECONDS))
+
+            controller.onFinishInput()
+            editor.before = "яңа китәп"
+            controller.onStartInput(eligible = true)
+            computer.finishOldLookup()
+            assertTrue(computer.newEntered.await(5, TimeUnit.SECONDS))
+
+            // The old worker has finished and the new one is still running. Its old verdict must
+            // not replace the identical typed word after the session and context changed.
+            assertFalse(controller.maybeAutocorrectBeforeSeparator(' '.code))
+            assertEquals("яңа китәп", editor.before)
+            assertTrue(editor.edits.isEmpty())
+
+            computer.finishNewLookup()
+            assertTrue(engine.awaitResult())
+            assertTrue(controller.maybeAutocorrectBeforeSeparator(' '.code))
+            assertEquals("яңа китәб", editor.before)
+        } finally {
+            computer.finishOldLookup()
+            computer.finishNewLookup()
+            controller.onDestroy()
+        }
     }
 
     @Test

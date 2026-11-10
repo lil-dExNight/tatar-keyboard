@@ -430,7 +430,12 @@ class SuggestionsController internal constructor(
     // [bandBaseCells] is what is on the strip right now, in logical ranked order and already
     // re-cased. Outside the lead case the companion's candidates are appended to this list, never
     // mixed into it, so no cell of the current language ever changes.
+    private var displayedRecentClipOffer: String? = null
     private var bandBaseCells: List<String> = emptyList()
+        set(value) {
+            field = value
+            if (value.isEmpty()) displayedRecentClipOffer = null
+        }
     private var bandEmphasizedCell = SuggestionStripState.NO_CELL
     private var bandRanked = true
 
@@ -724,16 +729,9 @@ class SuggestionsController internal constructor(
      * stale clip would stay on screen as a dead cell.
      */
     fun onPrimaryClipChanged(clipText: String?, setAtMillis: Long) {
-        val previousOffer = recentClip.offerText()
+        val repaint = isShowingRecentClip()
         recentClip.noteClip(clipText, setAtMillis)
-        if (previousOffer != null
-            && displayedSessionId == sessionId
-            && displayedPrefix == null && displayedContextWord == null
-            && displayedGlideAlternativesFor == null
-            && bandBaseCells.size == 1 && bandBaseCells[0] == previousOffer
-        ) {
-            requestCurrentPrefix()
-        }
+        if (repaint) requestCurrentPrefix()
     }
 
     /**
@@ -746,13 +744,7 @@ class SuggestionsController internal constructor(
 
     /** Removes an expired clip without disturbing a band that has since taken its place. */
     private fun onRecentClipExpired() {
-        if (displayedSessionId == sessionId
-            && displayedPrefix == null && displayedContextWord == null
-            && displayedGlideAlternativesFor == null
-            && bandBaseCells.size == 1
-        ) {
-            clearToReservedBand()
-        }
+        if (isShowingRecentClip()) clearToReservedBand()
     }
 
     /**
@@ -968,7 +960,7 @@ class SuggestionsController internal constructor(
      * paste completes or extends is never learned, however short the pasted text.
      */
     fun onClipboardPaste() {
-        runMachine.markRunDirty()
+        runMachine.markClipboardPasteDirty()
     }
 
     fun onSelectionChanged() {
@@ -1901,6 +1893,7 @@ class SuggestionsController internal constructor(
         // Every composition already caps at the visible count; this is the fail-safe for the one
         // place a wider list could slip through (a retained glide list outliving a narrower push).
         val shown = if (cells.size <= bandCapacity) cells else cells.subList(0, bandCapacity)
+        displayedRecentClipOffer = null
         bandBaseCells = shown
         bandEmphasizedCell = emphasizedCell
         bandRanked = ranked
@@ -2650,11 +2643,13 @@ class SuggestionsController internal constructor(
         if (usableEngine() == null) return
         if (displayedPrefix != null || displayedContextWord != null) return
         if (displayedGlideAlternativesFor != null) return
+        // A late load fills only the reserved band. Clip, undo and every other owned cell stay.
+        if (revertCellDisplayed || bandBaseCells.isNotEmpty()) return
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         if (editor.cachedNextWordContext().isNotEmpty()) return
-        // Not a sentence start: requestSentenceStart's own guards say no.
-        requestSentenceStart()
+        // Re-derive the whole idle strip so clip precedence and sentence-start guards stay shared.
+        requestCurrentPrefix()
     }
 
     /**
@@ -2755,6 +2750,7 @@ class SuggestionsController internal constructor(
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = false
         showBand(listOf(offer), ranked = false)
+        displayedRecentClipOffer = offer
         // The clipboard marker tells the cell from a suggestion, and TalkBack says what the cell
         // does instead of reading the clip's text aloud.
         strip.setClipCellMarker(0)
@@ -2762,19 +2758,24 @@ class SuggestionsController internal constructor(
         return true
     }
 
+    /** True only while the current single-cell band is the clip offer painted by this controller. */
+    private fun isShowingRecentClip(): Boolean {
+        val offer = displayedRecentClipOffer ?: return false
+        return displayedSessionId == sessionId
+            && displayedPrefix == null && displayedContextWord == null
+            && displayedGlideAlternativesFor == null
+            && !revertCellDisplayed
+            && bandBaseCells.size == 1 && bandBaseCells[0] == offer
+    }
+
     /**
      * True when [suggestion] is the live recent-clip cell's text: the same state check the tap
      * path makes. The strip's long-press router asks, because the clip is not a word — it is
      * RAM-only, and nothing about it is ever saved or learned.
      */
-    fun isRecentClipCell(suggestion: String): Boolean {
-        val offer = recentClip.offerText() ?: return false
-        return displayedSessionId == sessionId
-            && displayedPrefix == null && displayedContextWord == null
-            && displayedGlideAlternativesFor == null
-            && bandBaseCells.size == 1 && bandBaseCells[0] == suggestion
-            && suggestion == offer
-    }
+    fun isRecentClipCell(suggestion: String): Boolean =
+        isShowingRecentClip() && suggestion == displayedRecentClipOffer &&
+            suggestion == recentClip.offerText()
 
 
     private fun applyResult(
@@ -3267,13 +3268,7 @@ class SuggestionsController internal constructor(
         // before the screen locked, is a dead cell: the tap commits nothing), and the offer is
         // one-shot: the held clip is dropped with the tap, whatever the editor answers.
         val clipOffer = recentClip.offerText()
-        if (clipOffer != null
-            && displayedSessionId == sessionId
-            && displayedPrefix == null && displayedContextWord == null
-            && displayedGlideAlternativesFor == null
-            && bandBaseCells.size == 1 && bandBaseCells[0] == suggestion
-            && suggestion == clipOffer
-        ) {
+        if (clipOffer != null && isShowingRecentClip() && suggestion == displayedRecentClipOffer) {
             val fullText = if (keyguardGate.isLocked()) null else recentClip.fullTextForCommit()
             recentClip.clear()
             bandBaseCells = emptyList()
@@ -3283,7 +3278,7 @@ class SuggestionsController internal constructor(
                 suggestionTapFeedback.onSuggestionTap()
                 // Pasted text is not the user spelling anything out: nothing is learned from it —
                 // neither the words nor a pair with the clip's last word as context.
-                runMachine.markRunDirty()
+                runMachine.markClipboardPasteDirty()
             }
             strip.reserve()
             requestCurrentPrefix()

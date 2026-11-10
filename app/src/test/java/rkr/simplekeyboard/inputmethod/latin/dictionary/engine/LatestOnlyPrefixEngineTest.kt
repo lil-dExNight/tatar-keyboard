@@ -233,6 +233,71 @@ class LatestOnlyPrefixEngineTest {
     }
 
     @Test
+    fun autocorrectAdviceIsClearedByFinishNewLookupAndTeardown() {
+        val executor = ManualEngineExecutor()
+        val computer = object : ClassifiedPrefixComputer {
+            override val lastExactCount: Int = 0
+            @Volatile
+            override var lastAutocorrectAdvice: AutocorrectAdvice? = null
+                private set
+
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
+                val typed = normalizedPrefixUtf8.decodeUtf8()
+                lastAutocorrectAdvice = AutocorrectAdvice(
+                    typed, "китап", 5_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                )
+                return listOf("китап")
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff {},
+        )
+        engine.request(1, "tt", utf8("китәп"))
+        executor.runAll()
+        assertEquals("китап", engine.autocorrectAdvice()?.replacement)
+
+        engine.finishInput()
+        assertNull(engine.autocorrectAdvice())
+        engine.request(2, "ru", utf8("китәп"))
+        assertNull("a new token cannot read the previous lookup's verdict", engine.autocorrectAdvice())
+        executor.runAll()
+        assertEquals("китап", engine.autocorrectAdvice()?.replacement)
+
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+        assertNull(engine.autocorrectAdvice())
+    }
+
+    @Test
+    fun aWorkerFinishingDuringTeardownCannotPublishAutocorrectAdvice() {
+        val executor = ManualEngineExecutor()
+        val computer = object : ClassifiedPrefixComputer {
+            override val lastExactCount: Int = 0
+            @Volatile
+            override var lastAutocorrectAdvice: AutocorrectAdvice? = null
+                private set
+
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
+                lastAutocorrectAdvice = AutocorrectAdvice(
+                    normalizedPrefixUtf8.decodeUtf8(), "китап",
+                    5_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                )
+                return emptyList()
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff {},
+        )
+        engine.request(1, "tt", utf8("китәп"))
+
+        assertFalse(engine.destroy(0, TimeUnit.MILLISECONDS))
+        executor.runAll()
+
+        assertNull(engine.autocorrectAdvice())
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+        assertNull(engine.autocorrectAdvice())
+    }
+
+    @Test
     fun repeatedIdenticalRequestsHaveDistinctSerials() {
         val executor = ManualEngineExecutor()
         val engine = engine(executor, mutableListOf(), mutableListOf())
@@ -367,6 +432,82 @@ class LatestOnlyPrefixEngineTest {
         assertNotEquals(old.normalizedContext, current.normalizedContext)
         assertEquals(listOf(current), published.map { it.token })
         assertEquals(1L, engine.suppressedStaleResultCount)
+    }
+
+    @Test
+    fun aNewerRequestSuppressesAnOldVerdictBeforePublishingItsOwn() {
+        val oldEntered = CountDownLatch(1)
+        val newEntered = CountDownLatch(1)
+        val releaseOld = CountDownLatch(1)
+        val releaseNew = CountDownLatch(1)
+        val currentPublished = CountDownLatch(1)
+        val computer = object : ContextAwarePrefixComputer, ClassifiedPrefixComputer {
+            override val lastExactCount: Int = 0
+            @Volatile
+            override var lastAutocorrectAdvice: AutocorrectAdvice? = null
+                private set
+
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> =
+                throw AssertionError("both requests carry a context")
+
+            override fun lookup(
+                normalizedPrefixUtf8: ImmutableUtf8Prefix,
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+            ): List<String> {
+                val replacement = when (normalizedContextWordUtf8.decodeUtf8()) {
+                    "иске" -> {
+                        oldEntered.countDown()
+                        check(releaseOld.await(5, TimeUnit.SECONDS))
+                        "китап"
+                    }
+                    "яңа" -> {
+                        newEntered.countDown()
+                        check(releaseNew.await(5, TimeUnit.SECONDS))
+                        "китәб"
+                    }
+                    else -> throw AssertionError("unexpected context")
+                }
+                lastAutocorrectAdvice = AutocorrectAdvice(
+                    normalizedPrefixUtf8.decodeUtf8(), replacement,
+                    5_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                )
+                return listOf(replacement)
+            }
+        }
+        val executor = ExecutorServiceEngineExecutor.singleThread()
+        val published = Collections.synchronizedList(mutableListOf<LookupResult>())
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            computer,
+            executor,
+            ResultHandoff {
+                published += it
+                currentPublished.countDown()
+            },
+        )
+        try {
+            val old = requireNotNull(engine.request(1, "tt", utf8("китәп"), utf8("иске")))
+            assertTrue(oldEntered.await(5, TimeUnit.SECONDS))
+            val current = requireNotNull(engine.request(2, "tt", utf8("китәп"), utf8("яңа")))
+
+            releaseOld.countDown()
+            assertTrue(newEntered.await(5, TimeUnit.SECONDS))
+            // The old worker has completed; the newer one has not. Only worker-local old advice
+            // exists at this point, and the generation guard must keep it invisible.
+            assertNull(engine.autocorrectAdvice())
+
+            releaseNew.countDown()
+            assertTrue(currentPublished.await(5, TimeUnit.SECONDS))
+            assertEquals("китәб", engine.autocorrectAdvice()?.replacement)
+            assertEquals(listOf(current), published.map { it.token })
+            assertFalse(engine.isCurrent(old))
+            assertTrue(engine.isCurrent(current))
+            assertEquals("китәб", engine.autocorrectAdvice()?.replacement)
+        } finally {
+            releaseOld.countDown()
+            releaseNew.countDown()
+            assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+        }
     }
 
     @Test

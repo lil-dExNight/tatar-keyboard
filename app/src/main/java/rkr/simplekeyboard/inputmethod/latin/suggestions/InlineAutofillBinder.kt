@@ -92,10 +92,9 @@ object InlineAutofillBinder {
         response.inlineSuggestions.isNullOrEmpty()
 
     /**
-     * Hosts the response: up to one content view per strip cell, each inflated at its cell's
-     * promised size and added as it arrives. Returns false without touching the surface when
-     * there is nothing to show or the surface is not ours right now (the emoji panel is up);
-     * refused content is simply not rendered inline.
+     * Hosts the response: up to one content view per strip cell, each inflated at its promised
+     * size and attached in response order as callbacks arrive. If every inflate fails or returns
+     * null, the owning session ends and the word strip returns. Late callbacks cannot end a new one.
      */
     @JvmStatic
     fun hostResponse(
@@ -116,19 +115,25 @@ object InlineAutofillBinder {
         )
         if (cells.isEmpty()) return false
         val host = inputView.showInlineAutofillStrip() ?: return false
-        val session = host.beginSession()
         val count = minOf(suggestions.size, InlineStripSpecs.CELL_COUNT)
-        var index = 0
-        while (index < count) {
-            val cell = cells[index]
-            suggestions[index].inflate(
-                context,
-                Size(cell.widthPx, cell.heightPx),
-                context.mainExecutor,
-            ) { view ->
-                if (view != null) host.hostCell(session, view)
+        val session = host.beginSession(count)
+        for (cellIndex in 0 until count) {
+            val cell = cells[cellIndex]
+            try {
+                suggestions[cellIndex].inflate(
+                    context,
+                    Size(cell.widthPx, cell.heightPx),
+                    context.mainExecutor,
+                ) { view ->
+                    if (host.completeCell(session, cellIndex, view)) {
+                        inputView.hideInlineAutofillStrip()
+                    }
+                }
+            } catch (_: RuntimeException) {
+                if (host.completeCell(session, cellIndex, null)) {
+                    inputView.hideInlineAutofillStrip()
+                }
             }
-            index++
         }
         return true
     }

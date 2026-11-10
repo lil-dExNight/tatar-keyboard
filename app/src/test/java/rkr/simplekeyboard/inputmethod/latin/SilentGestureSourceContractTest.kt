@@ -79,6 +79,11 @@ class SilentGestureSourceContractTest {
             router.contains("case ADD:") && router.contains("showAddPersonalWordDialog("),
         )
         assertTrue(
+            "postal-address and pause-learning rejections get an explanation",
+            router.contains("manualPersonalWordAddBlockMessage()")
+                && router.contains("showPersonalWordAddBlockedDialog(blockedMessage)"),
+        )
+        assertTrue(
             "and a word the filter rejects gets the explanation",
             router.contains("showPersonalWordNotAddableDialog("),
         )

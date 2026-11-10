@@ -162,12 +162,13 @@ class MappedDictionaryEngine private constructor(
     }
 
     /**
-     * Autocorrect verdict of the newest completed lookup, or null when nothing may be replaced.
-     * A `@Volatile` read of an immutable object; the UI thread touches no mapped buffer or lock.
-     * The reader must still check [AutocorrectAdvice.typedWord] against the live word.
+     * Autocorrect verdict of the current completed lookup, or null when nothing may be replaced.
+     * The engine binds publication to the lookup token, so a stale worker cannot restore a verdict
+     * after a newer request or lifecycle boundary. Check [AutocorrectAdvice.typedWord] against the
+     * live word as well.
      */
     val autocorrectAdvice: AutocorrectAdvice?
-        get() = computer.lastAutocorrectAdvice
+        get() = engine.autocorrectAdvice()
 
     /**
      * The normalized prefix of the newest completed lookup whose exact pass was empty, or null.
