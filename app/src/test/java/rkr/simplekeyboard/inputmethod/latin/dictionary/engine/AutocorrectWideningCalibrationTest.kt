@@ -545,14 +545,14 @@ class AutocorrectWideningCalibrationTest {
         private const val PIN_RU_CURRENT_UNSEEN_STEM = 0
         private const val PIN_RU_WIDENED_SEEN_FORM = 0
         private const val PIN_RU_WIDENED_NEW_FORM = 0
-        private const val PIN_RU_WIDENED_UNSEEN_STEM = 2
+        private const val PIN_RU_WIDENED_UNSEEN_STEM = 0
         private const val PIN_TT_CURRENT_RECOVERED = 7
         private const val PIN_TT_CURRENT_HARMFUL = 10
         private const val PIN_TT_WIDENED_RECOVERED = 2_929
         private const val PIN_TT_WIDENED_HARMFUL = 0
         private const val PIN_RU_CURRENT_RECOVERED = 0
-        private const val PIN_RU_CURRENT_HARMFUL = 3
-        private const val PIN_RU_WIDENED_RECOVERED = 3_223
+        private const val PIN_RU_CURRENT_HARMFUL = 4
+        private const val PIN_RU_WIDENED_RECOVERED = 3_433
         private const val PIN_RU_WIDENED_HARMFUL = 0
 
         // The guard arms: the widened policy armed with the preceding eval word's packed bigram
@@ -570,7 +570,7 @@ class AutocorrectWideningCalibrationTest {
         private const val PIN_RU_GUARD_FIRES = 0
         private const val PIN_TT_GUARD_RECOVERED = 848
         private const val PIN_TT_GUARD_HARMFUL = 0
-        private const val PIN_RU_GUARD_RECOVERED = 829
+        private const val PIN_RU_GUARD_RECOVERED = 797
         private const val PIN_RU_GUARD_HARMFUL = 0
 
         private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")

@@ -476,9 +476,9 @@ class RuSuggestEvalTest {
             "chain visible top-3 $visibleHits under the floor of $PIN_CHAIN_VISIBLE_TOP3_HITS",
             visibleHits >= PIN_CHAIN_VISIBLE_TOP3_HITS * QUALITY_FLOOR,
         )
-        assertEquals("9.0461", format(ratePct(top1Hits, pairs)))
-        assertEquals("16.8831", format(ratePct(visibleHits, pairs)))
-        assertEquals("19.3462", format(ratePct(engineHits, pairs)))
+        assertEquals("8.3280", format(ratePct(top1Hits, pairs)))
+        assertEquals("16.2087", format(ratePct(visibleHits, pairs)))
+        assertEquals("18.1257", format(ratePct(engineHits, pairs)))
     }
 
     @Test
@@ -533,63 +533,63 @@ class RuSuggestEvalTest {
 
         // Pins over the committed assets and eval set; re-pin when either changes (see class KDoc).
         private const val PIN_EVAL_LINES = 1_000
-        private const val PIN_UNIQUE_WORDS = 2_218
-        private const val PIN_PAIRS = 4_466
-        private const val PIN_COVERED = 4_010
-        private const val PIN_TOP1_HITS = 402
-        private const val PIN_BIGRAM_VISIBLE_TOP3_HITS = 724
-        private const val PIN_BIGRAM_ENGINE_TOP4_HITS = 825
-        private const val PIN_COVERED_PCT = "89.7895"
-        private const val PIN_TOP1_PCT = "9.0013"
-        private const val PIN_VISIBLE_TOP3_PCT = "16.2114"
-        private const val PIN_VISIBLE_TOP3_COVERED_PCT = "18.0549"
-        private const val PIN_ENGINE_TOP4_PCT = "18.4729"
-        private const val PIN_ENGINE_TOP4_COVERED_PCT = "20.5736"
-        private const val PIN_CHAIN_TOP1_HITS = 404
-        private const val PIN_CHAIN_VISIBLE_TOP3_HITS = 754
-        private const val PIN_CHAIN_ENGINE_TOP4_HITS = 864
-        private const val PIN_CP1_WORDS = 2_218
-        private const val PIN_CP2_WORDS = 2_210
-        private const val PIN_CP3_WORDS = 2_179
-        private const val PIN_CP1_VISIBLE_TOP3_HITS = 67
-        private const val PIN_CP2_VISIBLE_TOP3_HITS = 354
-        private const val PIN_CP3_VISIBLE_TOP3_HITS = 768
-        private const val PIN_CP1_ENGINE_TOP4_HITS = 90
-        private const val PIN_CP2_ENGINE_TOP4_HITS = 425
-        private const val PIN_CP3_ENGINE_TOP4_HITS = 880
-        private const val PIN_CP1_TOP1_HITS = 23
-        private const val PIN_CP2_TOP1_HITS = 145
-        private const val PIN_CP3_TOP1_HITS = 391
-        private const val PIN_CP1_TOP1_PCT = "1.0370"
-        private const val PIN_CP2_TOP1_PCT = "6.5611"
-        private const val PIN_CP3_TOP1_PCT = "17.9440"
-        private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 20_556
-        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 283
-        private const val PIN_STRIP_EMPTY_PREFIX_PCT = "1.3767"
-        private const val PIN_SENTSTART_TOP1_HITS = 22
-        private const val PIN_SENTSTART_VISIBLE_TOP3_HITS = 187
-        private const val PIN_SENTSTART_ENGINE_TOP4_HITS = 194
+        private const val PIN_UNIQUE_WORDS = 2_345
+        private const val PIN_PAIRS = 4_695
+        private const val PIN_COVERED = 4_142
+        private const val PIN_TOP1_HITS = 389
+        private const val PIN_BIGRAM_VISIBLE_TOP3_HITS = 719
+        private const val PIN_BIGRAM_ENGINE_TOP4_HITS = 801
+        private const val PIN_COVERED_PCT = "88.2215"
+        private const val PIN_TOP1_PCT = "8.2854"
+        private const val PIN_VISIBLE_TOP3_PCT = "15.3142"
+        private const val PIN_VISIBLE_TOP3_COVERED_PCT = "17.3588"
+        private const val PIN_ENGINE_TOP4_PCT = "17.0607"
+        private const val PIN_ENGINE_TOP4_COVERED_PCT = "19.3385"
+        private const val PIN_CHAIN_TOP1_HITS = 391
+        private const val PIN_CHAIN_VISIBLE_TOP3_HITS = 761
+        private const val PIN_CHAIN_ENGINE_TOP4_HITS = 851
+        private const val PIN_CP1_WORDS = 2_345
+        private const val PIN_CP2_WORDS = 2_336
+        private const val PIN_CP3_WORDS = 2_303
+        private const val PIN_CP1_VISIBLE_TOP3_HITS = 70
+        private const val PIN_CP2_VISIBLE_TOP3_HITS = 349
+        private const val PIN_CP3_VISIBLE_TOP3_HITS = 792
+        private const val PIN_CP1_ENGINE_TOP4_HITS = 91
+        private const val PIN_CP2_ENGINE_TOP4_HITS = 417
+        private const val PIN_CP3_ENGINE_TOP4_HITS = 908
+        private const val PIN_CP1_TOP1_HITS = 24
+        private const val PIN_CP2_TOP1_HITS = 157
+        private const val PIN_CP3_TOP1_HITS = 401
+        private const val PIN_CP1_TOP1_PCT = "1.0235"
+        private const val PIN_CP2_TOP1_PCT = "6.7209"
+        private const val PIN_CP3_TOP1_PCT = "17.4121"
+        private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 21_390
+        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 249
+        private const val PIN_STRIP_EMPTY_PREFIX_PCT = "1.1641"
+        private const val PIN_SENTSTART_TOP1_HITS = 17
+        private const val PIN_SENTSTART_VISIBLE_TOP3_HITS = 182
+        private const val PIN_SENTSTART_ENGINE_TOP4_HITS = 190
         // The context boost over the cp>=2 prefix moments, cross-pinned with the ctxboost_* rows
         // of scripts/suggest_eval.py --language rus; the CI95 is the paired sentence-level
         // bootstrap (the seed and rounds are shared with scripts/suggest_chain.py).
-        private const val PIN_CTXBOOST_CP2PLUS_MOMENTS = 15_636
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 5_968
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 6_483
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_096
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 9_326
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS = 9_800
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 9_994
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "38.1683"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "41.4620"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+3.2937"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+2.7930"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+3.8073"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "58.1734"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "59.6444"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+1.4710"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT = "62.6759"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "63.9166"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA = "+1.2407"
+        private const val PIN_CTXBOOST_CP2PLUS_MOMENTS = 16_255
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 6_104
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 6_502
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_264
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 9_467
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS = 10_054
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 10_216
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "37.5515"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "40.0000"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+2.4485"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+2.0572"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+2.8541"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "56.9917"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "58.2405"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+1.2488"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT = "61.8517"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "62.8484"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA = "+0.9966"
 
         // Bootstrap knobs, shared with scripts/suggest_chain.py; changing them re-pins the CI.
         private const val BOOTSTRAP_SEED = 20261001L

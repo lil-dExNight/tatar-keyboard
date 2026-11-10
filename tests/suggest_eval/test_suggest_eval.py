@@ -522,35 +522,38 @@ class FullEvalRecomputeTest(unittest.TestCase):
 
     def test_russian_pins(self) -> None:
         table = self.tables["rus"]
-        self.assertEqual(table["dict_word_coverage_tokens_pct"], "97.5485")
-        self.assertEqual(table["bigram_head_coverage_pct"], "89.7895")
-        self.assertEqual(table["nextword_chain_top1_pct"], "9.0461")
-        self.assertEqual(table["nextword_chain_visible_top3_hits"], "754")
-        self.assertEqual(table["nextword_chain_visible_top3_pct"], "16.8831")
-        self.assertEqual(table["nextword_chain_engine_top4_hits"], "864")
-        self.assertEqual(table["nextword_chain_engine_top4_pct"], "19.3462")
-        self.assertEqual(table["prefix_top1_cp1_pct"], "1.0370")
-        self.assertEqual(table["prefix_top1_cp2_pct"], "6.5611")
-        self.assertEqual(table["prefix_top1_cp3_pct"], "17.9440")
-        self.assertEqual(table["prefix_visible_top3_cp3_pct"], "35.2455")
-        self.assertEqual(table["prefix_engine_top4_cp3_pct"], "40.3855")
-        self.assertEqual(table["strip_empty_prefix_pct"], "1.3767")
+        self.assertEqual(table["eval_lines"], "1000")
+        self.assertEqual(table["eval_unique_words"], "2345")
+        self.assertEqual(table["bigram_pairs_total"], "4695")
+        self.assertEqual(table["dict_word_coverage_tokens_pct"], "97.6295")
+        self.assertEqual(table["bigram_head_coverage_pct"], "88.2215")
+        self.assertEqual(table["nextword_chain_top1_pct"], "8.3280")
+        self.assertEqual(table["nextword_chain_visible_top3_hits"], "761")
+        self.assertEqual(table["nextword_chain_visible_top3_pct"], "16.2087")
+        self.assertEqual(table["nextword_chain_engine_top4_hits"], "851")
+        self.assertEqual(table["nextword_chain_engine_top4_pct"], "18.1257")
+        self.assertEqual(table["prefix_top1_cp1_pct"], "1.0235")
+        self.assertEqual(table["prefix_top1_cp2_pct"], "6.7209")
+        self.assertEqual(table["prefix_top1_cp3_pct"], "17.4121")
+        self.assertEqual(table["prefix_visible_top3_cp3_pct"], "34.3899")
+        self.assertEqual(table["prefix_engine_top4_cp3_pct"], "39.4268")
+        self.assertEqual(table["strip_empty_prefix_pct"], "1.1641")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
-        self.assertEqual(table["ks_simulated_keys"], "18706")
-        self.assertEqual(table["ks_pct"], "38.6447")
-        self.assertEqual(table["ks_cells4_simulated_keys"], "17943")
-        self.assertEqual(table["ks_cells4_pct"], "41.1473")
+        self.assertEqual(table["ks_simulated_keys"], "19776")
+        self.assertEqual(table["ks_pct"], "37.7722")
+        self.assertEqual(table["ks_cells4_simulated_keys"], "18951")
+        self.assertEqual(table["ks_cells4_pct"], "40.3682")
         # The context boost over the cp>=2 prefix moments; RuSuggestEvalTest pins the same values.
-        self.assertEqual(table["ctxboost_cp2plus_moments"], "15636")
-        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "38.1683")
-        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "41.4620")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+3.2937")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+2.7930")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+3.8073")
-        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "58.1734")
-        self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "59.6444")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "62.6759")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "63.9166")
+        self.assertEqual(table["ctxboost_cp2plus_moments"], "16255")
+        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "37.5515")
+        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "40.0000")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+2.4485")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+2.0572")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+2.8541")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "56.9917")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "58.2405")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "61.8517")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "62.8484")
 
     # Quality floors beside the exact pins: the chain top-3 rate carries the pre-computed
     # minimum detectable effect (the *_mde_pp row of scripts/suggest_eval.py) as its floor
@@ -571,17 +574,17 @@ class FullEvalRecomputeTest(unittest.TestCase):
 
     def test_russian_quality_floors(self) -> None:
         table = self.tables["rus"]
-        self.assertGreaterEqual(float(table["nextword_chain_top1_pct"]), 9.0461 * 0.95)
+        self.assertGreaterEqual(float(table["nextword_chain_top1_pct"]), 8.3280 * 0.95)
         self.assertGreaterEqual(
             float(table["nextword_chain_visible_top3_pct"]),
-            16.8831 - float(table["nextword_chain_visible_top3_mde_pp"]),
+            16.2087 - float(table["nextword_chain_visible_top3_mde_pp"]),
         )
-        self.assertGreaterEqual(float(table["prefix_top1_cp1_pct"]), 1.0370 * 0.95)
-        self.assertGreaterEqual(float(table["prefix_top1_cp2_pct"]), 6.5611 * 0.95)
-        self.assertGreaterEqual(float(table["prefix_top1_cp3_pct"]), 17.9440 * 0.95)
-        self.assertGreaterEqual(float(table["prefix_visible_top3_cp3_pct"]), 35.2455 * 0.95)
-        self.assertGreaterEqual(float(table["ks_pct"]), 38.6447 * 0.95)
-        self.assertGreaterEqual(float(table["ks_cells4_pct"]), 41.1473 * 0.95)
+        self.assertGreaterEqual(float(table["prefix_top1_cp1_pct"]), 1.0235 * 0.95)
+        self.assertGreaterEqual(float(table["prefix_top1_cp2_pct"]), 6.7209 * 0.95)
+        self.assertGreaterEqual(float(table["prefix_top1_cp3_pct"]), 17.4121 * 0.95)
+        self.assertGreaterEqual(float(table["prefix_visible_top3_cp3_pct"]), 34.3899 * 0.95)
+        self.assertGreaterEqual(float(table["ks_pct"]), 37.7722 * 0.95)
+        self.assertGreaterEqual(float(table["ks_cells4_pct"]), 40.3682 * 0.95)
 
 
 if __name__ == "__main__":

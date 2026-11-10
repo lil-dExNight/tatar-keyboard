@@ -140,47 +140,47 @@ PIN_REP_SESSIONS = {
 # Russian mirror pins (see RuSuggestEvalTest): the same harness over the committed Russian
 # eval set and assets, no suffix rules. The hash/chrono halves graduate no word, as in
 # Tatar; the repetition split is the only graduation source.
-RU_PIN_CONTROL_PAIRS = 4_466
-RU_PIN_CONTROL_TOP1 = 404
-RU_PIN_CONTROL_VISIBLE_TOP3 = 754
-RU_PIN_CONTROL_ENGINE_TOP4 = 864
+RU_PIN_CONTROL_PAIRS = 4_695
+RU_PIN_CONTROL_TOP1 = 391
+RU_PIN_CONTROL_VISIBLE_TOP3 = 761
+RU_PIN_CONTROL_ENGINE_TOP4 = 851
 RU_PIN_GRAD_WORDS = {
     ("hash", "oracle"): 0, ("hash", "realistic"): 0, ("hash", "fixed"): 0,
     ("chrono", "oracle"): 0, ("chrono", "realistic"): 0, ("chrono", "fixed"): 0,
-    ("rep", "oracle"): 90, ("rep", "realistic"): 90, ("rep", "fixed"): 90,
+    ("rep", "oracle"): 95, ("rep", "realistic"): 95, ("rep", "fixed"): 95,
 }
 RU_PIN_GRAD_PAIRS = {
-    ("hash", "oracle"): 71, ("hash", "realistic"): 71, ("hash", "fixed"): 71,
-    ("chrono", "oracle"): 49, ("chrono", "realistic"): 49, ("chrono", "fixed"): 49,
-    ("rep", "oracle"): 150, ("rep", "realistic"): 150, ("rep", "fixed"): 150,
+    ("hash", "oracle"): 72, ("hash", "realistic"): 72, ("hash", "fixed"): 72,
+    ("chrono", "oracle"): 76, ("chrono", "realistic"): 76, ("chrono", "fixed"): 76,
+    ("rep", "oracle"): 167, ("rep", "realistic"): 167, ("rep", "fixed"): 167,
 }
-RU_PIN_WORD_COMPLETIONS = {"hash": 37, "chrono": 59, "rep": 270}
-RU_PIN_PAIR_OBSERVATIONS = {"hash": 2_117, "chrono": 2_160, "rep": 13_398}
-RU_PIN_FIX_PROBES = {"hash": 47, "chrono": 77, "rep": 429}
-RU_PIN_PRIME_UNSEEN_TOKENS = {"rep": 402}
-RU_PIN_UNSEEN_STEM = {"rep": (270, 270, 270)}
-RU_PIN_SWEEP = {100: 73, 200: 0}
-RU_PIN_REP_KS_BASELINE = 30_488
-RU_PIN_REP_KS_SIMULATED = 17_943
-RU_PIN_REP_KS_ORACLE = 7_562
-RU_PIN_REP_COMP_ACCEPT = 89
-RU_PIN_REP_COMP_ACCEPT_TOP1 = 20
-RU_PIN_REP_KS_PERS_KEYS = 17_542
-RU_PIN_REP_NW_PERS_VISIBLE_TOP3 = 757
-RU_PIN_REP_NW_PERS_ENGINE_TOP4 = 870
-RU_PIN_REP_NW_DISP_VISIBLE_TOP3 = 835
-RU_PIN_REP_NW_DISP_ENGINE_TOP4 = 956
-RU_PIN_REP_NW_DISP_GAINED = 93
-RU_PIN_REP_COMP_PERSONAL_SHOWN = 6_528
-RU_PIN_REP_COMP_PERSONAL_HIT = 90
-RU_PIN_REP_NW_PERSONAL_SHOWN = 2_196
-RU_PIN_REP_NW_PERSONAL_HIT = 257
+RU_PIN_WORD_COMPLETIONS = {"hash": 43, "chrono": 57, "rep": 288}
+RU_PIN_PAIR_OBSERVATIONS = {"hash": 2_247, "chrono": 2_301, "rep": 14_085}
+RU_PIN_FIX_PROBES = {"hash": 76, "chrono": 75, "rep": 357}
+RU_PIN_PRIME_UNSEEN_TOKENS = {"rep": 405}
+RU_PIN_UNSEEN_STEM = {"rep": (288, 288, 288)}
+RU_PIN_SWEEP = {100: 82, 200: 0}
+RU_PIN_REP_KS_BASELINE = 31_780
+RU_PIN_REP_KS_SIMULATED = 18_951
+RU_PIN_REP_KS_ORACLE = 7_830
+RU_PIN_REP_COMP_ACCEPT = 95
+RU_PIN_REP_COMP_ACCEPT_TOP1 = 30
+RU_PIN_REP_KS_PERS_KEYS = 18_678
+RU_PIN_REP_NW_PERS_VISIBLE_TOP3 = 761
+RU_PIN_REP_NW_PERS_ENGINE_TOP4 = 851
+RU_PIN_REP_NW_DISP_VISIBLE_TOP3 = 845
+RU_PIN_REP_NW_DISP_ENGINE_TOP4 = 958
+RU_PIN_REP_NW_DISP_GAINED = 115
+RU_PIN_REP_COMP_PERSONAL_SHOWN = 6_589
+RU_PIN_REP_COMP_PERSONAL_HIT = 96
+RU_PIN_REP_NW_PERSONAL_SHOWN = 2_569
+RU_PIN_REP_NW_PERSONAL_HIT = 295
 # One session per prime pass; the pending tables churn fully within a pass, so the
 # production lifetime prunes nothing, as in Tatar.
 RU_PIN_REP_SESSIONS = {
-    500: (90, 150, 270, 0, 0),
-    2_000: (90, 150, 270, 0, 0),
-    None: (90, 150, 270, 0, 0),
+    500: (95, 167, 288, 0, 0),
+    2_000: (95, 167, 288, 0, 0),
+    None: (95, 167, 288, 0, 0),
 }
 
 _OUTPUT: dict[str, str] | None = None

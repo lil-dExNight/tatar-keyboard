@@ -4,14 +4,15 @@
 Inputs not in the repo: --baseline DIR (the two 1.8.4 dictionary assets, extracted from git)
 and --corpus-dir DIR (the corpus files named in BIGRAMS and WORDFORM_FREQUENCY_SOURCES, whose
 size and SHA-256 are pinned in data/corpus-manifest.json and verified before any step). Steps:
-Tatar word forms, dict_accept pack, bigram_asset_pack pack, pin rewrite in the Kotlin storage
-contracts (between the `// <generated pins>` markers), regeneration of the Tatar calibration
+Tatar word forms, dict_accept pack, bigram_asset_pack pack, companion_list_pack build, pin
+rewrite in the Kotlin storage contracts (between the `// <generated pins>` markers),
+regeneration of the Tatar calibration
 sets (typo recovery, glide) with a pin rewrite in their python and JVM tests, then --check.
 --only tatar|russian rebuilds one side; the other must stay identical.
---check compares assets with pins, bigram heads with dictionaries, and the corpus manifest with
-the registry (and with the files, if --corpus-dir is given); head drift passes only with
---allow-known-drift and an exact match in known_asset_drift.json. Exit: 0 ok, 1 mismatch,
-2 missing input, failed step or unparsable contract or manifest.
+--check compares assets with pins, bigram heads and cold-companion lists with dictionaries, and
+the corpus manifest with the registry (and with the files, if --corpus-dir is given); head drift
+passes only with --allow-known-drift and an exact match in known_asset_drift.json. Exit: 0 ok,
+1 mismatch, 2 missing input, failed step or unparsable contract or manifest.
 """
 
 from __future__ import annotations
@@ -1489,7 +1490,7 @@ def run_rebuild(
         else:
             print("calibration pins already match", file=sys.stderr)
 
-    # 4. Verify the result with the --check procedure over all four assets, including the
+    # 4. Verify the result with the --check procedure over all six assets, including the
     # untouched side.
     result = run_check(root, known_drift_path, stream)
     print(
@@ -1512,9 +1513,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
         choices=("tatar", "russian"),
         default=None,
         help="rebuild one side only: its dictionary (for Tatar, with the wordform "
-        "stage), its bigram table and its pins; the other side's inputs are not needed, "
+        "stage), its bigram table, its cold-companion list and its pins; the other side's "
+        "inputs are not needed, "
         "while its assets and pins must stay byte-identical (a SHA-256 snapshot before "
-        "and after). The final check verifies all four assets. Not valid with --check",
+        "and after). The final check verifies all six assets. Not valid with --check",
     )
     parser.add_argument(
         "--allow-known-drift",
@@ -1565,7 +1567,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         known_drift = root / known_drift
     if args.check:
         if args.only is not None:
-            print("error: --only applies to rebuilds; --check always verifies all four assets",
+            print("error: --only applies to rebuilds; --check always verifies all six assets",
                   file=sys.stderr)
             return 2
         return run_check(root, known_drift, corpus_dir=args.corpus_dir)

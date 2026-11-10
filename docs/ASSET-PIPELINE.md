@@ -48,17 +48,22 @@ These inputs are not in the repository:
   way: `research/corpus/stream.py` holds out the `id % 10 == 1` slice for Tatar
   (`HELD_RESIDUE`), so the conversational frequency table `conv-freq-tt.tsv` is counted over
   the eval-line complement. `ru_eval_sentences.txt` (`scripts/make_ru_eval_set.py`) is the
-  Russian counterpart, built the same way against the Russian training corpora; its word
-  counts are not held out — `conv-freq-ru.tsv` is counted over a train slice that includes
-  eval lines. The suggestion evaluations, the typo eval sets and the glide calibration set
-  are built from these two files.
+  Russian counterpart: normalized-content exclusion removes every eval sentence found in any
+  current Russian training or tuning input, including the thinned conversational stream and
+  every corpus in `BIGRAMS[].train` (`rus_news_2023_1M` and `rus_news_2024_1M` included).
+  `conv-freq-ru.tsv` excludes counts contributed by eval lines; the same words can still have
+  counts from other training lines. The suggestion evaluations, the typo eval sets and the glide
+  calibration set are built from these two files.
 - Conversational training files `tt_conv_train90-sentences.txt` and
   `rus_conv_thinned60-sentences.txt`. `research/corpus/dl.sh` downloads the Tatoeba and
   OpenSubtitles dumps (Tatar Tatoeba: the weekly tatoeba.org export, which OPUS lags; the
   rest: OPUS), and `research/corpus/make_conv_train.py` turns them into deduplicated
   Leipzig-format files. The line-id filter is applied by hand (Tatar: `id % 10 != 1`; Russian:
   `id % 60 == 0`) and keeps the original ids, for example `awk -F'\t' '$1 % 60 == 0'`. Put the
-  results in `--corpus-dir`. The Tatar rows with `id % 10 == 1` are not in
+  results in `--corpus-dir`. OpenSubtitles publishes no license grant for this text. The
+  repository owner consciously accepts the legal risk of using and redistributing derived data
+  without one; attribution and the requested link back do not grant permission. The Tatar rows
+  with `id % 10 == 1` are not in
   `tt_conv_train90-sentences.txt`, but `tt_merge_sim.py` tuned the bonus weights on them (minus
   the eval set lines), so of these rows only the eval set above is held out of every input.
 - Emoji sources: `emoji-test.txt` (Unicode Emoji 15.1) and the CLDR 44 ru/en annotation
@@ -216,10 +221,11 @@ entry whose drift has disappeared, or an entry for an unknown asset fails the ch
 
 The current entries come from a rule of the generator, not from stale data. A top head that has
 no successor inside the dictionary is dropped, because the format does not allow empty success
-ranges. Russian: two conversational words have no pair in the thinned conversational input.
-Tatar: two top-cutoff heads promoted by the extra-corpus merge, and extra-head candidates —
-frequent conversational question and predicative forms — whose partner words are outside the
-shipped dictionary. When a rebuild changes these counts, update the file and its `reason`.
+ranges. Russian currently has no known-drift entry: every selected head has an in-dictionary
+successor under the current training inputs. Tatar: two top-cutoff heads promoted by the
+extra-corpus merge, and extra-head candidates — frequent conversational question and predicative
+forms — whose partner words are outside the shipped dictionary. When a rebuild changes these
+counts, update the file and its `reason`.
 
 ## Pins outside the storage contracts
 

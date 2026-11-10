@@ -104,8 +104,9 @@ the dictionary's own word forms, so its sources and license are those of the
 dictionary above.
 
 --------------------------------------------------------------------------------
-The dictionary data remains a separate CC BY 4.0 component; the application's
-Apache-2.0 license does not replace that data license.
+Each upstream-derived part of the dictionary data retains the license or
+no-grant status stated in this notice; the application's Apache-2.0 license
+does not replace those terms.
 
 --------------------------------------------------------------------------------
 Conversational word frequencies -- PACKED
@@ -146,10 +147,11 @@ http://www.opensubtitles.org/
 Recommended citation: P. Lison, J. Tiedemann, "OpenSubtitles2016: Extracting
 Large Parallel Corpora from Movie and TV Subtitles", LREC 2016.
 OpenSubtitles publishes NO license grant for this text -- not an unclear
-license, an absent one. What the collection does ask is a link back to
-opensubtitles.org from anything built on its data; that link is on the line
-above. The project uses the data anyway, with the absence of a grant stated
-here as an accepted risk rather than a settled question.
+license, an absent one. The repository owner consciously accepts the legal
+risk of using and redistributing derived data without that grant. The
+collection asks for a link back to opensubtitles.org from anything built on
+its data; that link is on the line above. Attribution and the link do not
+grant permission.
 
 Changes by the Tatar Keyboard project: lines are deduplicated, tokens are
 normalized to NFC lowercase and filtered to the language alphabet, proper nouns

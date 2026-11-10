@@ -28,12 +28,12 @@ Catalogue page: https://wortschatz.uni-leipzig.de/en/download/tat
 The training input additionally contains a deduplicated conversational part
 (Tatoeba + OpenSubtitles, Tatar lines, minus the 10 % reserved for the eval
 set), counted ten times so that it makes up about a tenth of the training
-token mass, from the same two sources and under the same terms as the Russian
-section below spells out.
+token mass. The Russian section below gives the two sources and their
+licensing status.
 
 Changes by the Tatar Keyboard project: adjacent word pairs were counted within
 sentence boundaries from the source corpora, restricted to word forms
-already present in the shipped tatar_top100k_v1 dictionary (a separate, already
+already present in the shipped tatar_top100k_v1 dictionary (which contains a
 CC BY 4.0-licensed component derived from the same collection), ranked per head
 word, capped to the top 10,132 head words by unigram frequency plus a named
 list of 2,614 further words (105 frequent imperative forms, rank
@@ -65,9 +65,10 @@ thinned (every 60th unique line) conversational part built from:
   (CC BY 2.0 FR), https://creativecommons.org/licenses/by/2.0/fr/
 - OpenSubtitles, taken from the OPUS collection (OpenSubtitles v2024),
   http://www.opensubtitles.org/ -- OpenSubtitles publishes NO license grant
-  for this text, and this table carries data derived from it: the project
-  uses the data anyway, knowing there is no grant, as an accepted risk
-  stated in ../dictionaries/NOTICE.txt.
+  for this text, and this table carries data derived from it. The repository
+  owner consciously accepts the legal risk of using and redistributing that
+  derived data without a grant, as stated in ../dictionaries/NOTICE.txt.
+  Attribution and the requested link back do not grant permission.
   Recommended citation: P. Lison, J. Tiedemann,
   "OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV
   Subtitles", LREC 2016.

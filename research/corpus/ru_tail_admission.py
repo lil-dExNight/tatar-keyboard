@@ -5,9 +5,9 @@ The follow-up to the rejected Taiga rerank: instead of
 re-ranking inside the fixed composition, grow the composition by admitting words that are
 attested in the training corpora but absent from the shipped dictionary.
 
-The candidate pool is counted over exactly the four corpora the Russian bigram table trains
-on (the manifest-pinned thinned conv stream and the three Leipzig sentence files): the pinned
-eval set is decontaminated against precisely these corpora by normalized sentence content, so
+The candidate pool is counted over exactly the six corpora the Russian bigram table trains
+on (the manifest-pinned thinned conv stream and the five Leipzig sentence files): the pinned
+eval set is decontaminated against all of these corpora by normalized sentence content, so
 a word admitted from them carries no eval leakage. The acceptance discipline is the accept
 queue's: shared normalization under the Russian alphabet, the filters.py proper-noun,
 profanity and corroboration rules, and the dict_accept fragment rule. Words already in the
@@ -19,7 +19,7 @@ Subcommands: ``pool`` (count the corpora and write the extra-entries TSV plus a 
 merge), ``gate`` (the paired before/after measurement over the pinned Russian eval set:
 coverage, chain top-1 and chain top-3, each delta with a sentence-level paired bootstrap
 CI95). The candidate bigram table is repacked against the candidate dictionary with the
-existing CLI: ``python3 scripts/bigram_asset_pack.py pack --train <four corpora> --asset
+existing CLI: ``python3 scripts/bigram_asset_pack.py pack --train <six corpora> --asset
 <candidate.tdict.zlib> --heads 10000 --successes-per-head 4 --schema 3 --language rus
 --out-raw ... --out-compressed ... --report ...``. stdlib only.
 """
@@ -53,20 +53,20 @@ RUSSIAN_TRAIN = tuple(
 
 POOL_TSV_HEAD = """\
 # Russian tail-admission pool: word<TAB>frequency, admitted candidates only.
-# One pass over the four Russian bigram-training corpora (data/corpus-manifest.json pins,
+# One pass over the six Russian bigram-training corpora (data/corpus-manifest.json pins,
 # verified before counting) with the shared dict_tokens rule: NFC, lowercase, 33-letter
 # Russian alphabet, hugging punctuation stripped. Discipline of the accept queue:
 # proper nouns removed by capitalization evidence, profanity roots dropped, a word must
 # occur at least three times, and formal fragments (shorter than four letters or without
 # a vowel) are rejected. Words already in the composition (the 1.8.4 baseline plus the
 # accepted queue) are not listed: a grown composition re-admits them with their pipeline
-# frequencies. The frequency is the merged count over the four corpora.
+# frequencies. The frequency is the merged count over the six corpora.
 # word<TAB>train_freq
 """
 
 
 def build_pool(args) -> int:
-    """Count the four pinned corpora and write the extra-entries TSV plus a JSON report."""
+    """Count the six pinned corpora and write the extra-entries TSV plus a JSON report."""
     manifest = rebuild_assets.load_corpus_manifest(ROOT / rebuild_assets.CORPUS_MANIFEST)
     verdicts = rebuild_assets.verify_corpus(args.corpus_dir, manifest, RUSSIAN_TRAIN)
     bad = {name: verdict for name, verdict in verdicts.items() if verdict != "ok"}

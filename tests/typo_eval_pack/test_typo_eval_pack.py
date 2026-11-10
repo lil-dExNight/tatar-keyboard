@@ -406,14 +406,14 @@ class RussianValidOovSafetySetIdentityTest(unittest.TestCase):
         )
 
     def test_set_identity_and_strata(self) -> None:
-        self.assertEqual(self.result.size, 110)
-        self.assertEqual(len(self.result.data), 3884)
+        self.assertEqual(self.result.size, 91)
+        self.assertEqual(len(self.result.data), 2951)
         self.assertEqual(
-            self.result.sha256, "8057871b0db8f8e863807cb47cf2f7d5015f3a20f168451b25354bf2c0e7bb17"
+            self.result.sha256, "190446b414ec58ddf58a78a8fcc9fa3f084c6dcc22f6cd44c481e10505f13eb0"
         )
         self.assertEqual(
             self.result.stratum_counts,
-            {"seen_form": 11, "new_form_of_seen_stem": 34, "unseen_stem": 65},
+            {"seen_form": 12, "new_form_of_seen_stem": 13, "unseen_stem": 66},
         )
 
     def test_committed_file_is_byte_identical(self) -> None:
@@ -564,14 +564,14 @@ class RussianCommittedSetIdentityTest(unittest.TestCase):
 
     def test_set_identity(self) -> None:
         result = self.result
-        self.assertEqual(result.substrate_count, 2051)
-        self.assertEqual(result.size, 8204)
+        self.assertEqual(result.substrate_count, 2177)
+        self.assertEqual(result.size, 8708)
         self.assertEqual(
-            result.class_counts, {"sub": 2051, "del": 2051, "ins": 2051, "trans": 2051}
+            result.class_counts, {"sub": 2177, "del": 2177, "ins": 2177, "trans": 2177}
         )
-        self.assertEqual(len(result.data), 273422)
+        self.assertEqual(len(result.data), 290154)
         self.assertEqual(
-            result.sha256, "abf3988db71591bdde26562439c08a5c50ac4e3338ff4681384854144872108d"
+            result.sha256, "33627212c68a75bb5c591575bae448e5a353e2f507430de3674c3ebe8b4e3fd9"
         )
 
     def test_the_committed_file_is_byte_identical_to_the_regeneration(self) -> None:
@@ -608,16 +608,16 @@ class RussianCliTest(unittest.TestCase):
             report = json.loads(stdout.getvalue())
             self.assertEqual(report["language"], "rus")
             self.assertEqual(report["seed"], 0x52554556)
-            self.assertEqual(report["rows"], 8204)
-            self.assertEqual(report["substrate_words"], 2051)
-            self.assertEqual(report["set_bytes"], 273422)
+            self.assertEqual(report["rows"], 8708)
+            self.assertEqual(report["substrate_words"], 2177)
+            self.assertEqual(report["set_bytes"], 290154)
             self.assertEqual(
                 report["set_sha256"],
-                "abf3988db71591bdde26562439c08a5c50ac4e3338ff4681384854144872108d",
+                "33627212c68a75bb5c591575bae448e5a353e2f507430de3674c3ebe8b4e3fd9",
             )
             self.assertEqual(
                 report["class_counts"],
-                {"sub": 2051, "del": 2051, "ins": 2051, "trans": 2051},
+                {"sub": 2177, "del": 2177, "ins": 2177, "trans": 2177},
             )
             self.assertEqual(hashlib.sha256(out.read_bytes()).hexdigest(), report["set_sha256"])
 
@@ -629,15 +629,15 @@ class RussianCliTest(unittest.TestCase):
                 code = pack.main(["safety-set", "--language", "rus", "--output", str(out)])
             self.assertEqual(code, 0)
             report = json.loads(stdout.getvalue())
-            self.assertEqual(report["rows"], 110)
+            self.assertEqual(report["rows"], 91)
             self.assertEqual(
                 report["stratum_counts"],
-                {"seen_form": 11, "new_form_of_seen_stem": 34, "unseen_stem": 65},
+                {"seen_form": 12, "new_form_of_seen_stem": 13, "unseen_stem": 66},
             )
-            self.assertEqual(report["set_bytes"], 3884)
+            self.assertEqual(report["set_bytes"], 2951)
             self.assertEqual(
                 report["set_sha256"],
-                "8057871b0db8f8e863807cb47cf2f7d5015f3a20f168451b25354bf2c0e7bb17",
+                "190446b414ec58ddf58a78a8fcc9fa3f084c6dcc22f6cd44c481e10505f13eb0",
             )
             self.assertEqual(out.read_bytes(), RU_SAFETY_SET.read_bytes())
 

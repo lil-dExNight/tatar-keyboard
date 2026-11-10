@@ -500,11 +500,11 @@ class RuTypoMutatedEvalTest {
     companion object {
         // Pins of the committed set; re-pin when the dictionary, the eval set or the layout
         // change (regenerate: scripts/typo_eval_pack.py build --language rus).
-        private const val PIN_SUBSTRATE_WORDS = 2_051
-        private const val PIN_SET_ROWS = 8_204
-        private const val PIN_SET_BYTES = 273_422
+        private const val PIN_SUBSTRATE_WORDS = 2_177
+        private const val PIN_SET_ROWS = 8_708
+        private const val PIN_SET_BYTES = 290_154
         private const val PIN_SET_SHA256 =
-            "abf3988db71591bdde26562439c08a5c50ac4e3338ff4681384854144872108d"
+            "33627212c68a75bb5c591575bae448e5a353e2f507430de3674c3ebe8b4e3fd9"
 
         // Quality floors beside the exact pins: per-class recovery must stay within 5% of its
         // pinned count, so a dictionary rebuild cannot be re-pinned through a silent quality
@@ -517,32 +517,32 @@ class RuTypoMutatedEvalTest {
         // the exact-only control recovers last-position deletions as prefix hits and nothing
         // else. Re-pin when the dictionary, the eval set, the layout or the ranking change, and
         // never below the bars of CLASS_BARS.
-        private const val PIN_SUB_ENGINE_TOP4_HITS = 1_902
-        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_635
-        private const val PIN_INS_ENGINE_TOP4_HITS = 2_041
-        private const val PIN_TRANS_ENGINE_TOP4_HITS = 1_916
-        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 1_909
-        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_627
-        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_040
-        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 1_915
-        private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 274
+        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_027
+        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_745
+        private const val PIN_INS_ENGINE_TOP4_HITS = 2_163
+        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_048
+        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_028
+        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_739
+        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_163
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_046
+        private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 312
 
         // The pre-registered per-class recovery bars (engine top-4, percent of each class).
         private val CLASS_BARS = listOf("sub" to 85.0, "del" to 45.0, "ins" to 70.0, "trans" to 60.0)
 
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0
 
-        private const val PIN_VALID_OOV_ROWS = 110
-        private const val PIN_VALID_OOV_SET_BYTES = 3_884
+        private const val PIN_VALID_OOV_ROWS = 91
+        private const val PIN_VALID_OOV_SET_BYTES = 2_951
         private const val PIN_VALID_OOV_SET_SHA256 =
-            "8057871b0db8f8e863807cb47cf2f7d5015f3a20f168451b25354bf2c0e7bb17"
-        private const val PIN_VALID_OOV_SEEN_FORM_WORDS = 11
-        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 34
-        private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 65
+            "190446b414ec58ddf58a78a8fcc9fa3f084c6dcc22f6cd44c481e10505f13eb0"
+        private const val PIN_VALID_OOV_SEEN_FORM_WORDS = 12
+        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 13
+        private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 66
         private const val PIN_VALID_OOV_SEEN_FORM_FALSE_REPLACEMENTS = 0
         private const val PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS = 0
-        private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 2
-        private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 2
+        private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 0
+        private const val PIN_VALID_OOV_FALSE_REPLACEMENTS = 0
 
         private val SAFETY_STRATA = listOf("seen_form", "new_form_of_seen_stem", "unseen_stem")
         private val CLASS_NAMES = listOf("sub", "del", "ins", "trans")

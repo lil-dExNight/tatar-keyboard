@@ -1,53 +1,67 @@
 #!/usr/bin/env python3
-"""Build the Russian suggestion eval set: Tatoeba sentences held out of bigram training.
+"""Build the Russian suggestion eval set from fully held-out Tatoeba sentences.
 
-Input: the Tatoeba ru dump in ``--corpus-dir`` (checked against TATOEBA_SHA256/TATOEBA_BYTES)
-and the four training corpora of the shipped Russian bigram table: the thinned conv stream and
-the three Leipzig ru sentence corpora in ``--leipzig-dir``, each checked against
-``data/corpus-manifest.json`` (size and SHA-256) before reading. A Tatoeba line is dropped when
-its normalized form appears in any normalized training corpus, so no eval sentence appears in
-any training corpus; the exclusion is by content, not row id, and needs no conv stream rebuild.
-Output: ``app/src/test/resources/ru_eval_sentences.txt`` (UTF-8/LF, ``#`` attribution header,
-one normalized sentence per line, byte-identical on rebuild) and a JSON report on stdout.
-Only Tatoeba lines (CC BY 2.0 FR) are written. Exits nonzero without writing output if an
-input is missing or does not match its pin.
+The conversational stream is reconstructed from the pinned Tatoeba and OpenSubtitles dumps
+with ``research/corpus/make_conv_train.py``. Candidates are Tatoeba-origin rows in the
+``id % 10 == 0`` slice, which the conversational-frequency and acceptance measurements hold
+out. Normalized candidates are removed when they occur in conversational frequency or
+development training (``id % 10 != 0``) or in any of the six current Russian bigram inputs,
+including the 2023 and 2024 news corpora. All corpus bytes are pin-checked. Output is
+``app/src/test/resources/ru_eval_sentences.txt`` plus a JSON provenance report on stdout.
+Only Tatoeba lines (CC BY 2.0 FR) are written. Errors exit nonzero without writing the eval
+set; rebuilding the same pinned inputs is byte-identical.
 """
 from __future__ import annotations
 
 import argparse
-import gzip
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
+from typing import Iterable, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import dictionary_coverage as coverage  # noqa: E402
+import rebuild_assets  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CORPUS_DIR = ROOT / "research" / "corpus"
 DEFAULT_LEIPZIG_DIR = Path.home() / "corpora-leipzig"
+DEFAULT_WORKDIR = ROOT / "build" / "ru-suggestions"
 DEFAULT_OUT = ROOT / "app" / "src" / "test" / "resources" / "ru_eval_sentences.txt"
 CORPUS_MANIFEST = ROOT / "data" / "corpus-manifest.json"
+CONV_FREQUENCY = ROOT / "data" / "dictionary" / "dict-accept" / "conv-freq-ru.tsv"
 
 TATOEBA_FILE = "Tatoeba-v2026-07-08.ru.txt.gz"
 TATOEBA_SHA256 = "e49b94d540df0b27f0309ea49e25093398c5a4f4e7052945f19de08120f9e499"
 TATOEBA_BYTES = 19_194_956
+OPENSUBTITLES_FILE = "OpenSubtitles-v2024.ru.txt.gz"
+OPENSUBTITLES_SHA256 = "7b403e71d615a248a6871f5836533926cc3988c6bfc2bc99f9e3324a179889a0"
+OPENSUBTITLES_BYTES = 1_518_001_327
+CONVERTER = "make_conv_train.py"
+CONV_ALL_FILE = "rus_conv_all-sentences.txt"
+CONV_ALL_SHA256 = "ff8524a8cde9162aa54ba0aa08100d62eb7c690ab66c4af57140f54aa7db60a6"
+CONV_ALL_BYTES = 4_587_788_864
+CONV_ALL_LINES = 60_036_548
+CONV_TATOEBA_ROWS = 1_231_094
 
-# The thinned conv stream lives directly in the Leipzig corpus dir; each Leipzig corpus lives
-# in its own subdirectory, as the release tarballs unpack. All four are the bigram table's
-# training inputs (rebuild_assets.py), and every one is pinned in data/corpus-manifest.json.
+# The asset pipeline is the source of truth for bigram training inputs. Keeping a second list
+# here previously left the 2023 and 2024 news corpora in the eval set.
+BIGRAM_SENTENCE_FILES = tuple(
+    bigram.train for bigram in rebuild_assets.BIGRAMS if bigram.tag == "rus"
+)[0]
 CONV_SENTENCES_FILE = "rus_conv_thinned60-sentences.txt"
-LEIPZIG_SENTENCE_FILES = (
-    "rus_news_2019_1M/rus_news_2019_1M-sentences.txt",
-    "rus_news_2022_1M/rus_news_2022_1M-sentences.txt",
-    "rus_wikipedia_2021_1M/rus_wikipedia_2021_1M-sentences.txt",
-)
+CONV_FREQUENCY_LABEL = "conv_frequency_train"
+TRAINING_INPUT_LABELS = (CONV_FREQUENCY_LABEL, *BIGRAM_SENTENCE_FILES)
+
+CONV_HELD_MODULUS = 10
+CONV_HELD_RESIDUE = 0
+CONV_THIN_MODULUS = 60
 
 # Pinned sampling seed, an arbitrary value. Changing it produces a new eval set, not a rebuild.
 SAMPLE_SEED = 20261003
@@ -56,9 +70,8 @@ DEFAULT_LIMIT = 1_000
 DEFAULT_MIN_WORDS = 3
 DEFAULT_MAX_WORDS = 12
 
-# Characters that may hug a word inside a Tatoeba sentence: the rule of
-# research/corpus/corpuslib.py (``_EDGE``), copied by value so scripts/ stays
-# self-contained.
+# Characters that may hug a word inside a corpus sentence: the rule of
+# research/corpus/corpuslib.py (``_EDGE``), copied by value so tokenization stays shared.
 EDGE_CHARS = "\"'«»„“”‘’()[]{}<>.,!?;:…—–-*_/\\|~`^&#№%+=@$"
 
 HEADER_LINES = (
@@ -71,16 +84,16 @@ HEADER_LINES = (
     "# single condition that the source is cited. This header is that citation; see also",
     "# app/src/main/assets/dictionaries/NOTICE.txt (Tatoeba section).",
     "#",
-    "# Selection: Tatoeba lines NOT present in any training corpus of the shipped Russian",
-    "# bigram table: rus_conv_thinned60 (the id % 60 == 0 rows of the Tatoeba-ru and",
-    "# OpenSubtitles-ru conv stream) and the Leipzig rus_news_2019_1M, rus_news_2022_1M",
-    "# and rus_wikipedia_2021_1M sentence corpora. All four training corpora are verified",
-    "# against data/corpus-manifest.json (size and SHA-256) before reading, and the",
-    "# exclusion is by normalized content, not row id. Tokens are normalized to NFC",
-    "# lowercase Russian-alphabet words (scripts/dictionary_coverage.py normalize_word",
-    "# with the Russian language; the Tatar alphabet is a superset and would let Tatar",
-    "# letters through; hugging punctuation stripped per the dict_tokens rule),",
-    "# sentences kept at 3..12 surviving words, deduplicated.",
+    "# Selection: Tatoeba-origin rows from the deduplicated Tatoeba + OpenSubtitles stream",
+    "# whose id % 10 == 0, the slice held out of conversational-frequency and acceptance",
+    "# training. Normalized collisions with conversational frequency and development training",
+    "# rows (id % 10 != 0) are excluded as well as exact row reuse.",
+    "# Normalized sentences from every current Russian bigram input are excluded too:",
+    "# rus_conv_thinned60 and Leipzig rus_news_2019_1M, rus_news_2022_1M,",
+    "# rus_news_2023_1M, rus_news_2024_1M and rus_wikipedia_2021_1M. The input list comes",
+    "# from rebuild_assets.py and every file is checked against data/corpus-manifest.json.",
+    "# Tokens are NFC lowercase Russian-alphabet words with hugging punctuation stripped",
+    "# per the dict_tokens rule; sentences have 3..12 surviving words and are deduplicated.",
     "# Sample: deterministic, hash-ordered by SHA-256 of seed 20261003 + line, at most",
     "# 1000 lines, sorted by code point. Lines starting with '#' are comments.",
     "#",
@@ -94,25 +107,27 @@ class EvalSetError(ValueError):
 
 
 @dataclass(frozen=True)
+class ConvRecipe:
+    """A verified full conversational stream and its fixed split metadata."""
+
+    path: Path
+    rows: int
+    tatoeba_rows: int
+    output_sha256: str
+    output_bytes: int
+
+
+@dataclass(frozen=True)
 class EvalBuild:
-    """The built eval set plus everything a test needs to check its provenance."""
+    """The built eval set plus measured overlap with each excluded input."""
 
     lines: tuple[str, ...]
-    # Normalized training sentences per corpus file name: the thinned conv stream plus the
-    # three Leipzig ru sentence files.
-    training_normalized: dict[str, frozenset[str]]
+    remaining_overlap: dict[str, frozenset[str]]
     stats: dict[str, object] = field(default_factory=dict)
 
 
 def normalize_sentence(line: str) -> list[str]:
-    """Tokenize a raw corpus line into normalized words (dict_tokens semantics).
-
-    Surrounding punctuation is stripped from each whitespace token, then
-    ``normalize_word`` (NFC, lowercase, Russian alphabet filter) decides; tokens it
-    rejects are dropped. The Russian alphabet is passed explicitly: the Tatar default is
-    a superset and would let a stray Tatar letter through. Returns the surviving words,
-    possibly an empty list.
-    """
+    """Tokenize a raw corpus line into normalized words (dict_tokens semantics)."""
     words: list[str] = []
     for chunk in line.split():
         word = chunk.strip(EDGE_CHARS)
@@ -124,54 +139,266 @@ def normalize_sentence(line: str) -> list[str]:
     return words
 
 
-def read_tatoeba_lines(corpus_dir: Path) -> list[str]:
-    """The pinned Tatoeba ru dump as plain lines; the gz is verified before decompressing."""
-    path = corpus_dir / TATOEBA_FILE
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while block := stream.read(8 * 1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def verify_pin(path: Path, size: int, sha256: str, description: str) -> None:
     if not path.is_file():
-        raise EvalSetError(f"required corpus input is missing: {path}")
-    raw = path.read_bytes()
-    if len(raw) != TATOEBA_BYTES or hashlib.sha256(raw).hexdigest() != TATOEBA_SHA256:
-        raise EvalSetError(f"Tatoeba input does not match its pin: {path}")
-    return gzip.decompress(raw).decode("utf-8").split("\n")
+        raise EvalSetError(f"{description} is missing: {path}")
+    if path.stat().st_size != size or sha256_file(path) != sha256:
+        raise EvalSetError(f"{description} does not match its pin: {path}")
 
 
-def load_training_normalized(leipzig_dir: Path, manifest_path: Path) -> dict[str, frozenset[str]]:
-    """Normalized sentence forms of the four training corpora, pin-verified.
-
-    Each file is checked against ``data/corpus-manifest.json`` (size and SHA-256) before it
-    is read, like every corpus file the asset rebuild reads. All four are Leipzig
-    ``id<TAB>sentence`` rows; the conv stream uses the same layout.
-    """
+def load_manifest(manifest_path: Path) -> dict[str, tuple[int, str]]:
     if not manifest_path.is_file():
         raise EvalSetError(f"corpus manifest is missing: {manifest_path}")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return {
+            name: (int(pin["size"]), str(pin["sha256"]))
+            for name, pin in raw.items()
+        }
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise EvalSetError(f"corpus manifest does not parse: {error}") from error
-    sets: dict[str, frozenset[str]] = {}
-    for relative in (CONV_SENTENCES_FILE, *LEIPZIG_SENTENCE_FILES):
-        path = leipzig_dir / relative
-        name = path.name
-        pin = manifest.get(name)
-        if pin is None:
-            raise EvalSetError(f"corpus manifest has no pin for {name}")
-        if not path.is_file():
-            raise EvalSetError(f"training corpus input is missing: {path}")
-        raw = path.read_bytes()
-        if len(raw) != pin["size"] or hashlib.sha256(raw).hexdigest() != pin["sha256"]:
+
+
+def corpus_path(root: Path, name: str) -> Path:
+    """Accept both the rebuild's flat layout and Leipzig's release-directory layout."""
+    direct = root / name
+    nested = root / name.removesuffix("-sentences.txt") / name
+    if direct.is_file() or not nested.is_file():
+        return direct
+    return nested
+
+
+def verify_conv_frequency_sources(path: Path) -> None:
+    """Ensure the committed tuning table comes from the two pinned raw inputs."""
+    if not path.is_file():
+        raise EvalSetError(f"conversational-frequency input is missing: {path}")
+    expected = f"# Source: {TATOEBA_FILE} {OPENSUBTITLES_FILE}"
+    sources = [
+        line for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("# Source: ")
+    ]
+    if sources != [expected]:
+        raise EvalSetError(
+            f"conversational-frequency sources diverged: {sources!r}; expected {expected!r}"
+        )
+
+
+def run_conv_recipe(corpus_dir: Path, workdir: Path) -> ConvRecipe:
+    """Return the pinned full stream, reconstructing it with the repository converter."""
+    verify_conv_frequency_sources(CONV_FREQUENCY)
+    tatoeba = corpus_dir / TATOEBA_FILE
+    opensubtitles = corpus_dir / OPENSUBTITLES_FILE
+    converter = corpus_dir / CONVERTER
+    verify_pin(tatoeba, TATOEBA_BYTES, TATOEBA_SHA256, "Tatoeba input")
+    verify_pin(
+        opensubtitles,
+        OPENSUBTITLES_BYTES,
+        OPENSUBTITLES_SHA256,
+        "OpenSubtitles input",
+    )
+    if not converter.is_file():
+        raise EvalSetError(f"required corpus converter is missing: {converter}")
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    out_path = workdir / CONV_ALL_FILE
+    if not out_path.exists():
+        result = subprocess.run(
+            [sys.executable, str(converter), str(out_path), str(tatoeba), str(opensubtitles)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
             raise EvalSetError(
-                f"training corpus input does not match its manifest pin: {path}"
+                f"make_conv_train.py failed with exit {result.returncode}: {result.stderr}"
             )
-        normalized: set[str] = set()
-        for line in raw.decode("utf-8").split("\n"):
-            content = line.split("\t", 1)
-            if len(content) != 2:
-                continue
-            words = normalize_sentence(content[1])
-            if words:
-                normalized.add(" ".join(words))
-        sets[name] = frozenset(normalized)
-    return sets
+        try:
+            report = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise EvalSetError(f"make_conv_train.py report does not parse: {error}") from error
+        if (
+            report.get("output_lines") != CONV_ALL_LINES
+            or report.get("output_bytes") != CONV_ALL_BYTES
+            or report.get("output_sha256") != CONV_ALL_SHA256
+            or report.get("inputs", [{}])[0].get("unique_kept") != CONV_TATOEBA_ROWS
+        ):
+            raise EvalSetError(f"reconstructed conversational stream diverged: {result.stdout}")
+
+    verify_pin(out_path, CONV_ALL_BYTES, CONV_ALL_SHA256, "full conversational stream")
+    return ConvRecipe(
+        path=out_path,
+        rows=CONV_ALL_LINES,
+        tatoeba_rows=CONV_TATOEBA_ROWS,
+        output_sha256=CONV_ALL_SHA256,
+        output_bytes=CONV_ALL_BYTES,
+    )
+
+
+def sentence_rows(path: Path) -> Iterable[tuple[int, str]]:
+    with path.open("r", encoding="utf-8", newline="") as stream:
+        for line_number, raw in enumerate(stream, 1):
+            row_id, tab, content = raw.rstrip("\r\n").partition("\t")
+            if not tab:
+                raise EvalSetError(f"{path}:{line_number}: expected id<TAB>sentence")
+            try:
+                parsed_id = int(row_id)
+            except ValueError as error:
+                raise EvalSetError(
+                    f"{path}:{line_number}: sentence id is not an integer"
+                ) from error
+            yield parsed_id, content
+
+
+def verify_conv_thin_slice(recipe: ConvRecipe, size: int, sha256: str) -> int:
+    """Prove that the full stream reproduces the pinned bigram-training slice."""
+    digest = hashlib.sha256()
+    thin_size = 0
+    thin_rows = 0
+    with recipe.path.open("rb") as stream:
+        for raw in stream:
+            row_id, tab, _content = raw.partition(b"\t")
+            if not tab:
+                raise EvalSetError(f"{recipe.path}: expected id<TAB>sentence")
+            try:
+                parsed_id = int(row_id)
+            except ValueError as error:
+                raise EvalSetError(f"{recipe.path}: sentence id is not an integer") from error
+            if parsed_id % CONV_THIN_MODULUS == 0:
+                digest.update(raw)
+                thin_size += len(raw)
+                thin_rows += 1
+    if thin_size != size or digest.hexdigest() != sha256:
+        raise EvalSetError(
+            "full conversational stream does not reproduce the pinned thinned bigram input"
+        )
+    return thin_rows
+
+
+def candidate_pool(
+    recipe: ConvRecipe, min_words: int, max_words: int
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Build normalized Tatoeba candidates from the frequency-held-out residue."""
+    candidates: dict[str, int] = {}
+    stats = {
+        "tatoeba_heldout_rows": 0,
+        "dropped_no_surviving_tokens": 0,
+        "dropped_word_count_outside_bounds": 0,
+        "dropped_normalized_duplicate": 0,
+    }
+    for row_id, content in sentence_rows(recipe.path):
+        if row_id > recipe.tatoeba_rows:
+            break
+        if row_id % CONV_HELD_MODULUS != CONV_HELD_RESIDUE:
+            continue
+        stats["tatoeba_heldout_rows"] += 1
+        words = normalize_sentence(content)
+        if not words:
+            stats["dropped_no_surviving_tokens"] += 1
+            continue
+        if not min_words <= len(words) <= max_words:
+            stats["dropped_word_count_outside_bounds"] += 1
+            continue
+        normalized = " ".join(words)
+        if normalized in candidates:
+            stats["dropped_normalized_duplicate"] += 1
+            continue
+        candidates[normalized] = 0
+    return candidates, stats
+
+
+def mark_conversational_training(
+    candidates: dict[str, int], recipe: ConvRecipe, bit: int
+) -> None:
+    """Mark candidates occurring in frequency training or any conversational tuning slice."""
+    for row_id, content in sentence_rows(recipe.path):
+        if row_id % CONV_HELD_MODULUS == CONV_HELD_RESIDUE:
+            continue
+        words = normalize_sentence(content)
+        if words:
+            normalized = " ".join(words)
+            if normalized in candidates:
+                candidates[normalized] |= bit
+
+
+def mark_sentence_file(candidates: dict[str, int], path: Path, bit: int) -> None:
+    for _row_id, content in sentence_rows(path):
+        words = normalize_sentence(content)
+        if words:
+            normalized = " ".join(words)
+            if normalized in candidates:
+                candidates[normalized] |= bit
+
+
+def sample_lines(candidates: Iterable[str], limit: int) -> tuple[str, ...]:
+    eligible = list(candidates)
+    if len(eligible) > limit:
+        eligible = sorted(
+            eligible,
+            key=lambda line: hashlib.sha256(
+                f"{SAMPLE_SEED}\t{line}".encode("utf-8")
+            ).digest(),
+        )[:limit]
+    return tuple(sorted(eligible))
+
+
+def build_from_conv_stream(
+    recipe: ConvRecipe,
+    training_paths: Sequence[tuple[str, Path]],
+    limit: int = DEFAULT_LIMIT,
+    min_words: int = DEFAULT_MIN_WORDS,
+    max_words: int = DEFAULT_MAX_WORDS,
+) -> EvalBuild:
+    """Measure every exclusion source and sample only candidates with no observed overlap."""
+    if limit <= 0:
+        raise EvalSetError("limit must be positive")
+    if not 0 < min_words <= max_words:
+        raise EvalSetError("word bounds must satisfy 0 < min <= max")
+    labels = (CONV_FREQUENCY_LABEL, *(name for name, _path in training_paths))
+    if len(set(labels)) != len(labels) or len(labels) > 64:
+        raise EvalSetError("training input labels must be unique and fit in 64 bits")
+
+    candidates, stats = candidate_pool(recipe, min_words, max_words)
+    initial_candidates = len(candidates)
+    mark_conversational_training(candidates, recipe, 1)
+    for index, (_name, path) in enumerate(training_paths, 1):
+        mark_sentence_file(candidates, path, 1 << index)
+
+    eligible = [line for line, overlap in candidates.items() if overlap == 0]
+    if len(eligible) < limit:
+        raise EvalSetError(
+            f"independent candidate count {len(eligible)} is below required limit {limit}"
+        )
+    lines = sample_lines(eligible, limit)
+    remaining = {
+        label: frozenset(
+            line for line in lines if candidates[line] & (1 << index)
+        )
+        for index, label in enumerate(labels)
+    }
+    stats.update({
+        "training_inputs": list(labels),
+        "initial_candidates": initial_candidates,
+        "dropped_normalized_collision": {
+            label: sum(1 for overlap in candidates.values() if overlap & (1 << index))
+            for index, label in enumerate(labels)
+        },
+        "candidates": len(eligible),
+        "sample_seed": SAMPLE_SEED,
+        "limit": limit,
+        "min_words": min_words,
+        "max_words": max_words,
+        "selected": len(lines),
+        "remaining_overlap": {name: len(overlap) for name, overlap in remaining.items()},
+    })
+    return EvalBuild(lines=lines, remaining_overlap=remaining, stats=stats)
 
 
 def build_eval_set(
@@ -180,86 +407,42 @@ def build_eval_set(
     limit: int = DEFAULT_LIMIT,
     min_words: int = DEFAULT_MIN_WORDS,
     max_words: int = DEFAULT_MAX_WORDS,
+    workdir: Path = DEFAULT_WORKDIR,
 ) -> EvalBuild:
-    """Build the eval set deterministically; returns lines and provenance data.
+    """Rebuild and pin-check the full stream and every current bigram training input."""
+    recipe = run_conv_recipe(corpus_dir, workdir)
+    manifest = load_manifest(CORPUS_MANIFEST)
+    training_paths: list[tuple[str, Path]] = []
+    for name in BIGRAM_SENTENCE_FILES:
+        if name not in manifest:
+            raise EvalSetError(f"corpus manifest has no pin for {name}")
+        path = corpus_path(leipzig_dir, name)
+        size, sha256 = manifest[name]
+        verify_pin(path, size, sha256, "training corpus input")
+        training_paths.append((name, path))
 
-    Candidates are all Tatoeba ru lines. Each is tokenized by ``normalize_sentence``;
-    sentences outside [min_words, max_words] are dropped, normalized duplicates collapse
-    (first wins), and any sentence whose normalized form occurs in the normalized thinned
-    conv stream or in any of the normalized Leipzig training corpora is excluded. Candidates
-    are ordered by SHA-256 of ``"<seed>\\t<line>"`` (stable across Python versions, unlike
-    ``random.sample``), the first ``limit`` are kept and sorted by code point.
-    """
-    if limit <= 0:
-        raise EvalSetError("limit must be positive")
-    if not 0 < min_words <= max_words:
-        raise EvalSetError("word bounds must satisfy 0 < min <= max")
+    thin_size, thin_sha256 = manifest[CONV_SENTENCES_FILE]
+    thin_rows = verify_conv_thin_slice(recipe, thin_size, thin_sha256)
 
-    tatoeba_lines = read_tatoeba_lines(corpus_dir)
-    training = load_training_normalized(leipzig_dir, CORPUS_MANIFEST)
-    conv_normalized = training[CONV_SENTENCES_FILE]
-    leipzig_names = tuple(Path(relative).name for relative in LEIPZIG_SENTENCE_FILES)
-
-    seen: set[str] = set()
-    candidates: list[str] = []
-    dropped_length = 0
-    dropped_empty = 0
-    dropped_conv = 0
-    dropped_leipzig = 0
-    dropped_duplicate = 0
-    for content in tatoeba_lines:
-        if not content:
-            continue
-        words = normalize_sentence(content)
-        if not words:
-            dropped_empty += 1
-            continue
-        if not min_words <= len(words) <= max_words:
-            dropped_length += 1
-            continue
-        normalized = " ".join(words)
-        if normalized in conv_normalized:
-            dropped_conv += 1
-            continue
-        if any(normalized in training[name] for name in leipzig_names):
-            dropped_leipzig += 1
-            continue
-        if normalized in seen:
-            dropped_duplicate += 1
-            continue
-        seen.add(normalized)
-        candidates.append(normalized)
-
-    if len(candidates) > limit:
-        keyed = sorted(
-            candidates,
-            key=lambda line: hashlib.sha256(
-                f"{SAMPLE_SEED}\t{line}".encode("utf-8")
-            ).digest(),
-        )
-        selected = keyed[:limit]
-    else:
-        selected = candidates
-    lines = tuple(sorted(selected))
-
-    stats: dict[str, object] = {
-        "tatoeba_lines": len(tatoeba_lines),
-        "training_normalized_sentences": {
-            name: len(sentences) for name, sentences in sorted(training.items())
-        },
-        "dropped_no_surviving_tokens": dropped_empty,
-        "dropped_word_count_outside_bounds": dropped_length,
-        "dropped_normalized_conv_collision": dropped_conv,
-        "dropped_normalized_leipzig_collision": dropped_leipzig,
-        "dropped_normalized_duplicate": dropped_duplicate,
-        "candidates": len(candidates),
-        "sample_seed": SAMPLE_SEED,
-        "limit": limit,
-        "min_words": min_words,
-        "max_words": max_words,
-        "selected": len(lines),
-    }
-    return EvalBuild(lines=lines, training_normalized=training, stats=stats)
+    build = build_from_conv_stream(
+        recipe,
+        training_paths,
+        limit=limit,
+        min_words=min_words,
+        max_words=max_words,
+    )
+    build.stats.update({
+        "conv_output_sha256": recipe.output_sha256,
+        "conv_output_bytes": recipe.output_bytes,
+        "conv_rows": recipe.rows,
+        "conv_thin_rows_verified": thin_rows,
+        "conv_thin_sha256": thin_sha256,
+        "tatoeba_unique_rows": recipe.tatoeba_rows,
+        "conv_frequency_heldout_rule": (
+            f"id % {CONV_HELD_MODULUS} == {CONV_HELD_RESIDUE}"
+        ),
+    })
+    return build
 
 
 def render_bytes(build: EvalBuild) -> bytes:
@@ -292,6 +475,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--corpus-dir", type=Path, default=DEFAULT_CORPUS_DIR)
     parser.add_argument("--leipzig-dir", type=Path, default=DEFAULT_LEIPZIG_DIR)
+    parser.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--min-words", type=int, default=DEFAULT_MIN_WORDS)
@@ -303,8 +487,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
     try:
         build = build_eval_set(
-            args.corpus_dir,
+            corpus_dir=args.corpus_dir,
             leipzig_dir=args.leipzig_dir,
+            workdir=args.workdir,
             limit=args.limit,
             min_words=args.min_words,
             max_words=args.max_words,
