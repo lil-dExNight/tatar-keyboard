@@ -26,6 +26,8 @@ import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramTestFixtures
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramTestFixtures.Entry
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbValidator
@@ -77,6 +79,58 @@ class PersonalBigramStoreWriteTest {
             setOf("бәйрәм" to "котлы", "сәләм" to "дөнья"),
             pairsOnDisk(directory).toSet(),
         )
+    }
+
+    @Test
+    fun writerRoundTripUsesNormalizedSuccessorOrderAndPreservesRawForms() {
+        val directory = newPersonalDir()
+        val store = store(directory, RecordingOps(), RealOpener)
+        repeat(2) { store.notePair("мин", "Ёлка") }
+        repeat(2) { store.notePair("мин", "абый") }
+
+        val destination = destinationFile(directory)
+        val validated = TpersbValidator().validate(destination, subtype)
+        assertEquals(listOf("абый", "Ёлка"), validated.successorRawForms)
+        assertEquals(listOf("абый", "ёлка"), validated.successorNormalizedForms)
+        assertArrayEquals(
+            destination.readBytes(), PersonalBigramEntries.fromValidated(validated).serialize(subtype),
+        )
+    }
+
+    @Test
+    fun safPayloadsAreValidatedBeforeAnyStoreReplacement() {
+        val directory = newPersonalDir()
+        store(directory, RecordingOps(), RealOpener).also {
+            repeat(2) { _ -> it.notePair("сәләм", "дөнья") }
+        }
+        val destination = destinationFile(directory)
+        val priorBytes = destination.readBytes()
+        val events = mutableListOf<String>()
+        val restored = store(directory, RecordingOps(events), RealOpener)
+        restored.prime()
+        val priorSnapshot = restored.snapshot
+        val rawOrder = listOf(Entry("мин", "Ёлка"), Entry("мин", "абый"))
+        val normalizedDuplicate = PersonalBigramTestFixtures.build(
+            listOf(Entry("мин", "Ёлка"), Entry("мин", "ёлка")), sort = false,
+        )
+        val malformed = normalizedDuplicate.copyOf(normalizedDuplicate.size - 1)
+        val payloads = listOf(
+            malformed,
+            PersonalBigramTestFixtures.build(rawOrder, sort = false),
+            normalizedDuplicate,
+        )
+
+        for (payload in payloads) {
+            events.clear()
+            var outcome: Boolean? = null
+            restored.replaceAll(payload) { outcome = it }
+
+            assertEquals(false, outcome)
+            assertFalse("validation must precede the atomic replace", events.contains("replace"))
+            assertArrayEquals(priorBytes, destination.readBytes())
+            assertSame(priorSnapshot, restored.snapshot)
+            assertNoTemp(directory)
+        }
     }
 
     // ---- one fault per step; prior file stays intact, no temp remains ---------------------------
@@ -650,6 +704,39 @@ class PersonalBigramStoreWriteTest {
     }
 
     // ---- quarantine: salvage, restore, and the no-resurrection rule -----------------------------
+
+    @Test
+    fun salvageUsesTheSameNormalizedOrderingAndDuplicateRulesAsTheValidator() {
+        val entries = listOf(Entry("мин", "Ёлка"), Entry("мин", "абый"))
+        val writerOrderedCopy = temporaryFolder.newFile("writer-ordered.tpersb").also {
+            it.writeBytes(PersonalBigramTestFixtures.build(entries))
+        }
+        val complete = requireNotNull(PersonalBigramQuarantineSalvage.read(writerOrderedCopy, subtype))
+        assertTrue(complete.readToEnd)
+        assertEquals(listOf("абый", "Ёлка"), complete.successorRawForms)
+        assertEquals(listOf("абый", "ёлка"), complete.successorNormalizedForms)
+
+        val rawOrderedCopy = temporaryFolder.newFile("raw-ordered.tpersb").also {
+            it.writeBytes(PersonalBigramTestFixtures.build(entries, sort = false))
+        }
+        val misordered = requireNotNull(PersonalBigramQuarantineSalvage.read(rawOrderedCopy, subtype))
+        assertEquals(1, misordered.pairCount)
+        assertEquals(listOf("Ёлка"), misordered.successorRawForms)
+        assertEquals(listOf("ёлка"), misordered.successorNormalizedForms)
+        assertFalse(misordered.readToEnd)
+
+        val duplicateCopy = temporaryFolder.newFile("normalized-duplicate.tpersb").also {
+            it.writeBytes(
+                PersonalBigramTestFixtures.build(
+                    listOf(Entry("мин", "Ёлка"), Entry("мин", "ёлка")), sort = false,
+                ),
+            )
+        }
+        val duplicate = requireNotNull(PersonalBigramQuarantineSalvage.read(duplicateCopy, subtype))
+        assertEquals(listOf("Ёлка"), duplicate.successorRawForms)
+        assertEquals(listOf("ёлка"), duplicate.successorNormalizedForms)
+        assertFalse(duplicate.readToEnd)
+    }
 
     @Test
     fun salvageReadsWhatTheValidatorRefuses() {

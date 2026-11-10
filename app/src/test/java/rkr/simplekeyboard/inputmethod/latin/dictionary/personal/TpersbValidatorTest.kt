@@ -43,9 +43,14 @@ class TpersbValidatorTest {
     private fun fileOf(bytes: ByteArray): File =
         temporaryFolder.newFile("pairs-${System.nanoTime()}.tpersb").also { it.writeBytes(bytes) }
 
-    private fun assertRejected(bytes: ByteArray, requestedSubtype: String = subtype) {
+    private fun assertRejected(
+        bytes: ByteArray,
+        requestedSubtype: String = subtype,
+        inMemory: Boolean = false,
+    ) {
         try {
-            validate(bytes, requestedSubtype)
+            if (inMemory) TpersbValidator().validate(bytes, requestedSubtype)
+            else validate(bytes, requestedSubtype)
             fail("the image must be rejected")
         } catch (expected: PersonalDictionaryValidationException) {
             val message = expected.message.orEmpty()
@@ -138,12 +143,34 @@ class TpersbValidatorTest {
     }
 
     @Test
+    fun successorOrderingUsesNormalizedFormsInsteadOfRawCasing() {
+        val entries = listOf(Entry("мин", "Ёлка"), Entry("мин", "абый"))
+
+        // Raw UTF-8 orders «Ёлка» before «абый»; normalized ordering puts «абый» before «ёлка».
+        val validated = validate(PersonalBigramTestFixtures.build(entries))
+        assertEquals(listOf("абый", "Ёлка"), validated.successorRawForms)
+        assertEquals(listOf("абый", "ёлка"), validated.successorNormalizedForms)
+        assertRejected(PersonalBigramTestFixtures.build(entries, sort = false))
+    }
+
+    @Test
     fun aDuplicatePairIsRejected() {
         assertRejected(
             PersonalBigramTestFixtures.build(
                 listOf(Entry("сәләм", "дөнья"), Entry("сәләм", "дөнья")),
             ),
         )
+    }
+
+    @Test
+    fun normalizedDuplicatesAreRejectedFromExternalFilesAndBackupBytes() {
+        val bytes = PersonalBigramTestFixtures.build(
+            listOf(Entry("мин", "Ёлка"), Entry("мин", "ёлка")),
+            sort = false,
+        )
+
+        assertRejected(bytes)
+        assertRejected(bytes, inMemory = true)
     }
 
     @Test

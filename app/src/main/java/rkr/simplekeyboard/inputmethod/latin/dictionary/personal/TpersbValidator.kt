@@ -138,7 +138,7 @@ class TpersbValidator {
             .wrap(bytes, TpersbFormat.HEADER_SIZE, bytes.size - TpersbFormat.HEADER_SIZE)
             .order(ByteOrder.LITTLE_ENDIAN)
         var previousContextBytes: ByteArray? = null
-        var previousSuccessorBytes: ByteArray? = null
+        var previousSuccessorNormalizedBytes: ByteArray? = null
         for (index in 0 until pairCount) {
             if (cursor.remaining() < TpersbFormat.RECORD_HEADER_SIZE) fail("record header truncated")
             val contextByteLength = cursor.get().toInt() and 0xff
@@ -171,21 +171,23 @@ class TpersbValidator {
                 .lowercase(Locale.ROOT)
             checkNormalizedWord(successorNormalized, alphabet)
 
-            // The order key is the pair, compared member by member: context first, successor on a
-            // tie. A concatenation would make («аб», «вг») and («абв», «г») equal.
+            // The order key is the normalized pair, compared member by member: context first,
+            // successor on a tie. A concatenation would make («аб», «вг») and («абв», «г») equal.
+            val successorNormalizedBytes = successorNormalized.toByteArray(StandardCharsets.UTF_8)
             val previousContext = previousContextBytes
-            if (previousContext != null && previousSuccessorBytes != null) {
+            val previousSuccessorNormalized = previousSuccessorNormalizedBytes
+            if (previousContext != null && previousSuccessorNormalized != null) {
                 val contextOrder = compareUnsigned(previousContext, contextBytes)
                 val order = if (contextOrder != 0) {
                     contextOrder
                 } else {
-                    compareUnsigned(previousSuccessorBytes, successorBytes)
+                    compareUnsigned(previousSuccessorNormalized, successorNormalizedBytes)
                 }
                 if (order == 0) fail("duplicate pair")
                 if (order > 0) fail("pairs are not sorted")
             }
             previousContextBytes = contextBytes
-            previousSuccessorBytes = successorBytes
+            previousSuccessorNormalizedBytes = successorNormalizedBytes
 
             contexts.add(context)
             successorRawForms.add(successorRaw)

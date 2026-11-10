@@ -95,7 +95,7 @@ internal class PersonalBigramQuarantineSalvage internal constructor(
                 .wrap(bytes, TpersbFormat.HEADER_SIZE, bytes.size - TpersbFormat.HEADER_SIZE)
                 .order(ByteOrder.LITTLE_ENDIAN)
             var previousContextBytes: ByteArray? = null
-            var previousSuccessorBytes: ByteArray? = null
+            var previousSuccessorNormalizedBytes: ByteArray? = null
             var index = 0L
             while (index < declared) {
                 if (cursor.remaining() < TpersbFormat.RECORD_HEADER_SIZE) break
@@ -119,18 +119,20 @@ internal class PersonalBigramQuarantineSalvage internal constructor(
                 val successorRaw = decodeStrictUtf8(successorBytes) ?: break
                 val successorNormalized =
                     PersonalBigramWordFilter.acceptedNormalizedForm(successorRaw, alphabet) ?: break
+                val successorNormalizedBytes = successorNormalized.toByteArray(StandardCharsets.UTF_8)
                 val previousContext = previousContextBytes
-                if (previousContext != null && previousSuccessorBytes != null) {
+                val previousSuccessorNormalized = previousSuccessorNormalizedBytes
+                if (previousContext != null && previousSuccessorNormalized != null) {
                     val contextOrder = compareUnsigned(previousContext, contextBytes)
                     if (contextOrder > 0) break
                     if (contextOrder == 0 &&
-                        compareUnsigned(previousSuccessorBytes, successorBytes) >= 0
+                        compareUnsigned(previousSuccessorNormalized, successorNormalizedBytes) >= 0
                     ) {
                         break
                     }
                 }
                 previousContextBytes = contextBytes
-                previousSuccessorBytes = successorBytes
+                previousSuccessorNormalizedBytes = successorNormalizedBytes
 
                 contexts.add(context)
                 successorRawForms.add(successorRaw)
