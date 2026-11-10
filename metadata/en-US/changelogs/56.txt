@@ -1,0 +1,6 @@
+• Pasted text no longer teaches words or pairs; manual adds follow privacy rules
+• Autocorrect and suggestions no longer use stale results after input changes
+• Recent emoji are saved more reliably; panel and search state reset correctly
+• Backup restores apply languages and device restrictions without a restart
+• Fixed learned-pair recovery, inline autofill, and suggestion-strip updates
+• Fixed touch handling across canceled gestures and keyboard sessions

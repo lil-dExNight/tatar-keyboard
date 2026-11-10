@@ -12,6 +12,38 @@ These hold for every release:
   `apksigner verify --print-certs <apk>`.
 
 
+## [3.14.1] — 2026-11-10
+
+### Fixed
+
+- Clipboard paste no longer teaches words or word pairs, including a pair between the pasted
+  context and the next typed word. Manual word addition respects postal-address fields and Pause
+  learning, and explains why adding is blocked.
+- Autocorrect uses only the current lookup's completed result; a late result cannot survive a
+  newer request or the end of the input session.
+- Recent emoji writes now sync both the replacement file and its directory. A failed write keeps
+  the change pending for a later retry. Old editor sessions cannot publish stale recents, emoji
+  search resets when hidden, and tab icons stay centered when the tab row height changes.
+- Restoring a backup refreshes the enabled languages and current language in the running keyboard;
+  managed-device restrictions are reapplied first.
+- Learned-pair validation and quarantine recovery compare successors by normalized form, matching
+  their stored order when raw spellings sort differently.
+- Inline autofill cells keep response order, an entirely empty response restores the word strip,
+  and late callbacks cannot affect a newer session. Recent-clip expiry and late sentence-start
+  loading no longer clear newer suggestion-strip content.
+- Touch-noise filtering no longer carries a previous touch-up timestamp across a canceled gesture
+  or keyboard session.
+- Release checks validate backup exclusions within each section and fail when the crash buffer
+  cannot be read. Device-performance runs restore the original night mode and stay-on setting.
+
+### Changed
+
+- Russian evaluation data was regenerated with sentences from every current training and tuning
+  input excluded; dependent test and calibration expectations were refreshed.
+- Baseline and startup profiles were regenerated for the current classes.
+- Dependency-key checks accept a reviewed expired Google signing key only for pinned historical
+  artifacts whose signatures are proven to predate expiry.
+
 ## [3.14.0] — 2026-11-04
 
 ### Added
