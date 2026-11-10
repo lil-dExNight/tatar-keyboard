@@ -68,7 +68,7 @@ class SubtypeSwitchAnnouncementSourceContractTest {
     fun globeKeyPathNotifiesAsUserInitiated() {
         val cycle = richImm
             .substringAfter("private synchronized boolean switchToNextSubtype(")
-            .substringBefore("private synchronized Subtype getCurrentSubtype()")
+            .substringBefore("synchronized Subtype getCurrentSubtype()")
         assertTrue(cycle.contains("notifySubtypeChanged(true)"))
         // The wrap-around fallback after a failed switch to another IME is still the globe key.
         val outerSwitch = richImm
@@ -93,7 +93,7 @@ class SubtypeSwitchAnnouncementSourceContractTest {
     fun settingsSideSubtypeRemovalIsSilent() {
         val body = richImm
             .substringAfter("private synchronized boolean removeSubtype")
-            .substringBefore("private synchronized void resetSubtypeCycleOrder")
+            .substringBefore("synchronized void resetSubtypeCycleOrder")
         assertTrue(body.contains("notifySubtypeChanged(false)"))
     }
 

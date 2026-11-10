@@ -25,6 +25,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramTestFixtures
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramTestFixtures.Entry
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
@@ -282,6 +284,21 @@ class BackupTransferTest {
                 listOf(BackupManifest.Entry("settings/preferences.xml",
                     wrongType.size.toLong(), sha256(wrongType)))).serialize(),
             "settings/preferences.xml" to wrongType,
+        )
+        // Differently cased successors have the same normalized pair key and cannot be restored.
+        val duplicatePairs = PersonalBigramTestFixtures.build(
+            listOf(Entry("мин", "Ёлка"), Entry("мин", "ёлка")), sort = false,
+        )
+        val pairsPath = "personal/${TpersbFormat.personalBigramsFileName("tt_RU")}"
+        variants += zipOf(
+            "manifest.json" to BackupManifest(1, BackupFormat.ARCHIVE_PACKAGE, 45,
+                listOf(
+                    BackupManifest.Entry("settings/preferences.xml",
+                        settings.size.toLong(), sha256(settings)),
+                    BackupManifest.Entry(pairsPath, duplicatePairs.size.toLong(), sha256(duplicatePairs)),
+                )).serialize(),
+            "settings/preferences.xml" to settings,
+            pairsPath to duplicatePairs,
         )
 
         for (variant in variants) {

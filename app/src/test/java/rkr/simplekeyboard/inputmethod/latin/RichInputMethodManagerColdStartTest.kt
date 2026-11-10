@@ -24,8 +24,8 @@ import org.junit.Test
 
 /**
  * The locale broadcast can start a cold process, before LatinIME or a settings screen has
- * initialized [RichInputMethodManager]. The receiver must not reach `getInstance()`, which
- * throws before init; a cold process has no subtype list to reload.
+ * initialized [RichInputMethodManager]. The process-lifetime subtype host also uses application
+ * resources, so recreating a settings Activity cannot leave it holding the old Activity.
  */
 class RichInputMethodManagerColdStartTest {
 
@@ -39,6 +39,7 @@ class RichInputMethodManagerColdStartTest {
         }
 
         RichInputMethodManager.reloadSubtypesIfInitialized(null)
+        RichInputMethodManager.reloadSubtypesAndNotifyIfInitialized()
     }
 
     @Test
@@ -47,6 +48,19 @@ class RichInputMethodManagerColdStartTest {
         assertFalse("getInstance() throws in a cold process",
             receiver.contains("RichInputMethodManager.getInstance()"))
         assertTrue(receiver.contains("RichInputMethodManager.reloadSubtypesIfInitialized(context);"))
+    }
+
+    @Test
+    fun processLifetimeSubtypeHostUsesApplicationResourcesAfterRecreation() {
+        val manager = readMain("RichInputMethodManager.java")
+        val init = manager.substringAfter("private void initInternal(")
+            .substringBefore("public void reloadSubtypes(")
+        assertTrue(init.contains("new SubtypeList(context.getApplicationContext())"))
+
+        val host = manager.substringAfter("private SubtypeList(final Context context)")
+            .substringBefore("SubtypeList(final Host host)")
+        assertTrue("each reload must ask the application context for its current resources",
+            host.split("context.getResources()").size - 1 >= 2)
     }
 
     private fun readMain(name: String): String {

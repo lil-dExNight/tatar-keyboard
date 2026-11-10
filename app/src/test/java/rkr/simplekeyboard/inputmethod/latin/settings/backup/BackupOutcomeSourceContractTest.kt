@@ -83,6 +83,23 @@ class BackupOutcomeSourceContractTest {
     }
 
     @Test
+    fun preferenceReplacementReloadsLiveSubtypesAfterPolicyWithoutColdInitialization() {
+        val coordinator = source(
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
+        val replacement = coordinator.substringAfter("override fun replacePreferences(")
+            .substringBefore("override fun readImportJournal(")
+        assertTrue(replacement.contains("finishPreferenceReplacement("))
+        val policy = replacement.indexOf("applyRestrictions =")
+        val reload = replacement.indexOf("reloadSubtypes =")
+        assertTrue("policy must be applied before the subtype reload", policy >= 0 && reload > policy)
+        assertTrue(replacement.contains("runOnMainAndWait("))
+        assertTrue(replacement.contains("Looper.myLooper() == Looper.getMainLooper()"))
+        assertTrue(replacement.contains(
+            "RichInputMethodManager.reloadSubtypesAndNotifyIfInitialized()"))
+        assertFalse(replacement.contains("RichInputMethodManager.getInstance()"))
+    }
+
+    @Test
     fun clearingTheJournalAlsoDeletesTheTemporaryCopy() {
         // A write cut short leaves the temporary copy, which holds the same personal states.
         val coordinator = source(

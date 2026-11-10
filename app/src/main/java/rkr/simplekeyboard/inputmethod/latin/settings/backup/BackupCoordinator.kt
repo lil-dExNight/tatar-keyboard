@@ -25,6 +25,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.UserManager
 import android.provider.DocumentsContract
+import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.AndroidPersonalDictionaryStorage
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalBigramDictionaries
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaries
@@ -41,6 +42,49 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+
+/** Re-applies policy before refreshing live subtypes, and only after a successful replacement. */
+internal fun finishPreferenceReplacement(
+    committed: Boolean,
+    applyRestrictions: () -> Unit,
+    reloadSubtypes: () -> Unit,
+): Boolean {
+    if (!committed) return false
+    applyRestrictions()
+    reloadSubtypes()
+    return true
+}
+
+/** Runs [action] on the main thread and waits for its completion without self-deadlocking. */
+internal fun runOnMainAndWait(
+    isMainThread: Boolean,
+    poster: (Runnable) -> Unit,
+    action: () -> Unit,
+) {
+    if (isMainThread) {
+        action()
+        return
+    }
+    val done = CountDownLatch(1)
+    val failure = AtomicReference<Throwable?>(null)
+    poster {
+        try {
+            action()
+        } catch (throwable: Throwable) {
+            failure.set(throwable)
+        } finally {
+            done.countDown()
+        }
+    }
+    try {
+        done.await()
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    }
+    failure.get()?.let { throw it }
+}
 
 /**
  * The Android side of the backup: reads and writes the user-picked document (SAF needs no
@@ -234,7 +278,7 @@ internal class BackupCoordinator(
 
         /**
          * Goes through the SharedPreferences editor, so every listener (the IME's Settings among
-         * them) reloads; device policy is then re-read, so a managed restriction wins.
+         * them) reloads. Policy is then re-read before the live subtype list, so restrictions win.
          */
         override fun replacePreferences(values: Map<String, Any?>): Boolean {
             val editor = prefs.edit()
@@ -250,15 +294,26 @@ internal class BackupCoordinator(
                     else -> Unit // the archive parser produces only the types above
                 }
             }
-            if (!editor.commit()) return false
-            // The import cleared the cached policy with everything else; put it back, so a managed
-            // device keeps its managed values and locked rows without waiting for a restart.
-            val restrictions = appContext.getSystemService(Context.RESTRICTIONS_SERVICE)
-                as? RestrictionsManager
-            if (restrictions != null) {
-                Settings.loadRestrictions(restrictions, prefs)
-            }
-            return true
+            return finishPreferenceReplacement(
+                committed = editor.commit(),
+                applyRestrictions = {
+                    // The import cleared the cached policy with everything else; put it back, so
+                    // managed values and locked rows survive without waiting for a restart.
+                    val restrictions = appContext.getSystemService(Context.RESTRICTIONS_SERVICE)
+                        as? RestrictionsManager
+                    if (restrictions != null) {
+                        Settings.loadRestrictions(restrictions, prefs)
+                    }
+                },
+                reloadSubtypes = {
+                    runOnMainAndWait(
+                        isMainThread = Looper.myLooper() == Looper.getMainLooper(),
+                        poster = uiPoster,
+                    ) {
+                        RichInputMethodManager.reloadSubtypesAndNotifyIfInitialized()
+                    }
+                },
+            )
         }
 
         override fun readImportJournal(): ByteArray? {

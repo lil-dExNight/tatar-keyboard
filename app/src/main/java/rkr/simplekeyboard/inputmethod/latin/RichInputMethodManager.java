@@ -106,12 +106,12 @@ public class RichInputMethodManager {
 
         LocaleResourceUtils.init(context);
 
-        // Initialize the virtual subtypes
-        mSubtypeList = new SubtypeList(context);
+        // The process-lifetime host must not retain an Activity across recreation.
+        mSubtypeList = new SubtypeList(context.getApplicationContext());
     }
 
     public void reloadSubtypes(final Context context) {
-        mSubtypeList.reload(context);
+        mSubtypeList.reload();
     }
 
     /**
@@ -121,6 +121,13 @@ public class RichInputMethodManager {
     public static void reloadSubtypesIfInitialized(final Context context) {
         if (sInstance.isInitialized()) {
             sInstance.reloadSubtypes(context);
+        }
+    }
+
+    /** Reloads restored subtypes and silently refreshes the keyboard, without cold initialization. */
+    public static void reloadSubtypesAndNotifyIfInitialized() {
+        if (sInstance.isInitialized()) {
+            sInstance.mSubtypeList.reloadAndNotify();
         }
     }
 
@@ -151,7 +158,17 @@ public class RichInputMethodManager {
      * Manager for the list of enabled subtypes that also handles which one is currently in use.
      * Only one of these should be created to avoid conflicts.
      */
-    private static class SubtypeList {
+    static class SubtypeList {
+        /** Supplies live preferences and subtype objects built from the current resources. */
+        interface Host {
+            String readSubtypes();
+            void writeSubtypes(final String subtypes);
+            String readCurrentSubtype();
+            void writeCurrentSubtype(final String subtype);
+            List<Subtype> loadSubtypes(final String preference);
+            List<Subtype> defaultSubtypes();
+        }
+
         /** The list of enabled subtypes ordered by how they should be cycled through when moving to
          *  the next subtype. When a subtype is actually in use, it should be moved to the beginning
          *  of the list so that the next time the user uses the switch to next subtype button, all
@@ -163,7 +180,7 @@ public class RichInputMethodManager {
          *  to the beginning of the list, so this should normally be 0. */
         private int mCurrentSubtypeIndex;
 
-        private final SharedPreferences mPrefs;
+        private final Host mHost;
         private SubtypeChangedListener mSubtypeChangedListener;
 
         /**
@@ -171,24 +188,68 @@ public class RichInputMethodManager {
          * @param context the context for this application.
          */
         private SubtypeList(final Context context) {
-            mPrefs = PreferenceManagerCompat.getDeviceSharedPreferences(context);
-            reload(context);
+            this(new Host() {
+                private final SharedPreferences mPrefs =
+                        PreferenceManagerCompat.getDeviceSharedPreferences(context);
+
+                @Override
+                public String readSubtypes() {
+                    return Settings.readPrefSubtypes(mPrefs);
+                }
+
+                @Override
+                public void writeSubtypes(final String subtypes) {
+                    Settings.writePrefSubtypes(mPrefs, subtypes);
+                }
+
+                @Override
+                public String readCurrentSubtype() {
+                    return Settings.readPrefCurrentSubtype(mPrefs);
+                }
+
+                @Override
+                public void writeCurrentSubtype(final String subtype) {
+                    Settings.writePrefCurrentSubtype(mPrefs, subtype);
+                }
+
+                @Override
+                public List<Subtype> loadSubtypes(final String preference) {
+                    return SubtypePreferenceUtils.createSubtypesFromPref(
+                            preference, context.getResources());
+                }
+
+                @Override
+                public List<Subtype> defaultSubtypes() {
+                    return SubtypeLocaleUtils.getDefaultSubtypes(context.getResources());
+                }
+            });
         }
 
-        private void reload(final Context context) {
-            final String prefSubtypes = Settings.readPrefSubtypes(mPrefs);
-            final List<Subtype> subtypes = SubtypePreferenceUtils.createSubtypesFromPref(
-                    prefSubtypes, context.getResources());
+        SubtypeList(final Host host) {
+            mHost = host;
+            reload();
+        }
+
+        synchronized void reload() {
+            reloadInternal(false);
+        }
+
+        synchronized void reloadAndNotify() {
+            reloadInternal(true);
+        }
+
+        private void reloadInternal(final boolean notify) {
+            final String prefSubtypes = mHost.readSubtypes();
+            final List<Subtype> subtypes = mHost.loadSubtypes(prefSubtypes);
             if (subtypes == null || subtypes.size() < 1) {
-                mSubtypes = SubtypeLocaleUtils.getDefaultSubtypes(context.getResources());
+                mSubtypes = mHost.defaultSubtypes();
             } else {
                 mSubtypes = subtypes;
-                if (!TextUtils.isEmpty(prefSubtypes) && subtypes.size() < prefSubtypes.split(
+                if (!prefSubtypes.isEmpty() && subtypes.size() < prefSubtypes.split(
                         SubtypePreferenceUtils.PREF_SUBTYPE_SEPARATOR).length) {
                     // some entries in the preference couldn't be parsed (eg: unmigratable
                     // legacy entries), so add any missing default subtypes to be safe
-                    for (final Subtype subtype
-                            : SubtypeLocaleUtils.getDefaultSubtypes(context.getResources())) {
+                    for (final Subtype subtype : mHost.defaultSubtypes()) {
                         if (!mSubtypes.contains(subtype)) {
                             mSubtypes.add(subtype);
                         }
@@ -198,13 +259,13 @@ public class RichInputMethodManager {
                 final String updatedPrefSubtypes =
                         SubtypePreferenceUtils.createPrefSubtypes(mSubtypes);
                 if (!updatedPrefSubtypes.equals(prefSubtypes)) {
-                    Settings.writePrefSubtypes(mPrefs, updatedPrefSubtypes);
+                    mHost.writeSubtypes(updatedPrefSubtypes);
                 }
             }
             mCurrentSubtypeIndex = 0;
             // restore the last explicitly selected subtype
-            final String prefCurrentSubtype = Settings.readPrefCurrentSubtype(mPrefs);
-            if (!TextUtils.isEmpty(prefCurrentSubtype)) {
+            final String prefCurrentSubtype = mHost.readCurrentSubtype();
+            if (!prefCurrentSubtype.isEmpty()) {
                 for (int i = 0; i < mSubtypes.size(); i++) {
                     if (prefCurrentSubtype.equals(
                             SubtypePreferenceUtils.getPrefString(mSubtypes.get(i)))) {
@@ -213,13 +274,17 @@ public class RichInputMethodManager {
                     }
                 }
             }
+            if (notify) {
+                // Preference restoration is programmatic, never a user language switch.
+                notifySubtypeChanged(false);
+            }
         }
 
         /**
          * Add a listener to be called when the virtual subtype changes.
          * @param listener the listener to call when the subtype changes.
          */
-        private void setSubtypeChangeHandler(final SubtypeChangedListener listener) {
+        synchronized void setSubtypeChangeHandler(final SubtypeChangedListener listener) {
             mSubtypeChangedListener = listener;
         }
 
@@ -253,7 +318,7 @@ public class RichInputMethodManager {
          *                      name as opposed to having no particular order.
          * @return the enabled subtypes.
          */
-        private synchronized Set<Subtype> getAll(final boolean sortForDisplay) {
+        synchronized Set<Subtype> getAll(final boolean sortForDisplay) {
             final Set<Subtype> subtypes;
             if (sortForDisplay) {
                 subtypes = new TreeSet<>(new Comparator<Subtype>() {
@@ -292,7 +357,7 @@ public class RichInputMethodManager {
          */
         private void saveSubtypeListPref() {
             final String prefSubtypes = SubtypePreferenceUtils.createPrefSubtypes(mSubtypes);
-            Settings.writePrefSubtypes(mPrefs, prefSubtypes);
+            mHost.writeSubtypes(prefSubtypes);
         }
 
         /**
@@ -300,7 +365,7 @@ public class RichInputMethodManager {
          * the process getting killed.
          */
         private void saveCurrentSubtypePref() {
-            Settings.writePrefCurrentSubtype(mPrefs,
+            mHost.writeCurrentSubtype(
                     SubtypePreferenceUtils.getPrefString(getCurrentSubtype()));
         }
 
@@ -369,7 +434,7 @@ public class RichInputMethodManager {
          * called whenever the user is done cycling through subtypes (eg: when a subtype is actually
          * used or the keyboard is closed).
          */
-        private synchronized void resetSubtypeCycleOrder() {
+        synchronized void resetSubtypeCycleOrder() {
             if (mCurrentSubtypeIndex == 0) {
                 return;
             }
@@ -486,7 +551,7 @@ public class RichInputMethodManager {
          * Get the subtype that is currently in use (or will be once the keyboard is opened).
          * @return the current subtype.
          */
-        private synchronized Subtype getCurrentSubtype() {
+        synchronized Subtype getCurrentSubtype() {
             return mSubtypes.get(mCurrentSubtypeIndex);
         }
     }
