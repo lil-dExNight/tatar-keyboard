@@ -141,6 +141,7 @@
     <string name="personal_dictionary_add_title">Добавить «%1$s» в личный словарь?</string>
     <string name="personal_dictionary_add_rejected">Не удалось сохранить. Нужно от 3 до 24 татарских букв.</string>
     <string name="personal_dictionary_add_rejected_ru">Не удалось сохранить. Нужно от 3 до 24 русских букв.</string>
+    <string name="personal_dictionary_add_postal_address">Нельзя добавлять слова из поля почтового адреса.</string>
     <string name="personal_dictionary_delete">Удалить</string>
     <string name="personal_dictionary_forget_title">Забыть «%1$s»?</string>
     <plurals name="personal_dictionary_words_count">

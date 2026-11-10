@@ -244,6 +244,8 @@
     <string name="personal_dictionary_add_rejected">Cannot save. Use 3 to 24 Tatar letters only.</string>
     <!-- Shown when the typed word cannot go into the Russian personal dictionary -->
     <string name="personal_dictionary_add_rejected_ru">Cannot save. Use 3 to 24 Russian letters only.</string>
+    <!-- Shown instead of the add-word confirmation in a postal-address field -->
+    <string name="personal_dictionary_add_postal_address">Words cannot be added from a postal-address field.</string>
     <!-- Action that removes one saved word -->
     <string name="personal_dictionary_delete">Delete</string>
     <!-- Title of the dialog confirming removal of one word. %1$s is the word itself. -->
