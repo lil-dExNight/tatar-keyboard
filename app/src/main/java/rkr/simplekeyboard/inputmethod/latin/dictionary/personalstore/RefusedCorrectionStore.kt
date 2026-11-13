@@ -127,25 +127,31 @@ internal class RefusedCorrectionStore(
         report(outcome, replaced)
     }
 
-    /** The body of [replaceAll], on the worker: returns whether the disk now matches the request. */
+    /** The body of [replaceAll]: true only when the replacement and its re-read both succeed. */
     private fun replaceOnWorker(bytes: ByteArray?): Boolean {
         if (!PersonalSubtypes.isSupported(subtypeId)) return false
         if (!unlockGate()) return false
         val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false
-        if (bytes != null) {
-            validator.validate(bytes, subtypeId)
-            ensureDirectory(directory)
-            writeBytesDurably(directory, File(directory, TrefFormat.refusedCorrectionsFileName(subtypeId)), bytes)
-        } else {
-            deleteFile()
+        if (bytes != null) validator.validate(bytes, subtypeId)
+        val replaced = try {
+            if (bytes != null) {
+                ensureDirectory(directory)
+                writeBytesDurably(
+                    directory, File(directory, TrefFormat.refusedCorrectionsFileName(subtypeId)), bytes)
+            } else {
+                deleteFile()
+            }
+            true
+        } catch (_: Exception) {
+            false
         }
         // Re-read the disk state: the published snapshot now matches the imported file (or none).
         pairs = RefusedCorrections.EMPTY
         snapshot = RefusedCorrections.EMPTY
         loaded = false
         loadFailed = false
-        open()
-        return true
+        val opened = open()
+        return replaced && opened
     }
 
     /**
@@ -236,7 +242,7 @@ internal class RefusedCorrectionStore(
             }
         }
         if (validated == null) {
-            quarantine(directory, file)
+            if (!quarantine(directory, file)) throw IOException("cannot quarantine refusal file")
             pairs = RefusedCorrections.EMPTY
             snapshot = RefusedCorrections.EMPTY
             return
@@ -246,9 +252,10 @@ internal class RefusedCorrectionStore(
     }
 
     /**
-     * The whole-file write sequence. Returns true only when every step succeeded. On any caught
-     * failure the temp is removed and false is returned, leaving the previous file untouched. An
-     * uncaught [Error] (a simulated process death) leaves the temp for the next open to discard.
+     * The whole-file write sequence. Returns true only when every step succeeded. On a caught
+     * failure the temp is removed. A directory fsync failure after the replace returns false but
+     * adopts the installed candidate, as in `PersonalDictionaryStore.writeWhole`. An uncaught
+     * [Error] (a simulated process death) leaves the temp for the next open to discard.
      */
     private fun writeWhole(candidate: RefusedCorrections): Boolean {
         val directory = directoryProvider.personalDirectory()
@@ -259,6 +266,7 @@ internal class RefusedCorrectionStore(
             val required = bytes.size.toLong() + FREE_SPACE_RESERVE_BYTES
             if (spaceProbe.usableBytes(directory) < required) return false
             val temporary = createExclusiveTemp(directory)
+            var replaced = false
             try {
                 outputOpener.open(temporary).use { output ->
                     output.write(bytes)
@@ -268,10 +276,15 @@ internal class RefusedCorrectionStore(
                 validator.validate(temporary, subtypeId)
                 val destination = File(directory, TrefFormat.refusedCorrectionsFileName(subtypeId))
                 fileOps.atomicReplace(temporary, destination)
+                replaced = true
                 fileOps.syncDirectory(directory)
                 writeCount++
                 true
             } catch (_: Exception) {
+                if (replaced) {
+                    pairs = candidate
+                    snapshot = candidate
+                }
                 if (temporary.exists()) runCatching { fileOps.delete(temporary) }
                 false
             }
@@ -306,12 +319,20 @@ internal class RefusedCorrectionStore(
      * destroyed. The slot is one file, replaced by the next failure; a failed move leaves the
      * original file untouched. No notice is raised because no screen lists the refused pairs.
      */
-    private fun quarantine(directory: File, file: File) {
-        try {
+    private fun quarantine(directory: File, file: File): Boolean {
+        val moved = try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
-            fileOps.syncDirectory(directory)
+            true
         } catch (_: Exception) {
+            false
         }
+        if (moved) {
+            try {
+                fileOps.syncDirectory(directory)
+            } catch (_: Exception) {
+            }
+        }
+        return moved
     }
 
     private fun quarantineFileName(): String =

@@ -138,6 +138,45 @@ class TextShortcutStoreTest {
         assertEquals(2, reopenedStore(directory).snapshot.size)
     }
 
+    @Test
+    fun postReplaceDirectorySyncFailureKeepsTheInstalledRemovalAndReportsFailure() {
+        val directory = newPersonalDir()
+        val seeded = store(directory)
+        seeded.put("тк", "Татарстан")
+        seeded.put("бик", "бик үк")
+        val ops = object : RecordingOps() {
+            private var replaced = false
+
+            override fun atomicReplace(source: File, destination: File) {
+                super.atomicReplace(source, destination)
+                replaced = true
+            }
+
+            override fun syncDirectory(directory: File) {
+                if (replaced) {
+                    replaced = false
+                    throw IOException("dir fsync failed")
+                }
+            }
+        }
+        val failing = store(directory, ops = ops)
+        failing.prime()
+        val outcomes = mutableListOf<Boolean>()
+
+        failing.remove("тк") { outcomes.add(it) }
+
+        assertEquals(listOf(false), outcomes)
+        assertNull("the installed removal must not be rolled back in memory",
+            failing.snapshot.expansionFor("тк"))
+        assertEquals("бик үк", failing.snapshot.expansionFor("бик"))
+
+        failing.put("өч", "өч")
+        val reopened = reopenedStore(directory).snapshot
+        assertNull("a later write must not resurrect the removed pair", reopened.expansionFor("тк"))
+        assertEquals("бик үк", reopened.expansionFor("бик"))
+        assertEquals("өч", reopened.expansionFor("өч"))
+    }
+
     // ---- the durable write sequence --------------------------------------------------------------
 
     @Test

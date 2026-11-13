@@ -69,6 +69,10 @@ internal class PersonalDictionaryStore(
     // The durable half of the same mark is the file [quarantineNoticeFileName] names.
     private var justQuarantined = false
 
+    // Set once [writeWhole] has replaced the main file or [deleteFile] has removed it. If the
+    // following directory fsync fails, the mutation is still installed and memory must adopt it.
+    private var lastWriteInstalled = false
+
     // Progress towards learning, as salted truncated hashes. Held in memory and written on the
     // same boundary as the usage counters, never once per completed word.
     private var pending: PendingCounters = PendingCounters.EMPTY
@@ -128,10 +132,15 @@ internal class PersonalDictionaryStore(
             // While a failed whole-file write is suppressed, no candidate is built and no write
             // is attempted: the counter keeps accumulating in memory until the next flush.
             val candidate = if (wholeWriteSuppressed) null else entries.upsert(word, normalized)
-            if (candidate != null && writeWhole(candidate)) {
-                entries = candidate
-                publish(candidate.toSnapshot(subtypeId), structural = true)
-                pending = noted.without(key)
+            if (candidate != null) {
+                val written = writeWhole(candidate)
+                if (written) {
+                    entries = candidate
+                    publish(candidate.toSnapshot(subtypeId), structural = true)
+                }
+                // A post-replace fsync failure still installed the graduated word. Its pending key
+                // must leave with it; only a write that never landed keeps the learning counter.
+                pending = if (written || lastWriteInstalled) noted.without(key) else noted
             } else {
                 pending = noted
             }
@@ -144,9 +153,10 @@ internal class PersonalDictionaryStore(
     /**
      * Removes one word and rewrites the file, or deletes it when the word was the last one.
      *
-     * [outcome] is told whether the word is really gone. The removal is published to readers before
-     * the write, so a keystroke during the write cannot show the word again; if the write fails, the
-     * previous snapshot is restored, because the word is still saved.
+     * [outcome] is told whether the removal became durable. The removal is published to readers
+     * before the write, so a keystroke during the write cannot show the word again. A write that
+     * never lands restores the previous snapshot; a directory fsync failure after the atomic
+     * replace or delete reports false but keeps the installed removal in memory and on disk.
      *
      * The word is also purged from the quarantined file when that copy can be rewritten safely. A
      * rewrite failure leaves the copy intact so its other recoverable words are not lost.
@@ -188,8 +198,9 @@ internal class PersonalDictionaryStore(
             if (candidate.isEmpty) PersonalDictionary.EMPTY else candidate.toSnapshot(subtypeId),
             structural = true,
         )
-        // A throw here becomes `false` inside the mutation, so the snapshot restore below still
-        // runs: the word is still on disk.
+        lastWriteInstalled = false
+        // A throw before the replace or delete restores the old snapshot below. A post-mutation
+        // fsync throw instead adopts the installed candidate while still reporting failure.
         val removed = try {
             if (candidate.isEmpty) {
                 // Deletion fails only by throwing; the catch below handles it.
@@ -204,7 +215,13 @@ internal class PersonalDictionaryStore(
         if (removed) {
             entries = candidate
         } else {
-            publish(previousSnapshot, structural = true)
+            // A directory fsync failure after the replace or delete installed [candidate]. Adopt it
+            // here as well as in [writeWhole], since deletion has no later commit block of its own.
+            if (lastWriteInstalled) {
+                entries = candidate
+            } else {
+                publish(previousSnapshot, structural = true)
+            }
             return false
         }
         purgeFromQuarantine(normalized)
@@ -309,7 +326,7 @@ internal class PersonalDictionaryStore(
         report(outcome, replaced)
     }
 
-    /** The body of [replaceAll], on the worker: returns whether the disk now matches the request. */
+    /** The body of [replaceAll], on the worker: true only when the reopened disk state matches. */
     private fun replaceOnWorker(bytes: ByteArray?): Boolean {
         if (alphabet == null) return false
         if (!unlockGate()) return false
@@ -318,12 +335,19 @@ internal class PersonalDictionaryStore(
             pending = pending.prunedForFlush()
             if (writePending(pending)) pendingDirty = false
         }
-        if (bytes != null) {
-            validator.validate(bytes, subtypeId)
-            ensureDirectory(directory)
-            writeBytesDurably(directory, File(directory, TpersFormat.personalFileName(subtypeId)), bytes)
-        } else {
-            deleteFile()
+        if (bytes != null) validator.validate(bytes, subtypeId)
+        val replaced = try {
+            if (bytes != null) {
+                ensureDirectory(directory)
+                writeBytesDurably(directory, File(directory, TpersFormat.personalFileName(subtypeId)), bytes)
+            } else {
+                deleteFile()
+            }
+            true
+        } catch (_: Exception) {
+            // A failed step may still have installed the bytes (a directory fsync failure past the
+            // atomic replace), so memory drops the old set either way and the re-read decides.
+            false
         }
         // Re-read the disk state: the published snapshot now matches the imported file (or none).
         entries = PersonalEntries.empty(maxEntries)
@@ -331,8 +355,8 @@ internal class PersonalDictionaryStore(
         publishLoaded(PersonalDictionary.EMPTY)
         loaded = false
         loadFailed = false
-        open()
-        return true
+        val opened = open()
+        return replaced && opened
     }
 
     /**
@@ -531,8 +555,10 @@ internal class PersonalDictionaryStore(
     private fun open(): Boolean {
         if (loaded) return true
         if (loadFailed || !unlockGate()) return false
+        var loadSucceeded = false
         try {
             load()
+            loadSucceeded = true
         } catch (_: Exception) {
             entries = PersonalEntries.empty(maxEntries)
             pending = PendingCounters.EMPTY
@@ -540,12 +566,11 @@ internal class PersonalDictionaryStore(
             pendingCounterFlush = false
             publishLoaded(PersonalDictionary.EMPTY)
             loadFailed = true
-            return false
         }
-        loaded = true
-        // The only place the notice is raised. Every open passes here, both after a quarantine now
-        // and when a previous process left the mark, so an unannounced loss is announced at the next
-        // open. `justQuarantined` covers the case where the mark could not be written.
+        // The only place the notice is raised; a failed quarantine move owes it just as much as a
+        // moved one, because the damaged file is still in place and the list is empty either way.
+        // Every open passes here, both after a quarantine now and when a previous process left the
+        // mark. `justQuarantined` covers the case where the mark could not be written.
         if (justQuarantined || quarantineNoticeIsMarked()) {
             // The seam posts to an Activity on the UI thread; a throw must not kill the worker.
             try {
@@ -553,6 +578,8 @@ internal class PersonalDictionaryStore(
             } catch (_: Exception) {
             }
         }
+        if (!loadSucceeded) return false
+        loaded = true
         return true
     }
 
@@ -580,7 +607,9 @@ internal class PersonalDictionaryStore(
             }
         }
         if (validated == null) {
-            quarantine(directory, file)
+            // A move that could not be made leaves the damaged file in place; throwing keeps the
+            // store not loaded and its writes blocked until the next prime retries the move.
+            if (!quarantine(directory, file)) throw IOException("cannot quarantine personal file")
             entries = PersonalEntries.empty(maxEntries)
             publishLoaded(PersonalDictionary.EMPTY)
             return
@@ -592,9 +621,10 @@ internal class PersonalDictionaryStore(
     /**
      * The whole-file write sequence: exclusive temp in the same directory → write → flush → fsync
      * file → re-validate the written bytes → atomic replace → fsync directory. Returns true only
-     * when every step succeeded. On any caught failure the temp is removed and false is returned,
-     * leaving the previous file untouched. An uncaught [Error] (a simulated process death) leaves
-     * the temp for the next open to discard.
+     * when every step succeeded. The temp is removed on a caught failure. Before the replace the
+     * previous file is untouched; after it, a directory fsync failure returns false but adopts the
+     * installed candidate in memory so later writes cannot roll it back. An uncaught [Error] (a
+     * simulated process death) leaves the temp for the next open to discard.
      *
      * Every result also drives [wholeWriteSuppressed]: a failure suppresses the learning path's
      * retries until the next flush boundary, a success lifts the suppression at once, so a full
@@ -603,6 +633,7 @@ internal class PersonalDictionaryStore(
      * write, so their answer stays honest.
      */
     private fun writeWhole(candidate: PersonalEntries): Boolean {
+        lastWriteInstalled = false
         val directory = directoryProvider.personalDirectory()
         val written = try {
             ensureDirectory(directory)
@@ -613,6 +644,7 @@ internal class PersonalDictionaryStore(
                 false
             } else {
                 val temporary = createExclusiveTemp(directory)
+                var replaced = false
                 try {
                     outputOpener.open(temporary).use { output ->
                         output.write(bytes)
@@ -622,10 +654,18 @@ internal class PersonalDictionaryStore(
                     validator.validate(temporary, subtypeId)
                     val destination = File(directory, TpersFormat.personalFileName(subtypeId))
                     fileOps.atomicReplace(temporary, destination)
+                    replaced = true
+                    lastWriteInstalled = true
                     fileOps.syncDirectory(directory)
                     writeCount++
                     true
                 } catch (_: Exception) {
+                    // Once the rename landed, [candidate] is the only state a later write may use.
+                    // Returning false still tells explicit mutations that durability is unknown.
+                    if (replaced) {
+                        entries = candidate
+                        publishLoaded(candidate.toSnapshot(subtypeId))
+                    }
                     if (temporary.exists()) runCatching { fileOps.delete(temporary) }
                     false
                 }
@@ -728,14 +768,25 @@ internal class PersonalDictionaryStore(
      * leaves most words readable, so they are kept for a restore.
      *
      * One slot per language, replaced by the next failure. Its name is neither a `.tpers` nor a temp
-     * name, so nothing validates it and [cleanupTemps] leaves it alone; [clearAll] removes it. A
-     * failed move leaves the original file untouched for a later recovery attempt.
+     * name, so nothing validates it and [cleanupTemps] leaves it alone; [clearAll] removes it.
+     * Returns false when the move itself failed, leaving the original file untouched for a later
+     * recovery attempt. A directory fsync failure after the move still returns true: the original
+     * bytes are already safe in the quarantine slot.
      */
-    private fun quarantine(directory: File, file: File) {
-        try {
+    private fun quarantine(directory: File, file: File): Boolean {
+        val moved = try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
-            fileOps.syncDirectory(directory)
+            true
         } catch (_: Exception) {
+            false
+        }
+        // Once the rename has landed the original bytes are in quarantine; a directory fsync
+        // failure is a durability failure, not a reason to retry a move whose source is gone.
+        if (moved) {
+            try {
+                fileOps.syncDirectory(directory)
+            } catch (_: Exception) {
+            }
         }
         // Marked in both cases: the list is empty and the user did not empty it. The mark is kept
         // on disk, since the process may end before any screen shows the notice. It is one byte
@@ -744,6 +795,7 @@ internal class PersonalDictionaryStore(
         runCatching {
             writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))
         }
+        return moved
     }
 
     private fun quarantineFileName(): String =
@@ -791,12 +843,15 @@ internal class PersonalDictionaryStore(
     private fun deleteFile() {
         val directory = directoryProvider.personalDirectory()
         val file = File(directory, TpersFormat.personalFileName(subtypeId))
-        deleteFile(directory, file)
+        deleteFile(directory, file, trackInstalled = true)
     }
 
-    private fun deleteFile(directory: File, file: File) {
+    private fun deleteFile(directory: File, file: File, trackInstalled: Boolean = false) {
         if (!file.exists()) return
         if (!fileOps.delete(file) && file.exists()) throw IOException("cannot remove personal file")
+        // Record the landed mutation before fsync: a sync exception means durability is unknown,
+        // not that the old file still exists for this process's next write.
+        if (trackInstalled) lastWriteInstalled = true
         fileOps.syncDirectory(directory)
     }
 

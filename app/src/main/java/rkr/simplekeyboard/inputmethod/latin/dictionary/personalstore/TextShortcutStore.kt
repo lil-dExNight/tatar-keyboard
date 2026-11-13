@@ -52,6 +52,9 @@ internal class TextShortcutStore(
     // See PersonalDictionaryStore.loadFailed.
     private var loadFailed = false
 
+    // See PersonalDictionaryStore.lastWriteInstalled.
+    private var lastWriteInstalled = false
+
     /** Count of physical `.tcut` writes performed; a test counter. */
     @Volatile
     var writeCount: Int = 0
@@ -86,9 +89,10 @@ internal class TextShortcutStore(
     /**
      * Removes one pair and rewrites the file, or deletes it when the pair was the last one.
      *
-     * [outcome] is told whether the shortcut is really gone. The removal is published to readers
-     * before the write, so a keystroke during the write cannot offer the expansion again; if the
-     * write fails, the previous snapshot is restored, because the pair is still saved.
+     * [outcome] is told whether the removal became durable. The removal is published to readers
+     * before the write, so a keystroke during the write cannot offer the expansion again. A write
+     * that never lands restores the previous snapshot; a post-replace or post-delete directory
+     * fsync failure reports false but keeps the installed removal.
      */
     fun remove(shortcut: String, outcome: PersonalMutationOutcome? = null) = onWorker {
         // The body runs inside a try: the worker has no UncaughtExceptionHandler, so a throw here
@@ -109,8 +113,9 @@ internal class TextShortcutStore(
         if (candidate === pairs) return true // the shortcut was not saved, so it is gone as asked
         val previousSnapshot = snapshot
         snapshot = candidate
-        // A throw here becomes `false` inside the mutation, so the snapshot restore below still
-        // runs: the pair is still on disk.
+        lastWriteInstalled = false
+        // A throw before the replace or delete restores the old snapshot below. A post-mutation
+        // fsync throw instead adopts the installed candidate while still reporting failure.
         val removed = try {
             if (candidate.isEmpty) {
                 // Deletion fails only by throwing; the catch below handles it.
@@ -125,7 +130,11 @@ internal class TextShortcutStore(
         if (removed) {
             pairs = candidate
         } else {
-            snapshot = previousSnapshot
+            if (lastWriteInstalled) {
+                pairs = candidate
+            } else {
+                snapshot = previousSnapshot
+            }
             return false
         }
         return true
@@ -187,22 +196,30 @@ internal class TextShortcutStore(
         report(outcome, replaced)
     }
 
-    /** The body of [replaceAll], on the worker: returns whether the disk now matches the request. */
+    /** The body of [replaceAll]: true only when the replacement and its re-read both succeed. */
     private fun replaceOnWorker(bytes: ByteArray?): Boolean {
         if (!unlockGate()) return false
-        if (bytes != null) {
-            validator.validate(bytes)
-            val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
-                ?: return false
-            if (!writeBytesDurably(directory, bytes)) return false
-        } else {
-            deleteFile()
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false
+        if (bytes != null) validator.validate(bytes)
+        val replaced = try {
+            if (bytes != null) {
+                if (!writeBytesDurably(directory, bytes)) {
+                    throw IOException("cannot replace shortcut file")
+                }
+            } else {
+                deleteFile()
+            }
+            true
+        } catch (_: Exception) {
+            false
         }
         // Re-read the disk state: the published snapshot now matches the imported file (or none).
+        pairs = TextShortcuts.EMPTY
+        snapshot = TextShortcuts.EMPTY
         loaded = false
         loadFailed = false
-        open()
-        return true
+        val opened = open()
+        return replaced && opened
     }
 
     /**
@@ -301,7 +318,7 @@ internal class TextShortcutStore(
             }
         }
         if (validated == null) {
-            quarantine(directory, file)
+            if (!quarantine(directory, file)) throw IOException("cannot quarantine shortcut file")
             pairs = TextShortcuts.EMPTY
             snapshot = TextShortcuts.EMPTY
             return
@@ -311,11 +328,13 @@ internal class TextShortcutStore(
     }
 
     /**
-     * The whole-file write sequence. Returns true only when every step succeeded. On any caught
-     * failure the temp is removed and false is returned, leaving the previous file untouched. An
-     * uncaught [Error] (a simulated process death) leaves the temp for the next open to discard.
+     * The whole-file write sequence. Returns true only when every step succeeded. On a caught
+     * failure the temp is removed. A directory fsync failure after the replace returns false but
+     * adopts the installed candidate, as in `PersonalDictionaryStore.writeWhole`. An uncaught
+     * [Error] (a simulated process death) leaves the temp for the next open to discard.
      */
     private fun writeWhole(candidate: TextShortcuts): Boolean {
+        lastWriteInstalled = false
         val directory = directoryProvider.personalDirectory()
         return try {
             ensureDirectory(directory)
@@ -324,6 +343,7 @@ internal class TextShortcutStore(
             val required = bytes.size.toLong() + FREE_SPACE_RESERVE_BYTES
             if (spaceProbe.usableBytes(directory) < required) return false
             val temporary = createExclusiveTemp(directory)
+            var replaced = false
             try {
                 outputOpener.open(temporary).use { output ->
                     output.write(bytes)
@@ -333,10 +353,16 @@ internal class TextShortcutStore(
                 validator.validate(temporary)
                 val destination = File(directory, TcutFormat.shortcutsFileName())
                 fileOps.atomicReplace(temporary, destination)
+                replaced = true
+                lastWriteInstalled = true
                 fileOps.syncDirectory(directory)
                 writeCount++
                 true
             } catch (_: Exception) {
+                if (replaced) {
+                    pairs = candidate
+                    snapshot = candidate
+                }
                 if (temporary.exists()) runCatching { fileOps.delete(temporary) }
                 false
             }
@@ -350,12 +376,20 @@ internal class TextShortcutStore(
      * are the user's own, so a damaged file is kept next to the store rather than destroyed. The
      * slot is one file, replaced by the next failure; a failed move leaves the original untouched.
      */
-    private fun quarantine(directory: File, file: File) {
-        try {
+    private fun quarantine(directory: File, file: File): Boolean {
+        val moved = try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
-            fileOps.syncDirectory(directory)
+            true
         } catch (_: Exception) {
+            false
         }
+        if (moved) {
+            try {
+                fileOps.syncDirectory(directory)
+            } catch (_: Exception) {
+            }
+        }
+        return moved
     }
 
     private fun quarantineFileName(): String = TcutFormat.shortcutsFileName() + QUARANTINE_SUFFIX
@@ -366,12 +400,13 @@ internal class TextShortcutStore(
     private fun deleteFile() {
         val directory = directoryProvider.personalDirectory()
         val file = File(directory, TcutFormat.shortcutsFileName())
-        deleteFile(directory, file)
+        deleteFile(directory, file, trackInstalled = true)
     }
 
-    private fun deleteFile(directory: File, file: File) {
+    private fun deleteFile(directory: File, file: File, trackInstalled: Boolean = false) {
         if (!file.exists()) return
         if (!fileOps.delete(file) && file.exists()) throw IOException("cannot remove shortcut file")
+        if (trackInstalled) lastWriteInstalled = true
         fileOps.syncDirectory(directory)
     }
 

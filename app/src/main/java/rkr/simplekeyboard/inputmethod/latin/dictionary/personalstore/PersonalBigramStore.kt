@@ -66,6 +66,9 @@ internal class PersonalBigramStore(
     // See PersonalDictionaryStore.justQuarantined.
     private var justQuarantined = false
 
+    // See PersonalDictionaryStore.lastWriteInstalled.
+    private var lastWriteInstalled = false
+
     // Progress towards learning, as salted truncated hashes; see PersonalDictionaryStore.pending.
     private var pending: PendingCounters = PendingCounters.EMPTY
     private var pendingDirty = false
@@ -120,10 +123,13 @@ internal class PersonalBigramStore(
             // attempted: the counter keeps accumulating in memory until the next flush.
             val candidate = if (wholeWriteSuppressed) null
                 else entries.upsert(normalizedContext, rawWord, normalizedWord, LEARN_THRESHOLD)
-            if (candidate != null && writeWhole(candidate)) {
-                entries = candidate
-                snapshot = candidate.toSnapshot(subtypeId)
-                pending = noted.without(key)
+            if (candidate != null) {
+                val written = writeWhole(candidate)
+                if (written) {
+                    entries = candidate
+                    snapshot = candidate.toSnapshot(subtypeId)
+                }
+                pending = if (written || lastWriteInstalled) noted.without(key) else noted
             } else {
                 pending = noted
             }
@@ -182,6 +188,7 @@ internal class PersonalBigramStore(
         val previousSnapshot = snapshot
         snapshot =
             if (candidate.isEmpty) PersonalBigramDictionary.EMPTY else candidate.toSnapshot(subtypeId)
+        lastWriteInstalled = false
         val removed = try {
             if (candidate.isEmpty) {
                 deleteFile()
@@ -195,7 +202,11 @@ internal class PersonalBigramStore(
         if (removed) {
             entries = candidate
         } else {
-            snapshot = previousSnapshot
+            if (lastWriteInstalled) {
+                entries = candidate
+            } else {
+                snapshot = previousSnapshot
+            }
             return false
         }
         purgeFromQuarantine(normalizedContext, normalizedWord)
@@ -256,21 +267,26 @@ internal class PersonalBigramStore(
             pending = pending.prunedForFlush()
             if (writePending(pending)) pendingDirty = false
         }
-        if (bytes != null) {
-            validator.validate(bytes, subtypeId)
-            ensureDirectory(directory)
-            writeBytesDurably(
-                directory, File(directory, TpersbFormat.personalBigramsFileName(subtypeId)), bytes)
-        } else {
-            deleteFile()
+        if (bytes != null) validator.validate(bytes, subtypeId)
+        val replaced = try {
+            if (bytes != null) {
+                ensureDirectory(directory)
+                writeBytesDurably(
+                    directory, File(directory, TpersbFormat.personalBigramsFileName(subtypeId)), bytes)
+            } else {
+                deleteFile()
+            }
+            true
+        } catch (_: Exception) {
+            false
         }
         entries = PersonalBigramEntries.empty(maxPairs)
         counterFlushPending = false
         snapshot = PersonalBigramDictionary.EMPTY
         loaded = false
         loadFailed = false
-        open()
-        return true
+        val opened = open()
+        return replaced && opened
     }
 
     /** Clears the notice marks. See [PersonalDictionaryStore.noticeDelivered]. */
@@ -434,8 +450,10 @@ internal class PersonalBigramStore(
     private fun open(): Boolean {
         if (loaded) return true
         if (loadFailed || !unlockGate()) return false
+        var loadSucceeded = false
         try {
             load()
+            loadSucceeded = true
         } catch (_: Exception) {
             entries = PersonalBigramEntries.empty(maxPairs)
             pending = PendingCounters.EMPTY
@@ -443,9 +461,7 @@ internal class PersonalBigramStore(
             counterFlushPending = false
             snapshot = PersonalBigramDictionary.EMPTY
             loadFailed = true
-            return false
         }
-        loaded = true
         // The only place the notice is raised; see PersonalDictionaryStore.open.
         if (justQuarantined || quarantineNoticeIsMarked()) {
             try {
@@ -453,6 +469,8 @@ internal class PersonalBigramStore(
             } catch (_: Exception) {
             }
         }
+        if (!loadSucceeded) return false
+        loaded = true
         return true
     }
 
@@ -480,7 +498,7 @@ internal class PersonalBigramStore(
             }
         }
         if (validated == null) {
-            quarantine(directory, file)
+            if (!quarantine(directory, file)) throw IOException("cannot quarantine bigram file")
             entries = PersonalBigramEntries.empty(maxPairs)
             snapshot = PersonalBigramDictionary.EMPTY
             return
@@ -494,6 +512,7 @@ internal class PersonalBigramStore(
      * drives [wholeWriteSuppressed] there and here.
      */
     private fun writeWhole(candidate: PersonalBigramEntries): Boolean {
+        lastWriteInstalled = false
         val directory = directoryProvider.personalDirectory()
         val written = try {
             ensureDirectory(directory)
@@ -504,6 +523,7 @@ internal class PersonalBigramStore(
                 false
             } else {
                 val temporary = createExclusiveTemp(directory)
+                var replaced = false
                 try {
                     outputOpener.open(temporary).use { output ->
                         output.write(bytes)
@@ -513,10 +533,16 @@ internal class PersonalBigramStore(
                     validator.validate(temporary, subtypeId)
                     val destination = File(directory, TpersbFormat.personalBigramsFileName(subtypeId))
                     fileOps.atomicReplace(temporary, destination)
+                    replaced = true
+                    lastWriteInstalled = true
                     fileOps.syncDirectory(directory)
                     writeCount++
                     true
                 } catch (_: Exception) {
+                    if (replaced) {
+                        entries = candidate
+                        snapshot = candidate.toSnapshot(subtypeId)
+                    }
                     if (temporary.exists()) runCatching { fileOps.delete(temporary) }
                     false
                 }
@@ -605,17 +631,25 @@ internal class PersonalBigramStore(
     }
 
     /** Quarantines an unreadable file. See `PersonalDictionaryStore.quarantine`. */
-    private fun quarantine(directory: File, file: File) {
-        try {
+    private fun quarantine(directory: File, file: File): Boolean {
+        val moved = try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
-            fileOps.syncDirectory(directory)
+            true
         } catch (_: Exception) {
+            false
+        }
+        if (moved) {
+            try {
+                fileOps.syncDirectory(directory)
+            } catch (_: Exception) {
+            }
         }
         // Marked in both cases; see PersonalDictionaryStore.quarantine.
         justQuarantined = true
         runCatching {
             writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))
         }
+        return moved
     }
 
     private fun quarantineFileName(): String =
@@ -653,12 +687,13 @@ internal class PersonalBigramStore(
     private fun deleteFile() {
         val directory = directoryProvider.personalDirectory()
         val file = File(directory, TpersbFormat.personalBigramsFileName(subtypeId))
-        deleteFile(directory, file)
+        deleteFile(directory, file, trackInstalled = true)
     }
 
-    private fun deleteFile(directory: File, file: File) {
+    private fun deleteFile(directory: File, file: File, trackInstalled: Boolean = false) {
         if (!file.exists()) return
         if (!fileOps.delete(file) && file.exists()) throw IOException("cannot remove personal file")
+        if (trackInstalled) lastWriteInstalled = true
         fileOps.syncDirectory(directory)
     }
 

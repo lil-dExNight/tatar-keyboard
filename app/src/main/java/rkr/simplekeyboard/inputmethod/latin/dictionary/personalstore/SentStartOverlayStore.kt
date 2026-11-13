@@ -67,6 +67,9 @@ internal class SentStartOverlayStore(
     // See PersonalDictionaryStore.justQuarantined.
     private var justQuarantined = false
 
+    // See PersonalDictionaryStore.lastWriteInstalled.
+    private var lastWriteInstalled = false
+
     // Progress towards learning, as salted truncated hashes. Held in memory and written on the
     // same boundary as the usage counters, never once per committed word.
     private var pending: PendingCounters = PendingCounters.EMPTY
@@ -105,10 +108,13 @@ internal class SentStartOverlayStore(
             // failed whole-file write is suppressed, no candidate is built and no write is
             // attempted: the counter keeps accumulating in memory until the next flush.
             val next = if (wholeWriteSuppressed) null else entries.noted(word, normalized)
-            if (next != null && writeWhole(next)) {
-                entries = next
-                publish()
-                pending = noted.without(key)
+            if (next != null) {
+                val written = writeWhole(next)
+                if (written) {
+                    entries = next
+                    publish()
+                }
+                pending = if (written || lastWriteInstalled) noted.without(key) else noted
             } else {
                 pending = noted
             }
@@ -240,8 +246,10 @@ internal class SentStartOverlayStore(
     private fun open(): Boolean {
         if (loaded) return true
         if (loadFailed || !unlockGate()) return false
+        var loadSucceeded = false
         try {
             load()
+            loadSucceeded = true
         } catch (_: Exception) {
             entries = SentStartOverlayEntries.empty(maxEntries)
             pending = PendingCounters.EMPTY
@@ -249,9 +257,7 @@ internal class SentStartOverlayStore(
             pendingCounterFlush = false
             snapshot = SentStartOverlay.EMPTY
             loadFailed = true
-            return false
         }
-        loaded = true
         // The only place the notice is raised; see PersonalDictionaryStore.open.
         if (justQuarantined || quarantineNoticeIsMarked()) {
             try {
@@ -259,6 +265,8 @@ internal class SentStartOverlayStore(
             } catch (_: Exception) {
             }
         }
+        if (!loadSucceeded) return false
+        loaded = true
         return true
     }
 
@@ -285,7 +293,7 @@ internal class SentStartOverlayStore(
             }
         }
         if (validated == null) {
-            quarantine(directory, file)
+            if (!quarantine(directory, file)) throw IOException("cannot quarantine overlay file")
             entries = SentStartOverlayEntries.empty(maxEntries)
             snapshot = SentStartOverlay.EMPTY
             return
@@ -304,6 +312,7 @@ internal class SentStartOverlayStore(
      * drives [wholeWriteSuppressed] there and here.
      */
     private fun writeWhole(next: SentStartOverlayEntries): Boolean {
+        lastWriteInstalled = false
         val directory = directoryProvider.personalDirectory()
         val written = try {
             ensureDirectory(directory)
@@ -314,6 +323,7 @@ internal class SentStartOverlayStore(
                 false
             } else {
                 val temporary = createExclusiveTemp(directory)
+                var replaced = false
                 try {
                     outputOpener.open(temporary).use { output ->
                         output.write(bytes)
@@ -323,10 +333,16 @@ internal class SentStartOverlayStore(
                     validator.validate(temporary, subtypeId)
                     val destination = File(directory, TsentFormat.sentStartFileName(subtypeId))
                     fileOps.atomicReplace(temporary, destination)
+                    replaced = true
+                    lastWriteInstalled = true
                     fileOps.syncDirectory(directory)
                     writeCount++
                     true
                 } catch (_: Exception) {
+                    if (replaced) {
+                        entries = next
+                        publish()
+                    }
                     if (temporary.exists()) runCatching { fileOps.delete(temporary) }
                     false
                 }
@@ -425,17 +441,25 @@ internal class SentStartOverlayStore(
      * One slot per language, replaced by the next failure; a failed move leaves the original file
      * untouched. There is no restore path: no screen lists the overlay, and the overlay relearns.
      */
-    private fun quarantine(directory: File, file: File) {
-        try {
+    private fun quarantine(directory: File, file: File): Boolean {
+        val moved = try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
-            fileOps.syncDirectory(directory)
+            true
         } catch (_: Exception) {
+            false
+        }
+        if (moved) {
+            try {
+                fileOps.syncDirectory(directory)
+            } catch (_: Exception) {
+            }
         }
         // Marked in both cases; see PersonalDictionaryStore.quarantine.
         justQuarantined = true
         runCatching {
             writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))
         }
+        return moved
     }
 
     private fun quarantineFileName(): String =

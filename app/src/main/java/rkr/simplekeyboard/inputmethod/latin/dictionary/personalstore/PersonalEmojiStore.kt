@@ -67,6 +67,9 @@ internal class PersonalEmojiStore(
     // See PersonalDictionaryStore.justQuarantined.
     private var justQuarantined = false
 
+    // See PersonalDictionaryStore.lastWriteInstalled.
+    private var lastWriteInstalled = false
+
     // Progress towards learning, as salted truncated hashes; see PersonalDictionaryStore.pending.
     private var pending: PendingCounters = PendingCounters.EMPTY
     private var pendingDirty = false
@@ -110,10 +113,13 @@ internal class PersonalEmojiStore(
             // attempted: the counter keeps accumulating in memory until the next flush.
             val candidate = if (wholeWriteSuppressed) null
                 else entries.upsert(normalizedWord, emoji, LEARN_THRESHOLD)
-            if (candidate != null && writeWhole(candidate)) {
-                entries = candidate
-                snapshot = candidate.toSnapshot(subtypeId)
-                pending = noted.without(key)
+            if (candidate != null) {
+                val written = writeWhole(candidate)
+                if (written) {
+                    entries = candidate
+                    snapshot = candidate.toSnapshot(subtypeId)
+                }
+                pending = if (written || lastWriteInstalled) noted.without(key) else noted
             } else {
                 pending = noted
             }
@@ -170,6 +176,7 @@ internal class PersonalEmojiStore(
         val previousSnapshot = snapshot
         snapshot =
             if (candidate.isEmpty) PersonalEmojiDictionary.EMPTY else candidate.toSnapshot(subtypeId)
+        lastWriteInstalled = false
         val removed = try {
             if (candidate.isEmpty) {
                 deleteFile()
@@ -183,7 +190,11 @@ internal class PersonalEmojiStore(
         if (removed) {
             entries = candidate
         } else {
-            snapshot = previousSnapshot
+            if (lastWriteInstalled) {
+                entries = candidate
+            } else {
+                snapshot = previousSnapshot
+            }
             return false
         }
         purgeFromQuarantine(normalizedWord, rawEmoji)
@@ -244,21 +255,26 @@ internal class PersonalEmojiStore(
             pending = pending.prunedForFlush()
             if (writePending(pending)) pendingDirty = false
         }
-        if (bytes != null) {
-            validator.validate(bytes, subtypeId)
-            ensureDirectory(directory)
-            writeBytesDurably(
-                directory, File(directory, TpersemFormat.personalEmojiFileName(subtypeId)), bytes)
-        } else {
-            deleteFile()
+        if (bytes != null) validator.validate(bytes, subtypeId)
+        val replaced = try {
+            if (bytes != null) {
+                ensureDirectory(directory)
+                writeBytesDurably(
+                    directory, File(directory, TpersemFormat.personalEmojiFileName(subtypeId)), bytes)
+            } else {
+                deleteFile()
+            }
+            true
+        } catch (_: Exception) {
+            false
         }
         entries = PersonalEmojiEntries.empty(maxEntries)
         counterFlushPending = false
         snapshot = PersonalEmojiDictionary.EMPTY
         loaded = false
         loadFailed = false
-        open()
-        return true
+        val opened = open()
+        return replaced && opened
     }
 
     /** Clears the notice marks. See [PersonalDictionaryStore.noticeDelivered]. */
@@ -409,8 +425,10 @@ internal class PersonalEmojiStore(
     private fun open(): Boolean {
         if (loaded) return true
         if (loadFailed || !unlockGate()) return false
+        var loadSucceeded = false
         try {
             load()
+            loadSucceeded = true
         } catch (_: Exception) {
             entries = PersonalEmojiEntries.empty(maxEntries)
             pending = PendingCounters.EMPTY
@@ -418,9 +436,7 @@ internal class PersonalEmojiStore(
             counterFlushPending = false
             snapshot = PersonalEmojiDictionary.EMPTY
             loadFailed = true
-            return false
         }
-        loaded = true
         // The only place the notice is raised; see PersonalDictionaryStore.open.
         if (justQuarantined || quarantineNoticeIsMarked()) {
             try {
@@ -428,6 +444,8 @@ internal class PersonalEmojiStore(
             } catch (_: Exception) {
             }
         }
+        if (!loadSucceeded) return false
+        loaded = true
         return true
     }
 
@@ -455,7 +473,7 @@ internal class PersonalEmojiStore(
             }
         }
         if (validated == null) {
-            quarantine(directory, file)
+            if (!quarantine(directory, file)) throw IOException("cannot quarantine emoji file")
             entries = PersonalEmojiEntries.empty(maxEntries)
             snapshot = PersonalEmojiDictionary.EMPTY
             return
@@ -469,6 +487,7 @@ internal class PersonalEmojiStore(
      * drives [wholeWriteSuppressed] there and here.
      */
     private fun writeWhole(candidate: PersonalEmojiEntries): Boolean {
+        lastWriteInstalled = false
         val directory = directoryProvider.personalDirectory()
         val written = try {
             ensureDirectory(directory)
@@ -479,6 +498,7 @@ internal class PersonalEmojiStore(
                 false
             } else {
                 val temporary = createExclusiveTemp(directory)
+                var replaced = false
                 try {
                     outputOpener.open(temporary).use { output ->
                         output.write(bytes)
@@ -488,10 +508,16 @@ internal class PersonalEmojiStore(
                     validator.validate(temporary, subtypeId)
                     val destination = File(directory, TpersemFormat.personalEmojiFileName(subtypeId))
                     fileOps.atomicReplace(temporary, destination)
+                    replaced = true
+                    lastWriteInstalled = true
                     fileOps.syncDirectory(directory)
                     writeCount++
                     true
                 } catch (_: Exception) {
+                    if (replaced) {
+                        entries = candidate
+                        snapshot = candidate.toSnapshot(subtypeId)
+                    }
                     if (temporary.exists()) runCatching { fileOps.delete(temporary) }
                     false
                 }
@@ -580,17 +606,25 @@ internal class PersonalEmojiStore(
     }
 
     /** Quarantines an unreadable file. See `PersonalDictionaryStore.quarantine`. */
-    private fun quarantine(directory: File, file: File) {
-        try {
+    private fun quarantine(directory: File, file: File): Boolean {
+        val moved = try {
             fileOps.atomicReplace(file, File(directory, quarantineFileName()))
-            fileOps.syncDirectory(directory)
+            true
         } catch (_: Exception) {
+            false
+        }
+        if (moved) {
+            try {
+                fileOps.syncDirectory(directory)
+            } catch (_: Exception) {
+            }
         }
         // Marked in both cases; see PersonalDictionaryStore.quarantine.
         justQuarantined = true
         runCatching {
             writeBytesDurably(directory, File(directory, quarantineNoticeFileName()), ByteArray(1))
         }
+        return moved
     }
 
     /**
@@ -646,12 +680,13 @@ internal class PersonalEmojiStore(
     private fun deleteFile() {
         val directory = directoryProvider.personalDirectory()
         val file = File(directory, TpersemFormat.personalEmojiFileName(subtypeId))
-        deleteFile(directory, file)
+        deleteFile(directory, file, trackInstalled = true)
     }
 
-    private fun deleteFile(directory: File, file: File) {
+    private fun deleteFile(directory: File, file: File, trackInstalled: Boolean = false) {
         if (!file.exists()) return
         if (!fileOps.delete(file) && file.exists()) throw IOException("cannot remove personal file")
+        if (trackInstalled) lastWriteInstalled = true
         fileOps.syncDirectory(directory)
     }
 

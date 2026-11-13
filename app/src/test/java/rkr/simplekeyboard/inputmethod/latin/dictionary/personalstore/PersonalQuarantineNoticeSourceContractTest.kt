@@ -65,7 +65,7 @@ class PersonalQuarantineNoticeSourceContractTest {
             load.contains("runCatching { deleteFile(directory, file) }"),
         )
 
-        val quarantine = bodyOf(store, "private fun quarantine(directory: File, file: File) {", "\n    private fun quarantineFileName")
+        val quarantine = bodyOf(store, "private fun quarantine(directory: File, file: File): Boolean {", "\n    private fun quarantineFileName")
         assertTrue("the move replaces whatever occupied the one slot",
             quarantine.contains("fileOps.atomicReplace(file, File(directory, quarantineFileName()))"))
         assertTrue("and is durable, like every other mutation of this directory",
