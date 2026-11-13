@@ -63,6 +63,9 @@ class RecentClipControllerTest {
         /** The spoken labels of the latest publication. */
         var spokenLabels: List<String?> = listOf(null, null, null, null)
 
+        /** Marker and labels at every setSpokenCellLabels(), the view's announcement boundary. */
+        val spokenPublications = mutableListOf<Pair<Int, List<String?>>>()
+
         override fun showSuggestions(first: String, second: String?, third: String?, fourth: String?) {
             bands.add(listOf(first, second, third, fourth))
             events.add("show")
@@ -76,6 +79,7 @@ class RecentClipControllerTest {
 
         override fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {
             spokenLabels = listOf(first, second, third, fourth)
+            spokenPublications.add(clipMarkerCell to spokenLabels)
         }
 
         override fun reserve() {
@@ -136,12 +140,15 @@ class RecentClipControllerTest {
         val suggestionsByWord = mutableMapOf<String, List<String>>()
         val nextWordByContext = mutableMapOf<String, List<String>>()
         var callback: ResultCallback? = null
+        var requestCount = 0
+            private set
 
         override fun request(
             editorSessionId: Long,
             subtypeId: String,
             prefixUtf8: ByteArray,
         ): Any? {
+            requestCount++
             val word = String(prefixUtf8, Charsets.UTF_8)
             val token = Any()
             callback?.onResult(token, suggestionsByWord[word] ?: emptyList(), LookupKind.PREFIX)
@@ -153,6 +160,7 @@ class RecentClipControllerTest {
             subtypeId: String,
             contextWordUtf8: ByteArray,
         ): Any? {
+            requestCount++
             val context = String(contextWordUtf8, Charsets.UTF_8)
             val token = Any()
             callback?.onResult(token, nextWordByContext[context] ?: emptyList(), LookupKind.NEXT_WORD)
@@ -415,18 +423,19 @@ class RecentClipControllerTest {
     }
 
     @Test
-    fun theClipCellCarriesTheMarkerAndTheSpokenLabel() {
+    fun theClipCellPublishesItsMarkerAndOnlyItsActionLabelForAnnouncement() {
         val h = Harness()
         h.clip("сәләм дөнья")
 
         h.start()
 
-        assertEquals(0, h.strip.clipMarkerCell)
+        // The view announces when the spoken labels arrive. The marker and action label must be
+        // present in that one publication, with no earlier word-only publication to speak.
         assertEquals(
-            "TalkBack says what the cell does, not the clip's text",
-            listOf(CLIP_LABEL, null, null, null),
-            h.strip.spokenLabels,
+            listOf(0 to listOf(CLIP_LABEL, null, null, null)),
+            h.strip.spokenPublications,
         )
+        assertFalse(h.strip.spokenPublications.any { it.second.contains("сәләм дөнья") })
     }
 
     @Test
@@ -542,17 +551,58 @@ class RecentClipControllerTest {
     }
 
     @Test
-    fun hidingTheInputViewDropsTheClip() {
+    fun hidingTheInputViewClearsTheClipWithoutATextChange() {
         val h = Harness()
         h.clip("сәләм")
         h.start()
         assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
+        val requests = h.engine.requestCount
 
         h.controller.onInputViewHidden()
-        h.controller.onTextChanged()
 
         assertEquals("reserve", h.strip.events.last())
         assertEquals(1, h.strip.bands.size)
+        assertFalse(h.controller.isRecentClipCell("сәләм"))
+        assertEquals("hide must not start dictionary work", requests, h.engine.requestCount)
+    }
+
+    @Test
+    fun showTimeCaptureRestoresTheClipOfferRemovedByHide() {
+        val h = Harness()
+        h.clip("сәләм")
+        h.start()
+        h.controller.onInputViewHidden()
+        assertEquals("reserve", h.strip.events.last())
+
+        // LatinIME re-reads the unchanged clipboard when the same input view is shown again.
+        h.clip("сәләм")
+
+        assertEquals(listOf("сәләм", null, null, null), h.strip.lastBand())
+        assertEquals("show", h.strip.events.last())
+        assertEquals(2, h.strip.bands.size)
+        assertTrue(h.controller.isRecentClipCell("сәләм"))
+        assertEquals(
+            0 to listOf(CLIP_LABEL, null, null, null),
+            h.strip.spokenPublications.last(),
+        )
+    }
+
+    @Test
+    fun hidingTheInputViewPreservesAnOrdinaryBand() {
+        val h = Harness()
+        h.clip("сәләм")
+        h.editor.before = "сүз "
+        h.engine.nextWordByContext["сүз"] = listOf("өйгә")
+        h.start()
+        assertEquals(listOf("өйгә", null, null, null), h.strip.lastBand())
+        val events = h.strip.events.toList()
+        val requests = h.engine.requestCount
+
+        h.controller.onInputViewHidden()
+
+        assertEquals(listOf("өйгә", null, null, null), h.strip.lastBand())
+        assertEquals("an unrelated band is not repainted or cleared", events, h.strip.events)
+        assertEquals("hide must not start dictionary work", requests, h.engine.requestCount)
     }
 
     @Test

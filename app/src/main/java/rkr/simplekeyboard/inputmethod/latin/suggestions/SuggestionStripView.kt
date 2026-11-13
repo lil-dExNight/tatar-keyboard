@@ -63,10 +63,13 @@ class SuggestionStripView @JvmOverloads constructor(
     /**
      * Optional spoken label per cell, set right after [setSuggestions] by the owner of the strip
      * for cells whose text does not read well aloud (an emoji). A null entry means "speak the
-     * cell's text". Reset by every [setSuggestions]/[clearSuggestions], so a label can never
-     * outlive the content it described.
+     * cell's text", except on the recent-clip cell: there a missing label means silence, never a
+     * raw clip. Reset by every [setSuggestions]/[clearSuggestions], so a label can never outlive
+     * the content it described.
      */
     private val spokenLabels = arrayOfNulls<String>(SuggestionStripState.CELL_COUNT)
+    /** Empty-to-words announcement waiting for the publication's marker and spoken labels. */
+    private var announcementPending = false
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = TypedValue.applyDimension(
@@ -278,6 +281,7 @@ class SuggestionStripView @JvmOverloads constructor(
 
     fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?) {
         clearSpokenLabels()
+        announcementPending = false
         val hadSuggestions = state.hasAnySuggestion()
         if (!state.setSuggestions(first, second, third, fourth)) return
         // No rebuild here: the paired setEmphasis() of the same publication runs it once, with
@@ -288,8 +292,59 @@ class SuggestionStripView @JvmOverloads constructor(
         // Announce only the empty -> words transition, and only while touch exploration is on.
         // The words change on every keystroke; announcing each change would bury the key echo
         // TalkBack users rely on (the shift announcements skip auto-caps for the same reason, see
-        // KeyboardAccessibilityDelegate). The words stay reachable through the virtual cell nodes.
-        if (hadSuggestions || !accessibilityManager.isTouchExplorationEnabled) return
+        // KeyboardAccessibilityDelegate). Wait for setSpokenLabels(): a recent clip must be
+        // recognized and spoken by its action label, never by the raw text just published here.
+        if (!hadSuggestions && accessibilityManager.isTouchExplorationEnabled) {
+            announcementPending = true
+        }
+    }
+
+    fun clearSuggestions() {
+        clearSpokenLabels()
+        announcementPending = false
+        if (!state.clear()) return
+        clearDisplaySuggestions()
+        accessibilityHelper.invalidateRoot()
+        invalidate()
+    }
+
+    /**
+     * Sets the spoken labels of the four cells; see the field comment. Called by the owner of the
+     * strip in the same publication as [setSuggestions], after the words, their emphasis and any
+     * clip marker. This completes the publication and delivers its pending accessibility
+     * announcement; it never creates content of its own.
+     */
+    fun setSpokenLabels(first: String?, second: String?, third: String?, fourth: String?) {
+        if (spokenLabels[0] != first || spokenLabels[1] != second || spokenLabels[2] != third
+            || spokenLabels[3] != fourth
+        ) {
+            spokenLabels[0] = first
+            spokenLabels[1] = second
+            spokenLabels[2] = third
+            spokenLabels[3] = fourth
+            accessibilityHelper.invalidateRoot()
+        }
+        announcePublishedSuggestions()
+    }
+
+    private fun clearSpokenLabels() {
+        var cell = 0
+        while (cell < SuggestionStripState.CELL_COUNT) {
+            spokenLabels[cell] = null
+            cell++
+        }
+    }
+
+    private fun announcePublishedSuggestions() {
+        if (!announcementPending) return
+        announcementPending = false
+        val clipCell = state.clipCell()
+        if (clipCell != SuggestionStripState.NO_CELL) {
+            // A clip is announced only by what its cell does. Its raw text never enters an
+            // automatic accessibility announcement, including when no label was supplied.
+            spokenLabels[clipCell]?.let(::announceForAccessibility)
+            return
+        }
         val available = ArrayList<String>(SuggestionStripState.CELL_COUNT)
         var announcedCell = 0
         while (announcedCell < state.visibleCellCount()) {
@@ -303,40 +358,6 @@ class SuggestionStripView @JvmOverloads constructor(
                     available.joinToString(", "),
                 ),
             )
-        }
-    }
-
-    fun clearSuggestions() {
-        clearSpokenLabels()
-        if (!state.clear()) return
-        clearDisplaySuggestions()
-        accessibilityHelper.invalidateRoot()
-        invalidate()
-    }
-
-    /**
-     * Sets the spoken labels of the four cells; see the field comment. Called by the owner of the
-     * strip in the same publication as [setSuggestions], after the words and their emphasis; never
-     * creates content of its own.
-     */
-    fun setSpokenLabels(first: String?, second: String?, third: String?, fourth: String?) {
-        if (spokenLabels[0] == first && spokenLabels[1] == second && spokenLabels[2] == third
-            && spokenLabels[3] == fourth
-        ) {
-            return
-        }
-        spokenLabels[0] = first
-        spokenLabels[1] = second
-        spokenLabels[2] = third
-        spokenLabels[3] = fourth
-        accessibilityHelper.invalidateRoot()
-    }
-
-    private fun clearSpokenLabels() {
-        var cell = 0
-        while (cell < SuggestionStripState.CELL_COUNT) {
-            spokenLabels[cell] = null
-            cell++
         }
     }
 
@@ -369,6 +390,7 @@ class SuggestionStripView @JvmOverloads constructor(
     /** Drops every reference and transient state that must not survive view replacement. */
     fun release() {
         clearSpokenLabels()
+        announcementPending = false
         // A posted long-press must not fire into a released view (the state it reads is cleared
         // below, and the listener is gone).
         removeCallbacks(longPressRunnable)
@@ -686,8 +708,13 @@ class SuggestionStripView @JvmOverloads constructor(
                 return
             }
             node.className = android.widget.Button::class.java.name
-            // An emoji cell speaks its name ("самолёт"), a word cell its own text.
-            node.contentDescription = spokenLabels[virtualViewId] ?: suggestion
+            // An emoji cell speaks its name ("самолёт"), a word cell its own text. A clip has no
+            // raw-text fallback: only its action label may be exposed to accessibility services.
+            node.contentDescription = if (state.isClipCell(virtualViewId)) {
+                spokenLabels[virtualViewId]
+            } else {
+                spokenLabels[virtualViewId] ?: suggestion
+            } ?: ""
             tempBounds.set(
                 state.cellLeft(virtualViewId, width),
                 0,

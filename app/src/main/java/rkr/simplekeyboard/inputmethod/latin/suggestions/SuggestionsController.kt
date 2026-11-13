@@ -60,8 +60,10 @@ interface StripSurface {
 
     /**
      * Optional spoken labels for cells whose own text does not read well aloud (an emoji cell).
-     * Called in the same publication as [showSuggestions], after the words and their emphasis; a
-     * null entry means "speak the cell's text". Default no-op: the glyph is spoken.
+     * Called in the same publication as [showSuggestions], after the words, their emphasis and
+     * any clip marker; a null entry means "speak the cell's text", except that a clip with no
+     * action label stays silent. The view announces a newly populated strip here, when the whole
+     * publication is available. Default no-op.
      */
     fun setSpokenCellLabels(first: String?, second: String?, third: String?, fourth: String?) {}
 
@@ -75,8 +77,9 @@ interface StripSurface {
 
     /**
      * The recent-clip cell: drawn with the clipboard marker, so the paste offer does not read as
-     * a plain suggestion. Called in the same publication as [showSuggestions], after the
-     * emphasis; [SuggestionStripState.NO_CELL] on every word strip. Default no-op.
+     * a plain suggestion. Called in the same publication as [showSuggestions], after the emphasis
+     * and before the spoken labels; [SuggestionStripState.NO_CELL] on every word strip. Default
+     * no-op.
      */
     fun setClipCellMarker(cell: Int) {}
 
@@ -156,7 +159,7 @@ class SuggestionsController internal constructor(
     private val oneHandedSide: () -> Int = { OneHandedMode.SIDE_OFF },
     private val listenToDockChanges: Boolean = false,
     // The recent-clip cell's spoken label, resolved from resources at publication time. Default
-    // none: TalkBack then speaks the cell's own text.
+    // none: the cell then exposes no raw text, and the automatic announcement stays silent.
     private val clipCellSpokenLabel: () -> String? = { null },
 ) {
     /** Production entry point. */
@@ -601,6 +604,9 @@ class SuggestionsController internal constructor(
         it.onExpired = ::onRecentClipExpired
     }
 
+    /** A hide removed the displayed clip; its next show-time capture must repaint the offer. */
+    private var restoreRecentClipOnNextCapture = false
+
     /**
      * Live lock state for learning, transforms and the clip cell. LatinIME wires this before the
      * first input session; the default keeps the controller usable in isolated JVM tests.
@@ -726,20 +732,29 @@ class SuggestionsController internal constructor(
      * clip listener). [clipText] is the clip's plain text (null or blank when it holds none);
      * and [setAtMillis] when the clip was set. Held in RAM only ([RecentClipCell]); when the strip
      * currently shows the clip cell this replaces or clears, the strip is re-derived at once, or a
-     * stale clip would stay on screen as a dead cell.
+     * stale clip would stay on screen as a dead cell. The first fresh capture after a hide also
+     * restores the offer that hide removed, without requiring a text change.
      */
     fun onPrimaryClipChanged(clipText: String?, setAtMillis: Long) {
         val repaint = isShowingRecentClip()
+        val restoreAfterHide = restoreRecentClipOnNextCapture
+        restoreRecentClipOnNextCapture = false
         recentClip.noteClip(clipText, setAtMillis)
-        if (repaint) requestCurrentPrefix()
+        if (repaint || (restoreAfterHide && recentClip.offerText() != null)) {
+            requestCurrentPrefix()
+        }
     }
 
     /**
      * The keyboard's window hid: drop the held clip. The listener is unregistered at the same
-     * moment, so nothing new arrives until the next show re-reads the clipboard.
+     * moment, so nothing new arrives until the next show re-reads the clipboard. A displayed clip
+     * is cleared immediately; unrelated bands stay untouched and no dictionary lookup is started.
      */
     fun onInputViewHidden() {
+        val wasShowingClip = isShowingRecentClip()
+        restoreRecentClipOnNextCapture = wasShowingClip
         recentClip.clear()
+        if (wasShowingClip) clearToReservedBand()
     }
 
     /** Removes an expired clip without disturbing a band that has since taken its place. */
@@ -1889,6 +1904,8 @@ class SuggestionsController internal constructor(
         cells: List<String>,
         emphasizedCell: Int = SuggestionStripState.NO_CELL,
         ranked: Boolean = true,
+        clipCell: Int = SuggestionStripState.NO_CELL,
+        clipSpokenLabel: String? = null,
     ) {
         // Every composition already caps at the visible count; this is the fail-safe for the one
         // place a wider list could slip through (a retained glide list outliving a narrower push).
@@ -1906,10 +1923,9 @@ class SuggestionsController internal constructor(
         val third = shown.getOrNull(if (mirrored) bandCapacity - 3 else 2)
         val fourth = shown.getOrNull(if (mirrored) bandCapacity - 4 else 3)
         strip.showSuggestions(first ?: "", second, third, fourth)
-        // The emphasis travels with the words it marks, in the same publication. It runs before
-        // the spoken labels: setEmphasis triggers the view's one display rebuild, and the label
-        // lookup reads the emoji index, which can fail. A label failure then leaves a consistent
-        // strip with missing labels, which the next publication re-sends.
+        // Emphasis and the clip marker travel with the words in the same publication, before the
+        // spoken labels complete it. setEmphasis triggers the view's display rebuild; a label
+        // lookup failure then leaves a consistent strip whose next publication re-sends labels.
         strip.setEmphasizedCell(
             if (emphasizedCell in shown.indices) {
                 if (mirrored) bandCapacity - 1 - emphasizedCell else emphasizedCell
@@ -1917,11 +1933,17 @@ class SuggestionsController internal constructor(
                 SuggestionStripState.NO_CELL
             }
         )
+        val publishedClipCell = if (clipCell in shown.indices) {
+            clipCell
+        } else {
+            SuggestionStripState.NO_CELL
+        }
+        strip.setClipCellMarker(publishedClipCell)
         strip.setSpokenCellLabels(
-            spokenLabelFor(first),
-            spokenLabelFor(second),
-            spokenLabelFor(third),
-            spokenLabelFor(fourth),
+            if (publishedClipCell == 0) clipSpokenLabel else spokenLabelFor(first),
+            if (publishedClipCell == 1) clipSpokenLabel else spokenLabelFor(second),
+            if (publishedClipCell == 2) clipSpokenLabel else spokenLabelFor(third),
+            if (publishedClipCell == 3) clipSpokenLabel else spokenLabelFor(fourth),
         )
     }
 
@@ -2749,12 +2771,15 @@ class SuggestionsController internal constructor(
         requestSessionId = NO_SESSION
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = false
-        showBand(listOf(offer), ranked = false)
+        // The marker and action label complete the same publication as the text, so TalkBack
+        // never announces the raw clip while the cell is being painted.
+        showBand(
+            listOf(offer),
+            ranked = false,
+            clipCell = 0,
+            clipSpokenLabel = clipCellSpokenLabel(),
+        )
         displayedRecentClipOffer = offer
-        // The clipboard marker tells the cell from a suggestion, and TalkBack says what the cell
-        // does instead of reading the clip's text aloud.
-        strip.setClipCellMarker(0)
-        strip.setSpokenCellLabels(clipCellSpokenLabel(), null, null, null)
         return true
     }
 

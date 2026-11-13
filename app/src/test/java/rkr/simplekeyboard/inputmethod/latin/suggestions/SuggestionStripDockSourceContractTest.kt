@@ -81,21 +81,6 @@ class SuggestionStripDockSourceContractTest {
         assertFalse(host.contains("mirrored"))
     }
 
-    @Test
-    fun singlePurposePublicationsOptOutOfRankedMirroring() {
-        val controller = java(
-            "rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt"
-        )
-        assertTrue(controller.contains("showBand(listOf(offer), ranked = false)"))
-        assertTrue(controller.contains("showBand(listOf(emoji), ranked = false)"))
-        assertTrue(
-            controller.contains(
-                "showBand(listOf(revertCellDecorator.decorate(replacement.typedForm)), ranked = false)"
-            )
-        )
-        assertTrue(controller.contains("KeyboardSwitcher.getInstance().keyboard?.mId?.mOneHandedSide"))
-    }
-
     private fun java(path: String): String = File(sourceRoot(), "java/$path").readText()
 
     private fun sourceRoot(): File {

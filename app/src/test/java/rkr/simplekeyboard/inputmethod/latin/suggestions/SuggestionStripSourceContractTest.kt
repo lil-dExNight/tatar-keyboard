@@ -129,16 +129,66 @@ class SuggestionStripSourceContractTest {
         ).readText()
         val setSuggestionsBody = viewSource.substringAfter("fun setSuggestions(")
             .substringBefore("fun clearSuggestions()")
+        val labelsBody = viewSource.substringAfter("fun setSpokenLabels(")
+            .substringBefore("private fun clearSpokenLabels()")
+        val announcementBody = viewSource.substringAfter("private fun announcePublishedSuggestions()")
+            .substringBefore("fun setEmphasis(")
 
         // The triple changes on every keystroke: announcing each one would bury the key echo.
         assertTrue(setSuggestionsBody.contains("val hadSuggestions = state.hasAnySuggestion()"))
         assertTrue(
             setSuggestionsBody.contains(
-                "if (hadSuggestions || !accessibilityManager.isTouchExplorationEnabled) return",
+                "if (!hadSuggestions && accessibilityManager.isTouchExplorationEnabled)",
             ),
         )
-        assertTrue(setSuggestionsBody.contains("announceForAccessibility"))
-        assertTrue(setSuggestionsBody.contains("R.string.spoken_suggestions_available"))
+        // The words are announced after the whole publication: a clip must be recognizable by its
+        // marker and action label before anything is spoken.
+        assertTrue(setSuggestionsBody.contains("announcementPending = true"))
+        assertFalse(setSuggestionsBody.contains("announceForAccessibility"))
+        assertTrue(labelsBody.contains("announcePublishedSuggestions()"))
+        assertTrue(announcementBody.contains("announceForAccessibility"))
+        assertTrue(announcementBody.contains("R.string.spoken_suggestions_available"))
+    }
+
+    @Test
+    fun recentClipAnnouncementUsesOnlyItsActionLabel() {
+        val viewSource = File(
+            sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView.kt",
+        ).readText()
+        val controllerSource = File(
+            sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
+        ).readText()
+        val announcementBody = viewSource.substringAfter("private fun announcePublishedSuggestions()")
+            .substringBefore("fun setEmphasis(")
+        val nodeBody = viewSource.substringAfter("override fun onPopulateNodeForVirtualView(")
+            .substringBefore("override fun onPerformActionForVirtualView(")
+        val showBandBody = controllerSource.substringAfter("private fun showBand(")
+            .substringBefore("    internal fun onOneHandedSideChanged")
+        val clipBody = controllerSource.substringAfter("private fun maybeShowRecentClip(): Boolean {")
+            .substringBefore("    /**")
+
+        // The clip branch precedes the ordinary word list, and reads only the action label: no
+        // code path of the automatic announcement can fall back to the clip's raw text.
+        val clipAt = announcementBody.indexOf("val clipCell = state.clipCell()")
+        val ordinaryAt = announcementBody.indexOf("val available =")
+        assertTrue(clipAt in 0 until ordinaryAt)
+        val clipBranch = announcementBody.substring(clipAt, ordinaryAt)
+        assertTrue(clipBranch.contains("spokenLabels[clipCell]"))
+        assertTrue(clipBranch.contains("announceForAccessibility"))
+        assertTrue(clipBranch.contains("return"))
+        assertFalse(clipBranch.contains("suggestionAt"))
+        // The node description has the same no-raw-clip rule when TalkBack focuses the cell.
+        assertTrue(nodeBody.contains("if (state.isClipCell(virtualViewId))"))
+
+        // The controller sends the marker and the action label in the same final publication.
+        val markerAt = showBandBody.indexOf("strip.setClipCellMarker(")
+        val labelsAt = showBandBody.indexOf("strip.setSpokenCellLabels(")
+        assertTrue(markerAt >= 0 && labelsAt >= 0 && markerAt < labelsAt)
+        assertTrue(clipBody.contains("clipCell = 0"))
+        assertTrue(clipBody.contains("clipSpokenLabel = clipCellSpokenLabel()"))
+        assertFalse(clipBody.substringAfter("showBand(").contains("setSpokenCellLabels"))
     }
 
     @Test
