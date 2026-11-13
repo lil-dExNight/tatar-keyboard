@@ -128,10 +128,67 @@ class LockScreenPrivacySourceContractTest {
     }
 
     @Test
+    fun manualAddFromTheStripChecksFreshLockStateAtOpenAndConfirmation() {
+        val policy = body("private int manualPersonalWordAddBlockMessage()")
+        val freshCheck = policy.indexOf("if (noteFreshPrivacyLock()) {")
+        val fieldRead = policy.indexOf("mSettings.getCurrent()")
+        assertTrue("the fresh lock veto runs before field and pause checks",
+            freshCheck in 0 until fieldRead)
+        assertTrue(policy.substring(freshCheck).startsWith(
+            "if (noteFreshPrivacyLock()) {\n" +
+                "            return R.string.personal_dictionary_add_device_locked;"))
+
+        val router = body("private void onStripWordLongPress(final String shownWord)")
+        val addRoute = router.substringAfter("case ADD:").substringBefore("default:")
+        val openingCheck = addRoute.indexOf("manualPersonalWordAddBlockMessage()")
+        val opening = addRoute.indexOf("showAddPersonalWordDialog(")
+        assertTrue("the dialog cannot open before its fresh check",
+            openingCheck in 0 until opening)
+
+        val dialog = body("private void showAddPersonalWordDialog(final String subtypeId")
+        val confirmation = dialog.substringAfter(
+            ".setPositiveButton(R.string.personal_dictionary_add_action")
+        val confirmationCheck = confirmation.indexOf("manualPersonalWordAddBlockMessage()")
+        val storeWrite = confirmation.indexOf("PersonalAdd.confirmAdd(")
+        assertTrue("confirmation re-reads the lock before the personal-store write",
+            confirmationCheck in 0 until storeWrite)
+        val guardedWrite = confirmation.substring(confirmationCheck, storeWrite)
+        assertTrue("a locked confirmation leaves before the write",
+            guardedWrite.contains("if (blockedMessage != 0)") &&
+                guardedWrite.contains("showPersonalWordAddBlockedDialog(blockedMessage)") &&
+                guardedWrite.contains("return;"))
+
+        for (values in listOf("values", "values-ru", "values-tt")) {
+            val strings = File(mainRoot, "res/$values/strings.xml").readText()
+            assertTrue("$values lacks the locked-add explanation",
+                strings.contains("name=\"personal_dictionary_add_device_locked\""))
+        }
+    }
+
+    @Test
+    fun theFreshLockBoundarySkipsTheCacheAndAppliesALockedSession() {
+        val fresh = body("private boolean noteFreshPrivacyLock()")
+        assertTrue(fresh.contains(
+            "mPrivacyLockValid = false;\n        return noteLiveLock();"))
+        // Invalidation selects the synchronous read in isPrivacyLocked(), not its cached answer.
+        assertTrue(body("private boolean isPrivacyLocked()").contains(
+            "if (!mPrivacyLockValid || age >= 2 * PRIVACY_LOCK_CACHE_MS)"))
+        assertTrue(body("private boolean readPrivacyLock()")
+            .contains("isKeyguardLocked() || !isUserUnlocked()"))
+        val applied = body("private boolean noteLiveLock()")
+        assertTrue(applied.contains("mSessionKeyguardLocked = true;"))
+        assertTrue(applied.contains("clearInlineAutofill();"))
+        assertTrue(applied.contains("onSessionLockStateChanged();"))
+    }
+
+    @Test
     fun thePasteKeyReadsNoClipboardOnTheLockScreen() {
         val before = body("public boolean onBeforeClipboardPaste()")
         assertTrue(before.trimStart('{').trimStart()
-            .startsWith("if (noteLiveLock()) {\n            return false;"))
+            .startsWith("if (noteFreshPrivacyLock()) {\n            return false;"))
+        assertTrue("the fresh gate runs before the clip offer is cleared",
+            before.indexOf("noteFreshPrivacyLock()") <
+                before.indexOf("mSuggestionsController.onClipboardPaste()"))
         val inputLogic = File(mainRoot,
             "java/rkr/simplekeyboard/inputmethod/latin/inputlogic/InputLogic.java").readText()
         assertTrue(inputLogic.contains(

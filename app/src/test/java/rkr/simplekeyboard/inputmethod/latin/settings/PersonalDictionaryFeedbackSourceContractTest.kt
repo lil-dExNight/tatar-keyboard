@@ -96,7 +96,7 @@ class PersonalDictionaryFeedbackSourceContractTest {
         }
 
         // Adding keeps ONE synchronous repaint, and only on the branch that never queued anything:
-        // a word the content filter rejected. Nothing is in flight there, so nothing is awaited.
+        // the pause or content filter rejected it. Nothing is in flight there, so nothing is awaited.
         val add = bodyOf(host, "private fun showAddPersonalWordDialog(",
             "private fun showForgetPersonalWordDialog(")
         assertEquals("exactly one, and it is the rejection branch", 1,

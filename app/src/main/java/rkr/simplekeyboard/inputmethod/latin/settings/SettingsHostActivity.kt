@@ -652,7 +652,8 @@ class SettingsHostActivity : Activity() {
      * delete action per row, a per-language "Clear all" per store and a global "Erase all".
      *
      * Fully usable with the setting off, so saved content can always be erased; only adding
-     * follows the setting (with the personal dictionary off no file is created). The search text
+     * follows the personal-dictionary and pause-learning settings (neither off nor paused permits
+     * a new file write). The search text
      * is not saved on rotation (see [personalSearchQuery]). Stores are read only through the
      * published snapshot of their process-wide owner (file work runs on the personal-store
      * worker); an unreadable store (device locked, file quarantined) publishes an empty snapshot,
@@ -686,6 +687,7 @@ class SettingsHostActivity : Activity() {
         }
         addCard(listOf(addRow))
         setRowEnabled(addRow, Settings.readPersonalDictionaryEnabled(prefs)
+                && !Settings.readIncognitoModeEnabled(prefs)
                 && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY))
 
         addPersonalQuarantineCards(controller, subtypeIds)
@@ -1048,6 +1050,12 @@ class SettingsHostActivity : Activity() {
 
     private fun showAddPersonalWordDialog(
             controller: PersonalDictionaryScreenController, subtypeIds: List<String>) {
+        // A stale or programmatic click must not open an editor while learning is paused.
+        if (Settings.readIncognitoModeEnabled(prefs)) {
+            Toast.makeText(this, R.string.personal_dictionary_learning_paused,
+                    Toast.LENGTH_SHORT).show()
+            return
+        }
         val field = layoutInflater.inflate(R.layout.row_text_input, contentView, false) as EditText
         applyPrivateInputFlags(field)
         field.setHint(R.string.personal_dictionary_add_hint)
@@ -1063,12 +1071,17 @@ class SettingsHostActivity : Activity() {
                                         R.string.personal_dictionary_save_failed)
                             }
                     if (!accepted) {
-                        // The message names the alphabet of the store the word was meant for:
-                        // the same screen adds to the Russian dictionary when the current
-                        // subtype is Russian, and "use Tatar letters" is wrong there.
-                        val messageRes = if (subtypeId == PersonalSubtypes.RUSSIAN)
+                        // The controller re-reads the pause at confirmation. A content rejection
+                        // names the alphabet of the intended store: this screen adds to the
+                        // Russian dictionary when the current subtype is Russian, and "use Tatar
+                        // letters" is wrong there.
+                        val messageRes = when {
+                            Settings.readIncognitoModeEnabled(prefs) ->
+                                R.string.personal_dictionary_learning_paused
+                            subtypeId == PersonalSubtypes.RUSSIAN ->
                                 R.string.personal_dictionary_add_rejected_ru
-                            else R.string.personal_dictionary_add_rejected
+                            else -> R.string.personal_dictionary_add_rejected
+                        }
                         Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
                         showScreen(Screen.PERSONAL_DICTIONARY)
                     }

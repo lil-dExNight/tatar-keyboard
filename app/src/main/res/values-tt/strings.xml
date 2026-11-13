@@ -141,6 +141,7 @@
     <string name="personal_dictionary_add_rejected">Саклап булмады. 3 тән 24 кә кадәр татар хәрефе генә кулланыгыз.</string>
     <string name="personal_dictionary_add_rejected_ru">Саклап булмады. 3 тән 24 кә кадәр рус хәрефе генә кулланыгыз.</string>
     <string name="personal_dictionary_add_postal_address">Почта адресы кырыннан сүзләр өстәп булмый.</string>
+    <string name="personal_dictionary_add_device_locked">Сүз өстәү өчен җайланманың бикләнүен ачыгыз.</string>
     <string name="personal_dictionary_delete">Бетерү</string>
     <string name="personal_dictionary_forget_title">«%1$s» сүзен онытыргамы?</string>
     <plurals name="personal_dictionary_words_count">

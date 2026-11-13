@@ -335,7 +335,7 @@ class PersonalDictionaryScreenSourceContractTest {
     fun theScreenWorksWithTheSettingOffButAddingFollowsTheSetting() {
         assertTrue("the entry row does not depend on the toggle",
             host.contains("addCard(listOf(linkRow(R.string.personal_dictionary_screen)"))
-        assertTrue("only the add row follows the setting", host.contains(
+        assertTrue("the add row follows the personal-dictionary setting", host.contains(
             "setRowEnabled(addRow, Settings.readPersonalDictionaryEnabled(prefs)"))
         val screen = host.substringAfter("private fun buildPersonalDictionaryScreen()")
             .substringBefore("private fun personalSubtypeIds()")

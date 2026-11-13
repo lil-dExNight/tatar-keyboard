@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaries
@@ -40,6 +41,10 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalWor
 internal class PersonalDictionaryScreenController(
     private val context: Context,
     private val uiPoster: (Runnable) -> Unit = { Handler(Looper.getMainLooper()).post(it) },
+    private val learningPaused: () -> Boolean = {
+        Settings.readIncognitoModeEnabled(
+            PreferenceManagerCompat.getDeviceSharedPreferences(context))
+    },
 ) {
 
     /**
@@ -52,11 +57,14 @@ internal class PersonalDictionaryScreenController(
             .map { it to PersonalDictionaries.snapshotFor(context, it) }
 
     /**
-     * Adds one word typed on the screen. Returns false at once when the word is not eligible under
-     * the same content filter learning uses. `true` means "worth saving", not "saved": whether the
-     * word reached the disk arrives later through [onSaved] on the UI thread.
+     * Adds one word typed on the screen. Returns false at once while learning is paused or when
+     * the word is not eligible under the same content filter learning uses. `true` means "worth
+     * saving", not "saved": whether the word reached the disk arrives later through [onSaved] on
+     * the UI thread.
      */
     fun addWord(subtypeId: String, word: String, onSaved: (Boolean) -> Unit): Boolean {
+        // The preference is read for every confirmation: the dialog may predate a pause change.
+        if (learningPaused()) return false
         val alphabet = PersonalSubtypes.alphabetFor(subtypeId) ?: return false
         val trimmed = word.trim()
         if (PersonalWordFilter.acceptedNormalizedForm(trimmed, alphabet) == null) return false

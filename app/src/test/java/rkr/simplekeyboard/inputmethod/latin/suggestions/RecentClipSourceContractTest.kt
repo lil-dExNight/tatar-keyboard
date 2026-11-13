@@ -108,13 +108,20 @@ class RecentClipSourceContractTest {
     fun theClipboardIsNeverReadWhileLocked() {
         // Both the show-time read and the change listener go through this method, so one gate
         // before the clipboard read covers every lock-screen path.
-        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
-        val gate = capture.indexOf("if (mSessionKeyguardLocked || isPrivacyLocked()) {")
+        val latinIme = latinImeSource()
+        val capture = methodBody(latinIme, "private void capturePrimaryClipForOffer()")
+        val gate = capture.indexOf("if (mSessionKeyguardLocked || noteFreshPrivacyLock()) {")
         val read = capture.indexOf("mClipboardManager.getPrimaryClip()")
-        assertTrue("the lock gate runs before the clipboard read", gate in 0 until read)
+        assertTrue("the fresh lock gate runs before the clipboard read", gate in 0 until read)
+        assertFalse("the up-to-two-second cached gate must not decide a clipboard read",
+            capture.contains("isPrivacyLocked()"))
         assertTrue("a locked read clears the held offer",
             capture.substring(gate, read).contains("controller.onPrimaryClipChanged(null, 0L);"))
-        val latinIme = latinImeSource()
+        val fresh = methodBody(latinIme, "private boolean noteFreshPrivacyLock()")
+        val invalidated = fresh.indexOf("mPrivacyLockValid = false;")
+        val apply = fresh.indexOf("noteLiveLock();")
+        assertTrue("an eligible session forces a new read and applies its result",
+            invalidated in 0 until apply)
         assertTrue("the change listener reads through the gated method",
             latinIme.substringAfter("public void onPrimaryClipChanged() {")
                 .substringBefore("}").contains("capturePrimaryClipForOffer();"))

@@ -60,6 +60,11 @@ class IncognitoModeTest {
     private val host by lazy {
         File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt").readText()
     }
+    private val screenController by lazy {
+        File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/PersonalDictionaryScreenController.kt")
+            .readText()
+    }
 
     // --- The pure gate: real tests --------------------------------------------------------------
 
@@ -191,6 +196,46 @@ class IncognitoModeTest {
         assertTrue("the note is shown exactly when the pause is on",
             screen.contains("if (Settings.readIncognitoModeEnabled(prefs)) {"))
         assertTrue(screen.contains("R.string.personal_dictionary_learning_paused"))
+    }
+
+    @Test
+    fun savedWordsManualAddIsDisabledAndItsDialogCannotOpenWhilePaused() {
+        val screen = host.substringAfter("private fun buildPersonalDictionaryScreen()")
+            .substringBefore("private fun usageRow(")
+        val enabled = screen.substringAfter("setRowEnabled(addRow,").substringBefore("))")
+        assertTrue("the add row follows the live pause as well as the dictionary switch",
+            enabled.contains("&& !Settings.readIncognitoModeEnabled(prefs)"))
+
+        val dialog = host.substringAfter("private fun showAddPersonalWordDialog(")
+            .substringBefore("private fun showForgetPersonalWordDialog(")
+        val openingGate = dialog.indexOf("if (Settings.readIncognitoModeEnabled(prefs))")
+        val editor = dialog.indexOf("layoutInflater.inflate")
+        val explanation = dialog.indexOf("R.string.personal_dictionary_learning_paused")
+        assertTrue("a stale click is refused before an editor is created",
+            openingGate in 0 until editor)
+        assertTrue("the refusal explains the pause", explanation in openingGate until editor)
+    }
+
+    @Test
+    fun savedWordsConfirmationRechecksPauseBeforeTouchingTheStore() {
+        assertTrue("the production controller reads the device preference for each add",
+            screenController.contains("Settings.readIncognitoModeEnabled(") &&
+                screenController.contains(
+                    "PreferenceManagerCompat.getDeviceSharedPreferences(context)"))
+        val add = screenController.substringAfter("fun addWord(").substringBefore("\n    /**")
+        val freshPause = add.indexOf("if (learningPaused()) return false")
+        val store = add.indexOf("PersonalDictionaries.storeFor")
+        assertTrue("a dialog that predates the pause cannot queue a personal-store write",
+            freshPause in 0 until store)
+
+        val rejection = host.substringAfter("private fun showAddPersonalWordDialog(")
+            .substringAfter("if (!accepted) {")
+            .substringBefore("showScreen(Screen.PERSONAL_DICTIONARY)")
+        assertTrue("the confirmation refusal is not misreported as an alphabet rejection",
+            rejection.contains("R.string.personal_dictionary_learning_paused"))
+        // Unpaused, eligible input still takes the existing filtered store path and callback.
+        assertTrue(add.contains("PersonalWordFilter.acceptedNormalizedForm(trimmed, alphabet)"))
+        assertTrue(add.contains(".addManually(trimmed) { saved -> uiPoster { onSaved(saved) } }"))
     }
 
     @Test

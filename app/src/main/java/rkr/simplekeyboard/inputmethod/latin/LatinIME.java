@@ -1397,6 +1397,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     /** Returns the dialog message that blocks a strip add, or zero when the add is allowed. */
     private int manualPersonalWordAddBlockMessage() {
+        // Both dialog opening and confirmation call here. A manual write never uses the cached
+        // privacy answer, and a newly observed lock updates the whole session before returning.
+        if (noteFreshPrivacyLock()) {
+            return R.string.personal_dictionary_add_device_locked;
+        }
         final SettingsValues settingsValues = mSettings.getCurrent();
         final boolean postalAddressField = settingsValues == null
                 || settingsValues.mInputAttributes.mIsPostalAddressField;
@@ -1459,7 +1464,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 DialogUtils.getPlatformDialogThemeContext(this))
                 .setTitle(getString(R.string.personal_dictionary_add_title, trimmed))
                 .setPositiveButton(R.string.personal_dictionary_add_action, (di, which) -> {
-                    // The field or pause-learning setting can change while the dialog is open.
+                    // The lock, field or pause-learning setting can change while the dialog is open.
                     final int blockedMessage = manualPersonalWordAddBlockMessage();
                     if (blockedMessage != 0) {
                         showPersonalWordAddBlockedDialog(blockedMessage);
@@ -1480,7 +1485,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         dialog.show();
     }
 
-    /** Explains why the current field or pause-learning state does not permit a manual add. */
+    /** Explains why the current lock, field or pause-learning state does not permit a manual add. */
     private void showPersonalWordAddBlockedDialog(final int messageId) {
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView == null) {
@@ -2064,6 +2069,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
     }
 
+    /**
+     * Forces a synchronous privacy-lock read for a sensitive user action, then applies any lock.
+     * Unlike keystroke transforms, manual personal-store writes and clipboard access must never
+     * accept the cached answer.
+     */
+    private boolean noteFreshPrivacyLock() {
+        mPrivacyLockValid = false;
+        return noteLiveLock();
+    }
+
     /** Records a live lock and drops hosted content before the event reaches any transform. */
     private boolean noteLiveLock() {
         if (!isPrivacyLocked()) {
@@ -2079,8 +2094,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     // Refreshed at field start and window show for keyboard construction and strip eligibility.
-    // Active transforms and write boundaries also use isPrivacyLocked() because a session can
-    // outlive the screen locking. The initial locked value closes an unevaluated session.
+    // Active transforms use isPrivacyLocked(), and automatic learning has its live keyguard scope,
+    // because a session can outlive the screen locking. Manual writes and clipboard access use
+    // noteFreshPrivacyLock() instead. The initial locked value closes an unevaluated session.
     private boolean mSessionKeyguardLocked = true;
     // Keystrokes read a cached answer: a system call on the UI thread per key costs touch latency.
     private boolean mPrivacyLocked;
@@ -2659,9 +2675,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (controller == null || mClipboardManager == null) {
             return;
         }
-        // The clipboard is never read on the lock screen; the session answer fails closed until
-        // the next show.
-        if (mSessionKeyguardLocked || isPrivacyLocked()) {
+        // The session answer fails closed until the next show. Otherwise force a fresh lock read
+        // before touching the clipboard; a newly observed lock updates the whole session.
+        if (mSessionKeyguardLocked || noteFreshPrivacyLock()) {
             controller.onPrimaryClipChanged(null, 0L);
             return;
         }
@@ -3399,10 +3415,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     /**
      * Called by the paste key and the edit-menu paste before the clipboard is read; nothing pasted
-     * is learned. False while the keyguard is shown: then neither pastes anything.
+     * is learned. False while the keyguard is shown: then neither pastes anything. The answer is
+     * forced fresh — a stale lock answer would decide a clipboard read.
      */
     public boolean onBeforeClipboardPaste() {
-        if (noteLiveLock()) {
+        if (noteFreshPrivacyLock()) {
             return false;
         }
         if (mSuggestionsController != null) {
