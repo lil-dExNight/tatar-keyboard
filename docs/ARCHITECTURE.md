@@ -254,6 +254,12 @@ previewed again. The match is the exact pair; a different replacement named for 
 fires. A text-shortcut expansion's undo shares only the session list: the pair is user-managed
 content with its own screen.
 
+The legacy-orthography map (`TatarWordUtils.legacyOrthographyCanonical`) handles old spellings
+whose replacement must not depend on statistical ambiguity. It currently maps `тәъмин` to
+`тәэмин`, which is already a high-frequency bundled entry. The controller uses the same preview,
+separator-time replacement, refusals and undo window as an engine verdict; it adds no dictionary
+entry and does not alter `теллә` or `вәҗһ`.
+
 Text shortcuts (managed on the "Text shortcuts" settings screen; one list for all layouts,
 `TextShortcutStore`, `.tcut`). While the typed word is exactly a saved shortcut, the strip offers
 its expansion in the first cell; a space or punctuation replaces the word through the same

@@ -414,6 +414,38 @@ class AutocorrectControllerTest {
     }
 
     @Test
+    fun legacyTaminSpellingUsesTheNormalCorrectionAndUndoPath() {
+        val h = Harness()
+        h.start()
+        h.typeWord("Тәъмин")
+
+        h.separator(' ')
+
+        assertEquals("Тәэмин ", h.editor.before)
+        assertEquals(listOf("replace:Тәъмин->Тәэмин"), h.editor.edits)
+
+        h.backspace()
+
+        assertEquals("Тәъмин ", h.editor.before)
+        assertEquals(
+            listOf("replace:Тәъмин->Тәэмин", "revert:Тәэмин ->Тәъмин "),
+            h.editor.edits,
+        )
+    }
+
+    @Test
+    fun legacyTaminSpellingStaysAsTypedWhenAutocorrectIsOff() {
+        val h = Harness(autocorrectOn = false)
+        h.start()
+        h.typeWord("тәъмин")
+
+        h.separator(' ')
+
+        assertEquals("тәъмин ", h.editor.before)
+        assertTrue(h.editor.edits.isEmpty())
+    }
+
+    @Test
     fun aMidSessionLockBlocksTheSeparatorCorrection() {
         val h = Harness()
         h.start()

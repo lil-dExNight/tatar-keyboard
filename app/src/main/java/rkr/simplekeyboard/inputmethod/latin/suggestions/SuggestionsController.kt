@@ -2876,6 +2876,20 @@ class SuggestionsController internal constructor(
             showBand(cells)
             return
         }
+        // An explicitly supported legacy spelling has a deterministic correction even when the
+        // statistical engine withholds its verdict because another dictionary word is one edit away.
+        val legacyPreview = legacyAutocorrectPreview(pendingPrefix)
+        if (legacyPreview != null) {
+            previewKeepTypedCell = legacyPreview.typedShown
+            displayedGlideAlternativesFor = null
+            displayedPrefix = pendingPrefix
+            displayedSessionId = sessionId
+            showBand(
+                listOf(legacyPreview.typedShown, legacyPreview.correctionShown),
+                PREVIEW_EMPHASIZED_CELL,
+            )
+            return
+        }
         // When the separator-time autocorrect would fire on this word, the strip shows the coming
         // replacement instead of continuations, as in AOSP. The preview owns the whole strip: no
         // companion fill.
@@ -2981,6 +2995,27 @@ class SuggestionsController internal constructor(
         }
     }
 
+    /** Returns the deterministic legacy-spelling preview, with the same refusal rules as a verdict. */
+    private fun legacyAutocorrectPreview(word: String): AutocorrectPreview? {
+        if (!autocorrectGate.isOn() || word == suppressedPreviewWord) return null
+        val canonical = TatarWordUtils.legacyOrthographyCanonical(word) ?: return null
+        val normalized = TatarWordUtils.normalizeForLookup(word)
+        if (normalized in refusedCorrections ||
+            refusedCorrectionSource?.isRefused(normalized, canonical) == true
+        ) {
+            return null
+        }
+        if (normalized.codePointCount(0, normalized.length) <
+            AutocorrectPolicy.MIN_WORD_CODE_POINTS
+        ) {
+            return null
+        }
+        val correction = TatarWordUtils.applyCasing(
+            canonical, TatarWordUtils.classifyCasing(word))
+        if (correction == word) return null
+        return AutocorrectPreview(word, correction)
+    }
+
     /**
      * A word separator has been pressed and is about to be committed: the last chance to correct
      * the word it finishes. Returns true when the trailing word was actually replaced.
@@ -3031,6 +3066,16 @@ class SuggestionsController internal constructor(
             AutocorrectPolicy.MIN_WORD_CODE_POINTS
         ) {
             return false
+        }
+        val legacyCanonical = TatarWordUtils.legacyOrthographyCanonical(word)
+        if (legacyCanonical != null &&
+            refusedCorrectionSource?.isRefused(normalized, legacyCanonical) != true
+        ) {
+            val replacement = TatarWordUtils.applyCasing(legacyCanonical, casing)
+            if (replacement != word) {
+                return replaceTrailingWordAndArm(word, replacement, separatorCodePoint,
+                    requiresAutocorrectGate = true)
+            }
         }
         val advice = activeEngine.autocorrectAdvice() ?: return false
         if (advice.typedWord != normalized) return false

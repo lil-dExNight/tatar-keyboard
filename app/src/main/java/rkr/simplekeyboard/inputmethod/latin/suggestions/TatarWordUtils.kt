@@ -539,6 +539,13 @@ object TatarWordUtils {
      * which matches Python's locale-independent `str.lower()` for Cyrillic and Tatar-specific
      * letters.
      */
+    private val LEGACY_ORTHOGRAPHY = mapOf("тәъмин" to "тәэмин")
+
+    /** Returns the canonical spelling of an explicitly supported legacy form, not a fuzzy edit. */
+    @JvmStatic
+    fun legacyOrthographyCanonical(word: String): String? =
+        LEGACY_ORTHOGRAPHY[normalizeForLookup(word)]
+
     @JvmStatic
     fun normalizeForLookup(word: String): String =
         Normalizer.normalize(word, Normalizer.Form.NFC).lowercase()

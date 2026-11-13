@@ -314,6 +314,39 @@ class AutocorrectPreviewControllerTest {
     }
 
     @Test
+    fun legacyTaminPreviewShowsTheCanonicalSpellingAndUndo() {
+        val h = Harness()
+        h.start()
+        h.typeWord("Тәъмин")
+
+        val band = h.strip.lastBand()!!
+        assertEquals(listOf("Тәъмин", "Тәэмин", null, null), band.cells)
+        assertEquals(PREVIEW_EMPHASIZED_CELL, band.emphasized)
+
+        h.separator(' ')
+        assertEquals("Тәэмин ", h.editor.before)
+        h.backspace()
+        assertEquals("Тәъмин ", h.editor.before)
+    }
+
+    @Test
+    fun legacyTaminPreviewHonorsPersistedRefusal() {
+        val h = Harness()
+        h.refusedPairs = setOf("тәъмин" to "тәэмин")
+        h.start()
+        h.engine.suggestionsByWord["тәъмин"] = listOf("тәмин")
+
+        h.typeWord("тәъмин")
+
+        val band = h.strip.lastBand()!!
+        assertEquals(listOf("тәмин", null, null, null), band.cells)
+        assertEquals(SuggestionStripState.NO_CELL, band.emphasized)
+        h.separator(' ')
+        assertEquals("тәъмин ", h.editor.before)
+        assertTrue(h.editor.edits.isEmpty())
+    }
+
+    @Test
     fun afterAnUndoTheSameWordShowsNoPreview() {
         val h = Harness()
         h.start()
