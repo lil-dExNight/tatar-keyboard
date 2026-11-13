@@ -33,8 +33,10 @@ import android.widget.TextView
  *
  * Arming is impossible without the dialog: [GestureRecorderController.grantConsentAndArm] is the
  * only arming path, and it is called only from the dialog's accept button here. Nothing in the
- * app starts this screen; open it with
+ * app starts this screen; on an emulator or a userdebug build open it with
  * `adb shell am start -n org.tatarkeyboard.ime.debug/rkr.simplekeyboard.inputmethod.latin.glide.recorder.GestureRecorderActivity`.
+ * A retail user build refuses that intent (the shell uid may not start non-exported activities);
+ * there the browser collector (`research/glide-collector/index.html`) is the recording path.
  * The strings are inlined English on purpose: this screen is a lab tool and ships in no locale.
  */
 class GestureRecorderActivity : Activity() {
