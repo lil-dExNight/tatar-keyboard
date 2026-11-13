@@ -1,0 +1,5 @@
+• Personal files stay recoverable after storage or restore failures
+• Manual word addition follows Pause learning and the current lock state
+• Clipboard offers use fresh lock checks and never read clip text aloud
+• Recent clip cell clears as soon as the keyboard closes
+• Added an optional evaluator for locally recorded Tatar gestures

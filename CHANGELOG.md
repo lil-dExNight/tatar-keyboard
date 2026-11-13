@@ -12,6 +12,19 @@ These hold for every release:
   `apksigner verify --print-certs <apk>`.
 
 
+## [3.14.2] — 2026-11-13
+
+### Fixed
+
+- Personal stores preserve damaged originals after a failed quarantine move and refuse an unreadable restore. A write installed before a directory-sync failure no longer leaves memory and disk out of sync.
+- Manual word addition respects Pause learning on the Saved words screen and fresh lock state from the suggestion strip.
+- Clipboard reads use fresh lock state. TalkBack announces the paste action instead of clip text, and the clip cell disappears when the keyboard hides.
+- Storage, privacy and asset documentation matches the current implementation.
+
+### Added
+
+- Optional diagnostic harness for locally recorded Tatar gestures.
+
 ## [3.14.1] — 2026-11-10
 
 ### Fixed
