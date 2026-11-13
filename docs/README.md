@@ -5,7 +5,8 @@ All documents are in English except the root `README.md`, which is bilingual, an
 
 ## Repository root
 
-- [README.md](../README.md): user-facing overview, install and build instructions.
+- [README.md](../README.md): user-facing overview and install instructions. Build instructions
+  live in [AGENTS.md](../AGENTS.md).
 - [PRIVACY.md](../PRIVACY.md): privacy policy; the app links to it. [PRIVACY.ru.md](../PRIVACY.ru.md) is its Russian version.
 - [SECURITY.md](../SECURITY.md): how to report a vulnerability, supported versions, re-audit cadence.
 - [CHANGELOG.md](../CHANGELOG.md): user-facing changes per release.

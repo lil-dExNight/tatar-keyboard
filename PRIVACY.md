@@ -28,11 +28,11 @@ So the emoji panel can show them first, the keyboard remembers up to 24 recently
 
 ## Word and emoji suggestions
 
-The word-completion dictionaries, the next-word prediction tables and the “word → emoji” table are bundled inside the app and unpacked to an internal app folder on first use.
+The word-completion dictionaries and the next-word prediction tables are bundled inside the app and unpacked to an internal app folder on first use. The “word → emoji” table is read directly from the app's own APK assets, in memory; it is never unpacked to any folder.
 
-- **Size.** Two unpacked dictionaries and two next-word prediction tables, a few megabytes in total. The emoji lookup tables add a few hundred KB packed and store nothing about you.
+- **Size.** Two unpacked dictionaries and two next-word prediction tables, a few megabytes in total. The emoji lookup tables add a few hundred KB inside the APK and store nothing about you.
 - **What they record about you: nothing.** Word completions, next-word predictions and emoji suggestions are read-only lookups in these bundled tables. They keep no history, no counters and no copy of what you type. The emoji suggestion in the strip reads only the word you just finished, on the device, and is dropped from memory with it. In password and other private fields, and on the lock screen, neither word suggestions nor emoji suggestions appear.
-- When a new app version brings a new dictionary or table, the previous unpacked copy is kept next to the new one for a while, so the update can be rolled back; the old version is removed on a later launch. At most two versions of each file are on the device at any time.
+- When a new app version brings a new dictionary or next-word prediction table, the previous unpacked copy is kept next to the new one for a while, so the update can be rolled back; the old version is removed on a later launch. At most two versions of each file are on the device at any time. The emoji table has no such copies: a new app version simply ships a new asset.
 - The files are excluded from backup, like everything else.
 
 ## Personal dictionary

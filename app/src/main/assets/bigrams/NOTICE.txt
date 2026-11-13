@@ -36,9 +36,9 @@ sentence boundaries from the source corpora, restricted to word forms
 already present in the shipped tatar_top100k_v1 dictionary (which contains a
 CC BY 4.0-licensed component derived from the same collection), ranked per head
 word, capped to the top 10,132 head words by unigram frequency plus a named
-list of 2,614 further words (105 frequent imperative forms, rank
-10,000..40,000, paradigm-checked, and 2,509 conversationally established words
-below the frequency cutoff) -- top 4 successors per head, packed into a
+list of 2,786 further words (106 frequent imperative forms, rank
+10,000..40,000, paradigm-checked, and 2,680 conversationally established words
+below the frequency cutoff) -- top 8 successors per head, packed into a
 versioned binary format (schema 3, distinct from the dictionary's schema 2)
 with SHA-256, and zlib-compressed. Punctuation at token edges was removed
 before word normalization; internal punctuation still rejected the token, and
@@ -77,7 +77,7 @@ Changes by the Tatar Keyboard project: the same transformation as above, with
 the 33-letter Russian alphabet in place of the Tatar one and the shipped
 russian_top100k_v1 dictionary as the vocabulary both halves of every pair must
 belong to; this table keeps its own shape -- the top 10,000 head words by
-unigram frequency and the top 4 successors per head -- with the same binary
+unigram frequency and the top 8 successors per head -- with the same binary
 format, the same SHA-256 and zlib settings. Punctuation at token edges was
 removed before word normalization; internal punctuation still rejected the
 token, and sentence-terminal edges continued to break pair adjacency. The

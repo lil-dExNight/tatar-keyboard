@@ -50,9 +50,9 @@ import java.nio.ByteBuffer
  *  - strip-empty and top-1/visible-top-3/engine-top-4 rates at sentence start, via the
  *    sentence-start table (`tatar_sentstart_v1.txt`, parsed by [SentStartIndex]).
  *
- * The engine-side metrics count the four composed candidates; the Tatar table stores K = 4
- * successors and `TatBigrPrefixIndex.MAX_PREDICT_RESULTS` reads them all. The keystroke arms
- * differ only in how many of the four a tap can reach. The results match
+ * The engine-side metrics count the four composed candidates; the Tatar table stores K = 8
+ * successors and `TatBigrPrefixIndex.MAX_PREDICT_RESULTS` reads the first four of them. The
+ * keystroke arms differ only in how many of the four a tap can reach. The results match
  * `scripts/suggest_eval.py`. Assets and eval set are SHA-pinned, so the exact counts below are a
  * deterministic function of committed bytes: re-pin when the assets, the eval set or the ranking
  * change. Zero-allocation and p95 contracts live in [RealDictionaryPrefixIndexTest] and

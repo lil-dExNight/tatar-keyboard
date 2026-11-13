@@ -108,11 +108,12 @@ learning, before the first user unlock, or while the keyguard is shown (also aft
 unlock). Field start and window show refresh the lock snapshot; learning, autocorrect, text
 shortcuts, suggestion commits and glide re-check both lock states at their event and write
 boundaries, so a mid-session lock invalidates pending work and locked-period typing is not learned
-after unlock. Learning reads both states live; the other checks reuse one answer, which screen
-and unlock broadcasts, field start and window show drop. Once it is older than
+after unlock. Learning reads both states live; manual personal-store writes and clipboard access
+force a fresh read before the action. The other checks reuse one answer, which screen and unlock
+broadcasts, field start and window show drop. Once it is older than
 `LatinIME.PRIVACY_LOCK_CACHE_MS` a worker re-reads it while the old answer is still served; past
 twice that age the check reads on the UI thread. A lock without a screen change (lockdown from
-the power menu) is therefore seen within twice that time.
+the power menu) is therefore seen within twice that time by the cached checks.
 
 Threads: `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single
@@ -188,10 +189,12 @@ changes how that cell is spelled.
 Typo recovery (`TdictPrefixIndex.collectFuzzy`, configured per engine by `FuzzyEditPolicy`) runs
 edit class #1 (long-press partner, from the layout's `moreKeys` via `KeyNeighborTable`) for every
 language. When the exact pass is empty and the prefix has at least four code points, both shipped
-engines also run the shared DL-1 tier (substitution, deletion, insertion and transposition under
-one rank tag, ranked by frequency). Both apply the same-length bonus, which ranks a candidate as
-long as its variant before that variant's continuations: the Tatar policy in class #1 and in the
-tier, the Russian policy inside the tier only (`FuzzyEditPolicy.sameLengthBonusOnlyInDl1`). Both
+engines run the shared DL-1 tier instead (substitution, deletion, insertion and transposition
+under one rank tag, ranked by frequency): the tier replaces class #1 on that domain only, and
+the substitution family is a superset of class #1, so no long-press candidate is lost. Both
+engines apply the same-length bonus, which ranks a candidate as long as its variant before that
+variant's continuations: the Tatar policy in class #1 and in the tier, the Russian policy inside
+the tier only (`FuzzyEditPolicy.sameLengthBonusOnlyInDl1`). Both
 policies also arm the geometry-neighbor bonus (`FuzzyEditPolicy.geometryNeighborBonus`): inside
 the tier a substitution whose typed and replacement letters sit on adjacent keys of the published
 layout (`KeyNeighborTable` derives the adjacency from the key rectangles, centers within a radius
@@ -295,7 +298,8 @@ token (`StoreValidationToken`), so the engine's open repeats only the header and
 and skips the structural walk the store already ran. `MappedDictionaryEngine` maps the file
 read-only (`FileChannel.map`) and reads it in place. The bigram table attaches lazily: publication
 hands the engine its catalog, and the engine maps and opens the table on its worker at the first
-next-word lookup, so a session that never predicts a next word never maps it. Pinned sizes and
+next-word lookup or at the first glide decode with a committed context word, so a session that
+neither predicts a next word nor glides behind a word never maps it. Pinned sizes and
 SHA-256 values are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a
 usable dictionary a language has no suggestions; without its bigram table next-word prediction
 has no bundled successors (see next-word prediction above).
