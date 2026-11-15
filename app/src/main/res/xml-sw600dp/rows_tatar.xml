@@ -26,12 +26,12 @@
          punctuation keys join), delete and Enter take the right edges of the first two
          rows, and the bottom row is the shared @xml/row_qwerty4 — Enter lives in the
          second row here, exactly as on the tablet QWERTY. Row budgets: extra row
-         26+6*8+26, first 11*8+12, second 4+11*8+8, third 9+9*7.5+2*7.5+8.5 = 100%p. -->
-    <!-- Extra row: the six Tatar letters, centered at the common pitch. -->
+         18+8*8+18, first 11*8+12, second 4+11*8+8, third 9+9*7.5+2*7.5+8.5 = 100%p. -->
+    <!-- Extra row: the eight Tatar-only letters (ә ө ү җ ң һ ё ъ), centered at the common pitch. -->
     <Row>
         <include
             latin:keyboardLayout="@xml/rowkeys_tatar_extra"
-            latin:keyXPos="26%p"
+            latin:keyXPos="18%p"
             latin:keyWidth="8.0%p" />
     </Row>
     <!-- First row -->

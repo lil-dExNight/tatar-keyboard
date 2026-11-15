@@ -313,14 +313,44 @@ class PersonalQuarantineRecoveryTest {
         store.restoreQuarantine()
         assertEquals(3, store.snapshot.size)
         val originalBytes = quarantineFile(directory).readBytes()
+        val activeBytes = destinationFile(directory).readBytes()
 
         var outcome: Boolean? = null
         store.forget("бабай") { outcome = it }
 
-        assertEquals("the word is gone from the active dictionary", true, outcome)
-        assertTrue(store.snapshot.indexOfNormalized("бабай") < 0)
-        assertArrayEquals(originalBytes, quarantineFile(directory).readBytes())
+        assertEquals("a half deletion is not reported as success", false, outcome)
+        assertTrue("the active word is back", store.snapshot.indexOfNormalized("бабай") >= 0)
+        assertEquals(3, store.snapshot.size)
+        assertArrayEquals("the active file is byte-for-byte unchanged",
+            activeBytes, destinationFile(directory).readBytes())
+        assertArrayEquals("the quarantined file is byte-for-byte unchanged",
+            originalBytes, quarantineFile(directory).readBytes())
         assertEquals(setOf("абыйлар", "бабай", "гүзәл"), salvageWords(quarantineFile(directory)).toSet())
+    }
+
+    /** The other cleanup shape: the copy would be empty, and its delete is the operation that fails. */
+    @Test
+    fun aQuarantineCopyThatCannotBeDeletedAlsoFailsClosed() {
+        val directory = quarantinedDirectoryCorruptingChecksum()
+        val oneWordDirectory = newPersonalDir()
+        store(oneWordDirectory).addManually("бабай")
+        quarantineFile(directory).writeBytes(destinationFile(oneWordDirectory).readBytes())
+        val ops = object : PassthroughOps() {
+            override fun delete(file: File): Boolean =
+                if (file.name.endsWith(QUARANTINE_SUFFIX)) false else super.delete(file)
+        }
+        val store = store(directory, ops = ops)
+        store.restoreQuarantine()
+        val activeBytes = destinationFile(directory).readBytes()
+        val quarantineBytes = quarantineFile(directory).readBytes()
+
+        var outcome: Boolean? = null
+        store.forget("бабай") { outcome = it }
+
+        assertEquals(false, outcome)
+        assertTrue(store.snapshot.indexOfNormalized("бабай") >= 0)
+        assertArrayEquals(activeBytes, destinationFile(directory).readBytes())
+        assertArrayEquals(quarantineBytes, quarantineFile(directory).readBytes())
     }
 
     // ---- the notice reaches the user, whatever happens to the process --------------------------

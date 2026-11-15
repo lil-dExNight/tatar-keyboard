@@ -1,0 +1,61 @@
+{
+  "attribution": "Mozilla Common Voice contributors; Common Voice Corpus 17.0 (CC0-1.0). Retrieved from the ungated Hugging Face mirror fsicoli/common_voice_17_0 because Mozilla moved distribution to its Data Collective.",
+  "bundle": "build/corpus-sources/text/common_voice.jsonl",
+  "contains_audio": false,
+  "contains_speaker_metadata": false,
+  "generation_command": "python3 research/corpus-sources/fetch_sources.py --sources common_voice && python3 research/corpus-sources/write_provenance.py",
+  "id": "common_voice-tt-text-8262c16bf297",
+  "input_files": [
+    {
+      "config": "tt",
+      "raw_path": "build/corpus-sources/raw/fsicoli--common_voice_17_0/transcript/tt/dev.tsv",
+      "raw_sha256": "683525d03ce94ad46ac5eeeac2d8402929b6988be4feffaa23e7ebe3a6508d4e",
+      "raw_size_bytes": 1158574,
+      "rows": 3691,
+      "split": "dev",
+      "text_path": "build/corpus-sources/text/common-voice/tt-dev.txt",
+      "text_sha256": "6caf6ecd9315fb1c79ae57bbce88143592d7bbf92544dcadaae602eb5a084b91",
+      "text_size_bytes": 247652
+    },
+    {
+      "config": "tt",
+      "raw_path": "build/corpus-sources/raw/fsicoli--common_voice_17_0/transcript/tt/test.tsv",
+      "raw_sha256": "5be296388601e8ceca569121bf887a46c144d5d5985cd610c65b6269972ff3d6",
+      "raw_size_bytes": 1548296,
+      "rows": 4964,
+      "split": "test",
+      "text_path": "build/corpus-sources/text/common-voice/tt-test.txt",
+      "text_sha256": "292ffe6f51cc7f744f4a5dded8771753db2683ac50c849f49e50290cd2026d26",
+      "text_size_bytes": 337601
+    },
+    {
+      "config": "tt",
+      "raw_path": "build/corpus-sources/raw/fsicoli--common_voice_17_0/transcript/tt/train.tsv",
+      "raw_sha256": "888625a0245b68bb00c372aba268ae9f10f54423aad087cae3b63d54bc64aebf",
+      "raw_size_bytes": 3061838,
+      "rows": 9315,
+      "split": "train",
+      "text_path": "build/corpus-sources/text/common-voice/tt-train.txt",
+      "text_sha256": "fd7739d162cb0e4fff3eea4cb78326695e7794869e6bae62a81e034d6a58a8d1",
+      "text_size_bytes": 658454
+    }
+  ],
+  "license": "CC0-1.0",
+  "retrieval_dataset": "fsicoli/common_voice_17_0",
+  "retrieval_revision": "8262c16bf297c87a9cd88c51997c4758ed7a8ba2",
+  "retrieved_rows": 17970,
+  "revision": "8262c16bf297c87a9cd88c51997c4758ed7a8ba2",
+  "sha256": "566cf6a5066264e3931807eb34f838bf552ebd0367aea8857d41ad5eb3b5b3ac",
+  "size_bytes": 2288753,
+  "source_acquisition_command": "python3 research/corpus-sources/fetch_sources.py --sources common_voice",
+  "source_role": "Candidate text-only corpus for dictionary and next-word evaluation; no audio or speaker metadata.",
+  "source_sentence_rule": "Use only the sentence column from the official train/dev/test TSV equivalents exposed by the mirror; discard all other columns. Invalidated, other, reported, and unvalidated inputs are excluded.",
+  "split_rows": {
+    "tt/dev": 3691,
+    "tt/test": 4964,
+    "tt/train": 9315
+  },
+  "split_rule": "Preserve the upstream config and train/dev/test labels. Candidate training uses train only; dev is reserved; test is held out. Evaluation removes normalized test-line collisions from every training candidate.",
+  "upstream": "Mozilla Common Voice Corpus 17.0, Tatar (tt)",
+  "upstream_page": "https://commonvoice.mozilla.org/en/datasets"
+}

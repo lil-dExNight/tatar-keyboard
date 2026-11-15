@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "common_voice": {
+    "dataset": "fsicoli/common_voice_17_0",
+    "revision": "8262c16bf297c87a9cd88c51997c4758ed7a8ba2",
+    "upstream": "Mozilla Common Voice Corpus 17.0, Tatar (tt)",
+    "upstream_page": "https://commonvoice.mozilla.org/en/datasets",
+    "license": "CC0-1.0",
+    "attribution": "Mozilla Common Voice contributors; Common Voice Corpus 17.0 (CC0-1.0). Retrieved from the ungated Hugging Face mirror fsicoli/common_voice_17_0 because Mozilla moved distribution to its Data Collective.",
+    "splits": [
+      "train",
+      "dev",
+      "test"
+    ],
+    "files": {
+      "transcript/tt/train.tsv": {
+        "size_bytes": 3061838,
+        "sha256": "888625a0245b68bb00c372aba268ae9f10f54423aad087cae3b63d54bc64aebf"
+      },
+      "transcript/tt/dev.tsv": {
+        "size_bytes": 1158574,
+        "sha256": "683525d03ce94ad46ac5eeeac2d8402929b6988be4feffaa23e7ebe3a6508d4e"
+      },
+      "transcript/tt/test.tsv": {
+        "size_bytes": 1548296,
+        "sha256": "5be296388601e8ceca569121bf887a46c144d5d5985cd610c65b6269972ff3d6"
+      }
+    }
+  },
+  "tatsc": {
+    "dataset": "yasalma/TatSC_ASR",
+    "revision": "3da29ce200d04a27c1696464f2653c982afb277f",
+    "upstream": "Tatar Speech Corpus (TatSC)",
+    "upstream_page": "https://issai.nu.edu.kz/issai-datasets",
+    "license": "CC-BY-4.0",
+    "attribution": "TatSC, Institute of Smart Systems and Artificial Intelligence (ISSAI), Nazarbayev University, and the Institute of Applied Semiotics of the Tatarstan Academy of Sciences (CC BY 4.0). Text extracted from the ungated Hugging Face mirror yasalma/TatSC_ASR; audio and speaker identifiers are discarded.",
+    "acquisition_dependency": {
+      "name": "duckdb",
+      "version": "2.0.0",
+      "scope": "acquisition-only remote Parquet text-column projection"
+    },
+    "splits": {
+      "audiobooks": {
+        "train": 18470,
+        "dev": 582,
+        "test": 754
+      },
+      "crowdsourced_tg": {
+        "train": 110683
+      },
+      "crowdsourced_web": {
+        "train": 75054,
+        "dev": 6469,
+        "test": 5902
+      }
+    }
+  }
+}

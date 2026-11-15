@@ -91,7 +91,7 @@ class KeyGeometryTsvTest {
 
     private companion object {
         val LANGS = listOf("tt", "ru")
-        const val KEYS_TT_SHA256 = "15c76e5c2a8e5f2d493888b1752d81c3c7c719d9d44ae4839eeafafb517b3278"
+        const val KEYS_TT_SHA256 = "d27cc672484f3e46f601e741bfb1446123dae13e133f5907fc5d7b3479411a5d"
         const val KEYS_RU_SHA256 = "5f86194ae59126da3a444e8188fb74f19eb6216a29b1b224679cc4b3c0b8e3bd"
     }
 }

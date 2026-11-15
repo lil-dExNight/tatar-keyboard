@@ -26,19 +26,24 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.InflectedSuffixTab
  * Consistency with the build-time generator (`scripts/wordform_gen.py`): the table is the set of
  * single-suffix remainders its paradigms can attach to a stem (plural, the five oblique cases, the
  * possessives, the verb tenses with their person composites, the gerunds and participles, the
- * masdar, and the seven derivational suffixes). Where the two differ on purpose:
+ * masdar, the interrogative clitic -мы/-ме, and the seven derivational suffixes). Where the two
+ * differ on purpose:
  *
  *  - the runtime table is a fixed explicit list while the generator renders patterns; suffix
  *    chains are not listed here (татарларның reaches the boost in steps: татарлар is boosted by
  *    «лар» at prefix татар, and татарларның by «ның» at prefix татарлар). The generator's two
  *    direct chain shapes, plural+case and 3sg-possessive+case, are covered the same way, since the
  *    plural and the 3sg forms are dictionary words of their own;
- *  - the past-tense 1pl -к composites (яздык) are listed although the generator emits no 1pl
- *    persons: -к is a standard person ending and the surface forms are ordinary words;
+ *  - the present- and past-tense 1pl composites (язабыз, яздык) are listed although the
+ *    generator's type-I/II paradigms emit no 1pl persons: -быз and -к are standard person
+ *    endings and the surface forms are ordinary words;
  *  - the post-3sg case forms (-н, -на/-нә, -нда/-ндә, -ннан/-ннән) attach to the 3sg-possessive
  *    word (баласы+н), which is why they are single suffixes here but chains from the bare stem;
  *  - the present-tense person endings -сың/-сең ride the identity-contracted present base of
- *    и-final vowel stems (ди+сең), the one place a bare person ending follows a stem directly.
+ *    и-final vowel stems (ди+сең), the one place a bare person ending follows a stem directly;
+ *  - the interrogative clitic -мы/-ме stacks on finite person forms and nominal predicates
+ *    (язам+мы, татар+мы), which are words of their own, so the bare clitic is a single suffix
+ *    here although the generator's .q forms are chains from the bare stem.
  *
  * The membership test runs on the lookup hot path (the same-stem boost in `TdictPrefixIndex`), so
  * it is allocation-free: a binary search over the sorted table against the one- or two-piece byte
@@ -78,10 +83,10 @@ object TatarSuffixRules : InflectedSuffixTable {
         "post-3sg dative -нA" to arrayOf("на", "нә"),
         "post-3sg locative -нDA" to arrayOf("нда", "ндә"),
         "post-3sg ablative -ннAн" to arrayOf("ннан", "ннән"),
-        // present -A 3sg, and the type-I persons -м/-сың/-сыз/-лар riding the present base
+        // present -A 3sg, and the type-I persons -м/-сың/-быз/-сыз/-лар riding the present base
         "present 3sg -A" to arrayOf("а", "ә"),
         "present persons" to arrayOf(
-            "ам", "әм", "асың", "әсең", "асыз", "әсез", "алар", "әләр",
+            "ам", "әм", "асың", "әсең", "абыз", "әбез", "асыз", "әсез", "алар", "әләр",
             // -сың/-сең also follow an и-final stem directly (ди+сең: the contracted base IS the
             // stem) — the one bare person ending a stem can take.
             "сың", "сең",
@@ -122,6 +127,8 @@ object TatarSuffixRules : InflectedSuffixTable {
         "participle -AсI" to arrayOf("асы", "әсе"),
         "masdar -U/-ю" to arrayOf("у", "ү", "ю"),
         "intention -мAкчI" to arrayOf("макчы", "мәкче"),
+        // interrogative clitic -мI, joined spelling (язам+мы, татар+мы)
+        "interrogative -мI" to arrayOf("мы", "ме"),
         // derivational: -чA (татарча), -лIк, -лI, -сIз, -чI, -DAш (т after voiceless), -рAк
         "derivational -чA" to arrayOf("ча", "чә"),
         "derivational -лIк" to arrayOf("лык", "лек"),

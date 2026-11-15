@@ -421,8 +421,8 @@ class GeometricMapTest(unittest.TestCase):
         self.geo = pack.read_layout_geometry(LAYOUT_DIR)
         self.geometric_map = pack.build_geometric_map(self.geo)
 
-    def test_thirty_seven_letter_keys(self) -> None:
-        self.assertEqual(len(self.geo), 37)
+    def test_thirty_nine_letter_keys(self) -> None:
+        self.assertEqual(len(self.geo), 39)
 
     def test_thirty_two_undirected_pairs_and_symmetry(self) -> None:
         # The horizontal gap removes every same-row "touch" on device: exactly the 32 cross-row
@@ -441,24 +441,26 @@ class GeometricMapTest(unittest.TestCase):
                 self.assertNotEqual(row_of[node], row_of[partner])
 
     def test_the_mission_pair_survives(self) -> None:
-        # ц sits one row below ә with ~79 % overlap — the pair that turns "сцләм" into "сәләм".
-        self.assertIn(ord("ә"), self.geometric_map[ord("ц")])
-        self.assertIn(ord("ц"), self.geometric_map[ord("ә")])
+        # ө sits one row above ц with ~54 % overlap — the pair that turns "бцдрә" into "бөдрә".
+        # The 8-key extra row moved the flagship extra-row/below-row pair one slot right: on the
+        # 6-key row it was ц one row below ә (~79 % overlap, the сцләм -> сәләм story).
+        self.assertIn(ord("ө"), self.geometric_map[ord("ц")])
+        self.assertIn(ord("ц"), self.geometric_map[ord("ө")])
 
     def test_average_fanout_and_max(self) -> None:
         total = sum(len(v) for v in self.geometric_map.values())
-        self.assertEqual(len(self.geometric_map), 37)
-        self.assertAlmostEqual(total / 37, 64 / 37, places=4)
+        self.assertEqual(len(self.geometric_map), 39)
+        self.assertAlmostEqual(total / 39, 64 / 39, places=4)
         self.assertEqual(max(len(v) for v in self.geometric_map.values()), 3)
 
     def test_fifth_row_letters_connect_to_the_alphabet(self) -> None:
-        for letter in "әөүҗңһ":
+        for letter in "әөүҗңһёъ":
             partners = self.geometric_map.get(ord(letter), ())
             self.assertTrue(partners)
-            self.assertTrue(any(chr(cp) not in "әөүҗңһ" for cp in partners))
+            self.assertTrue(any(chr(cp) not in "әөүҗңһёъ" for cp in partners))
 
     def test_a_specific_neighbour_set(self) -> None:
-        self.assertEqual("".join(chr(cp) for cp in self.geometric_map[ord("к")]), "аө")
+        self.assertEqual("".join(chr(cp) for cp in self.geometric_map[ord("к")]), "аү")
 
 
 class DeviceGeometryModelTest(unittest.TestCase):
@@ -479,13 +481,14 @@ class DeviceGeometryModelTest(unittest.TestCase):
 
     def test_zero_gap_reproduces_the_pre_phase_b_edge_to_edge_model(self) -> None:
         # With a zero gap the device formula degenerates to keys that DO touch — the old model's
-        # 65 pairs (33 same-row + 32 cross-row) come back, which cross-checks the formula.
+        # 69 pairs (35 same-row + 34 cross-row on the 8-key extra row) come back, which
+        # cross-checks the formula.
         legacy = pack.read_layout_geometry(
             LAYOUT_DIR, gap_percent=0.0, left_padding_percent=0.0, right_padding_percent=0.0
         )
         legacy_map = pack.build_geometric_map(legacy)
         undirected = {frozenset((n, p)) for n, ps in legacy_map.items() for p in ps}
-        self.assertEqual(len(undirected), 65)
+        self.assertEqual(len(undirected), 69)
 
     def test_pair_set_is_identical_across_all_shipped_configs_and_widths(self) -> None:
         # Every shipped config variant (phone/tablet x portrait/landscape) and a width sweep must
@@ -529,7 +532,7 @@ class DeviceGeometryModelTest(unittest.TestCase):
 
 
 class PrefixWindowCliTest(unittest.TestCase):
-    """The typo window is a CLI argument (the 5-cp window covers the сцләм case)."""
+    """The typo window is a CLI argument (the 5-cp window covers the бөдрә case)."""
 
     def test_default_window_stays_three_code_points(self) -> None:
         with _asset_file(FIXTURE_ASSET) as asset, tempfile.TemporaryDirectory() as directory:
@@ -618,16 +621,16 @@ class LayoutAlphabetTest(unittest.TestCase):
         self.alphabet = pack.read_layout_alphabet(LAYOUT_DIR)
 
     def test_thirty_nine_letters_from_the_layout(self) -> None:
-        # 37 letter keys of rowkeys_tatar*.xml plus the more-key-only ё and ъ.
+        # 39 letter keys of rowkeys_tatar*.xml; ё and ъ are also more-keys but have their own keys.
         self.assertEqual(len(self.alphabet), 39)
         self.assertEqual(tuple(sorted(self.alphabet)), self.alphabet)
 
-    def test_more_key_only_letters_are_included(self) -> None:
+    def test_hard_sign_and_yo_are_included(self) -> None:
         self.assertIn(ord("ё"), self.alphabet)
         self.assertIn(ord("ъ"), self.alphabet)
 
     def test_every_layout_letter_is_present(self) -> None:
-        for letter in "әөүҗңһйцукенгшщзхфывапролджэячсмитьбю":
+        for letter in "әөүҗңһёъйцукенгшщзхфывапролджэячсмитьбю":
             self.assertIn(ord(letter), self.alphabet)
 
     def test_missing_layout_dir_raises(self) -> None:
@@ -715,7 +718,7 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2)
         self.assertEqual(two.size, 109645)
         self.assertEqual(
-            two.sha256, "0ff5fbb0dfc829cbacf2a03f9cdebc98a400ee3aa16f5d65599a4bdfcf7906a4"
+            two.sha256, "7d4b41262c6fe2b9361ac9597c71283f9517d81207d37e96b09c9dc027fb1987"
         )
         three, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=3)
         self.assertEqual(three.size, 109632)
@@ -725,7 +728,7 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
     def test_class1_and_class2_five_code_point_window_identities(self) -> None:
-        # The second, 5-code-point window (the сцләм case).
+        # The second, 5-code-point window (the бөдрә case, бөдрә -> бцдрә).
         one, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=1, prefix_code_points=5)
         self.assertEqual(one.size, 102506)
         self.assertEqual(
@@ -734,7 +737,7 @@ class CommittedExtendedSetsSmokeTest(unittest.TestCase):
         two, _ = pack.generate(DICTIONARY, LAYOUT_DIR, edit_class=2, prefix_code_points=5)
         self.assertEqual(two.size, 104966)
         self.assertEqual(
-            two.sha256, "ecda41033f2c03c4ea8264c7e62343e0098d916b7e42dbcf0c56d3ad3b2d0a63"
+            two.sha256, "0f83796b81ca9d2afb03aa32857cc3f2bfde63fd24011c829aad88b68e7b0ab2"
         )
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")

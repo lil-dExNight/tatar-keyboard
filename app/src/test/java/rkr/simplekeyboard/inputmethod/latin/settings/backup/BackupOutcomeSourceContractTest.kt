@@ -100,17 +100,33 @@ class BackupOutcomeSourceContractTest {
     }
 
     @Test
-    fun clearingTheJournalAlsoDeletesTheTemporaryCopy() {
-        // A write cut short leaves the temporary copy, which holds the same personal states.
+    fun theJournalRecordsTheCommitBeforeItSweepsTheRollbackEvidence() {
+        // A cleanup whose directory fsync fails must not strand an imported state without the
+        // rollback evidence: the durable commit record is written first and decides the sweep.
         val coordinator = source(
             "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
-        val write = coordinator.substringAfter("override fun writeImportJournal(")
-            .substringBefore("override fun clearImportJournal(")
-        assertTrue(write.contains("val temporary = importJournalTemporaryFile()"))
-        val clear = coordinator.substringAfter("override fun clearImportJournal(")
-            .substringBefore("private fun importJournalFile()")
-        assertTrue(clear.contains("listOf(importJournalTemporaryFile(), importJournalFile())"))
-        assertTrue(clear.contains("if (!AndroidDurableFileOps.delete(file) && file.exists()) return false"))
+        assertTrue(coordinator.contains(
+            "private val importJournalFiles = BackupImportJournalFiles("))
+        assertTrue(coordinator.contains(
+            "override fun commitImportJournal(): Boolean = importJournalFiles.commit()"))
+        assertTrue(coordinator.contains(
+            "override fun clearImportJournal(): Boolean = importJournalFiles.clear()"))
+
+        val journal = source(
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupImportJournal.kt")
+        val commit = journal.substringAfter("fun commit(): Boolean {")
+            .substringBefore("fun clear(): Boolean")
+        val record = commit.indexOf("writeCommit(digest)")
+        val sweep = commit.indexOf("finishCommitQuietly()")
+        assertTrue("the durable record must precede any sweep", record >= 0 && sweep > record)
+        assertFalse("no journal byte is deleted before the record is durable",
+            commit.substringBefore("writeCommit(digest)").contains("delete("))
+        val sweepBody = journal.substringAfter("private fun finishCommitQuietly()")
+            .substringBefore("private fun deleteCommitQuietly()")
+        assertTrue(sweepBody.contains("if (!delete(journalFile) || !delete(temporaryFile)) return"))
+        assertTrue("the record is only disposable after the sweep is durable",
+            sweepBody.indexOf("ops.syncDirectory(directory)") in
+                0 until sweepBody.indexOf("deleteQuietly(commitFile)"))
     }
 
     /** The file holds every personal store the import replaces, so both texts name each of them. */

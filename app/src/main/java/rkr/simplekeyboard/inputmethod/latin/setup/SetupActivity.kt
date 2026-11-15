@@ -48,6 +48,11 @@ import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
  * finishes; the done block with the try-it field belongs to the instance
  * that watched the steps get finished.
  *
+ * The done block teaches the keyboard once, in a single guide card: the Tatar
+ * layout (the extra top row and the long-press partners), the four gestures and
+ * saving a word to the personal dictionary. There is deliberately no second
+ * summary of the same gestures above the card.
+ *
  * Both step states are read live from the system on every appearance
  * (enabled input-method list and Settings.Secure.DEFAULT_INPUT_METHOD) —
  * no completion flag is stored, the system is the single source of truth.

@@ -22,36 +22,54 @@ import java.util.Locale
 
 /**
  * The locale policy of the app's own screens and keyboard chrome:
- *  - system language tt → Tatar   (Android resolves values-tt on its own)
- *  - system language ru → Russian (Android resolves values-ru on its own)
- *  - system language en → English (Android resolves values/ on its own)
- *  - anything else → English (forced by [wrap])
+ *  - the first supported system language (tt, ru or en) wins, wherever it sits in the list
+ *  - a system list without any supported language → English (forced by [wrap])
+ *
+ * A first entry that is already supported needs no wrap: Android resolves values-tt, values-ru
+ * or the English base on its own. When the supported language sits further down ([de, tt]),
+ * [wrap] forces it explicitly, so a bilingual user gets the translation they asked for instead
+ * of the English fallback the unsupported first entry would have produced.
  *
  * [wrap] overrides only the language in the base context; the process-wide default is unchanged.
  */
 object AppLocale {
 
-    /** System languages whose resolution already lands on a shipped translation. */
-    private val PASSTHROUGH_LANGUAGES = setOf("en", "ru", "tt")
+    /** Languages with a shipped translation: values-tt, values-ru and the English base. */
+    private val SUPPORTED_LANGUAGES = setOf("en", "ru", "tt")
 
     private val ENGLISH = Locale.ENGLISH
 
     /**
-     * The locale the app screens must be forced into for a given system language,
-     * or null when the system's own resolution already picks a shipped translation
-     * and no wrap is needed. Pure and JVM-testable; [wrap] is its Android half.
+     * The first language of [systemLanguages] that has a shipped translation, in the user's own
+     * preference order, or null when the list holds none. Pure and JVM-testable.
      */
-    fun forcedLocaleFor(systemLanguage: String): Locale? =
-        if (systemLanguage in PASSTHROUGH_LANGUAGES) null else ENGLISH
+    fun firstSupportedLanguage(systemLanguages: List<String>): String? =
+        systemLanguages.firstOrNull { it in SUPPORTED_LANGUAGES }
 
     /**
-     * Returns [newBase] for English, Russian and Tatar systems, or a context forced to English.
-     * The first system locale decides, so a list like [de, tt] maps to English.
+     * The locale the app screens must be forced into for a system locale list, or null when the
+     * list's first entry is already supported and the system's own resolution picks the shipped
+     * translation without a wrap. An empty or wholly unsupported list maps to English.
+     */
+    fun forcedLocaleFor(systemLanguages: List<String>): Locale? {
+        val supported = firstSupportedLanguage(systemLanguages)
+        return when {
+            supported == null -> ENGLISH
+            systemLanguages.firstOrNull() == supported -> null
+            else -> Locale(supported)
+        }
+    }
+
+    /**
+     * Returns [newBase] when the first system locale already resolves to a shipped translation,
+     * or a context forced into the first supported language of the whole list (English when the
+     * list has none).
      */
     fun wrap(newBase: Context): Context {
         val locales = newBase.resources.configuration.locales
-        val system = if (locales.isEmpty) Locale.getDefault() else locales[0]
-        val forced = forcedLocaleFor(system.language) ?: return newBase
+        val languages = if (locales.isEmpty) listOf(Locale.getDefault().language)
+            else (0 until locales.size()).map { locales[it].language }
+        val forced = forcedLocaleFor(languages) ?: return newBase
         val config = Configuration(newBase.resources.configuration)
         config.setLocale(forced)
         return newBase.createConfigurationContext(config)

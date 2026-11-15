@@ -1,0 +1,94 @@
+{
+  "acquisition_dependency": {
+    "name": "duckdb",
+    "scope": "acquisition-only remote Parquet text-column projection; not used by the app or asset packers",
+    "version": "2.0.0"
+  },
+  "attribution": "TatSC, Institute of Smart Systems and Artificial Intelligence (ISSAI), Nazarbayev University, and the Institute of Applied Semiotics of the Tatarstan Academy of Sciences (CC BY 4.0). Text extracted from the ungated Hugging Face mirror yasalma/TatSC_ASR; audio and speaker identifiers are discarded.",
+  "bundle": "build/corpus-sources/text/tatsc.jsonl",
+  "completeness_note": "The mirror exposes fewer rows than the upstream card declares. The retrieved count is used in every measurement; integration requires reconciliation with the official archive before claiming the full TatSC corpus.",
+  "contains_audio": false,
+  "contains_speaker_metadata": false,
+  "generation_command": "python3 research/corpus-sources/fetch_sources.py --sources common_voice && build/corpus-sources/venv/bin/python research/corpus-sources/extract_tatsc_parquet.py && python3 research/corpus-sources/write_provenance.py",
+  "id": "tatsc-tt-text-3da29ce200d0",
+  "input_files": [
+    {
+      "config": "audiobooks",
+      "rows": 582,
+      "split": "dev",
+      "text_path": "build/corpus-sources/text/tatsc/tt-audiobooks-dev.txt",
+      "text_sha256": "bc62716e439526869ea37ed72560eaa230afa53c4f441482fe0ae129c652709a",
+      "text_size_bytes": 73248
+    },
+    {
+      "config": "crowdsourced_web",
+      "rows": 6469,
+      "split": "dev",
+      "text_path": "build/corpus-sources/text/tatsc/tt-crowdsourced_web-dev.txt",
+      "text_sha256": "a44164c8380e000158060052d4fef6e867f7bb4ae36d00515907bd8843799d15",
+      "text_size_bytes": 468827
+    },
+    {
+      "config": "audiobooks",
+      "rows": 754,
+      "split": "test",
+      "text_path": "build/corpus-sources/text/tatsc/tt-audiobooks-test.txt",
+      "text_sha256": "7359b3ec0158f0b29d9c552adf81db52b55dfce70588613996b97a6636dd759a",
+      "text_size_bytes": 83472
+    },
+    {
+      "config": "crowdsourced_web",
+      "rows": 5902,
+      "split": "test",
+      "text_path": "build/corpus-sources/text/tatsc/tt-crowdsourced_web-test.txt",
+      "text_sha256": "cfe8c7f7efee7c7466dc5ba068e92b2dff6f11078deaf16b80e8589f38229377",
+      "text_size_bytes": 478839
+    },
+    {
+      "config": "audiobooks",
+      "rows": 18470,
+      "split": "train",
+      "text_path": "build/corpus-sources/text/tatsc/tt-audiobooks-train.txt",
+      "text_sha256": "add93639f55100cc1f22760405d2c9fd421166ba4cc115fd2f2e59114799cbff",
+      "text_size_bytes": 1879020
+    },
+    {
+      "config": "crowdsourced_tg",
+      "rows": 110683,
+      "split": "train",
+      "text_path": "build/corpus-sources/text/tatsc/tt-crowdsourced_tg-train.txt",
+      "text_sha256": "fe22f237d957745bca41627d680c2507adbbe531638c8aa944ba37754edba933",
+      "text_size_bytes": 11189421
+    },
+    {
+      "config": "crowdsourced_web",
+      "rows": 75054,
+      "split": "train",
+      "text_path": "build/corpus-sources/text/tatsc/tt-crowdsourced_web-train.txt",
+      "text_sha256": "242626bea6bc262ccbfed6083cf920b0125170d4029e668d6ad6d3493f17c985",
+      "text_size_bytes": 5724500
+    }
+  ],
+  "license": "CC-BY-4.0",
+  "retrieval_dataset": "yasalma/TatSC_ASR",
+  "retrieval_revision": "3da29ce200d04a27c1696464f2653c982afb277f",
+  "retrieved_rows": 217914,
+  "revision": "3da29ce200d04a27c1696464f2653c982afb277f",
+  "sha256": "354daa28a8c0c202b9b982d9f4acd806a74543d9d9e39712045c0d903290f941",
+  "size_bytes": 35737816,
+  "source_acquisition_command": "build/corpus-sources/venv/bin/python research/corpus-sources/extract_tatsc_parquet.py",
+  "source_role": "Candidate text-only corpus for dictionary and next-word evaluation; no audio or speaker metadata.",
+  "split_rows": {
+    "audiobooks/dev": 582,
+    "audiobooks/test": 754,
+    "audiobooks/train": 18470,
+    "crowdsourced_tg/train": 110683,
+    "crowdsourced_web/dev": 6469,
+    "crowdsourced_web/test": 5902,
+    "crowdsourced_web/train": 75054
+  },
+  "split_rule": "Preserve the upstream config and train/dev/test labels. Candidate training uses train only; dev is reserved; test is held out. Evaluation removes normalized test-line collisions from every training candidate.",
+  "upstream": "Tatar Speech Corpus (TatSC)",
+  "upstream_card_utterances": 271914,
+  "upstream_page": "https://issai.nu.edu.kz/issai-datasets"
+}

@@ -57,7 +57,7 @@ PIN_CONTROL_TOP1 = 345
 PIN_CONTROL_VISIBLE_TOP3 = 652
 PIN_CONTROL_ENGINE_TOP4 = 741
 PIN_REP_CTRL_KS_BASELINE = 34_196
-PIN_REP_CTRL_KS_SIMULATED = 21_095
+PIN_REP_CTRL_KS_SIMULATED = 21_089
 PIN_REP_CTRL_KS_ORACLE = 8_451
 
 # Graduation-counter pins per split and arm; PersonalizationEvalTest.kt pins the same
@@ -93,8 +93,8 @@ PIN_PAIRS_DROPPED_UNKNOWN_CONTEXT = {"hash": 0, "chrono": 0, "rep": 0}
 PIN_WORD_PENDING_EVICTIONS = {"hash": 0, "chrono": 0, "rep": 0}
 PIN_PAIR_PENDING_EVICTIONS = {"hash": 1_887, "chrono": 1_798, "rep": 12_400}
 PIN_FIX_PROBES = {"hash": 54, "chrono": 38, "rep": 369}
-PIN_PRIME_UNSEEN_TOKENS = {"hash": 67, "chrono": 58, "rep": 417}
-PIN_UNSEEN_STEM = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (366, 366, 366)}
+PIN_PRIME_UNSEEN_TOKENS = {"hash": 60, "chrono": 55, "rep": 381}
+PIN_UNSEEN_STEM = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (330, 330, 330)}
 # The realistic-arm sweep on the repetition split: the timeline parity channel.
 PIN_REP_SWEEP = {
     100: (155, 72_173, 0, 19_578),  # (grad_words, observed, dropped, staled)
@@ -117,7 +117,7 @@ PIN_REP_NW_PERS_ENGINE_TOP4 = 741
 PIN_REP_NW_DISP_VISIBLE_TOP3 = 698
 PIN_REP_NW_DISP_ENGINE_TOP4 = 778
 PIN_REP_NW_DISP_GAINED = 47
-PIN_REP_KS_PERS_KEYS = 20_179
+PIN_REP_KS_PERS_KEYS = 20_173
 PIN_REP_REORD_PROMO_1 = 197
 # Pollution pins: personal cells shown and hit, per measure walk (the hash/chrono halves
 # graduate no word, so only the next-word pair cells appear there).
@@ -132,9 +132,9 @@ PIN_HASH_NW_PERSONAL_HIT = 25
 # stream — the pending tables churn fully within a pass — so all three sweep cells match
 # the one-session graduation counters.
 PIN_REP_SESSIONS = {
-    500: (192, 81, 366, 0, 0),
-    2_000: (192, 81, 366, 0, 0),
-    None: (192, 81, 366, 0, 0),
+    500: (192, 81, 330, 0, 0),
+    2_000: (192, 81, 330, 0, 0),
+    None: (192, 81, 330, 0, 0),
 }
 
 # Russian mirror pins (see RuSuggestEvalTest): the same harness over the committed Russian

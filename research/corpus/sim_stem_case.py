@@ -54,6 +54,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import bigram_pack  # noqa: E402
+import evaluation_metrics as metrics  # noqa: E402
 import sim_stem_backoff  # noqa: E402
 import suggest_chain  # noqa: E402
 import suggest_eval  # noqa: E402
@@ -248,7 +249,7 @@ def completion_costs(
                 continue
             cost = len(word)
             for cut in range(1, len(word)):
-                if word in chain.prefix_top3(word[:cut]):
+                if word in metrics.visible_top3(chain.prefix_top3(word[:cut])):
                     cost = cut + 1
                     break
             costs[word] = cost
@@ -384,6 +385,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sentence_pairs: list[int] = []
     sentence_base_keys: list[int] = []
     sentence_top3: dict[str, list[int]] = {name: [] for name in arms}
+    sentence_engine_top4: dict[str, list[int]] = {name: [] for name in arms}
     sentence_top1: dict[str, list[int]] = {name: [] for name in arms}
     sentence_sim_keys: dict[str, list[int]] = {name: [] for name in arms}
     diagnostics: dict[str, dict[str, int]] = {
@@ -404,17 +406,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     for line in lines:
         line_words = line.split(" ")
         hits3 = dict.fromkeys(arms, 0)
+        hits4 = dict.fromkeys(arms, 0)
         hits1 = dict.fromkeys(arms, 0)
         for head, successor in zip(line_words, line_words[1:]):
             total_pairs += 1
             shown_baseline = baseline.predict_top3(head)
-            hit_baseline = successor in shown_baseline
+            hit_baseline = successor in metrics.visible_top3(shown_baseline)
             hits3["baseline"] += hit_baseline
+            hits4["baseline"] += successor in metrics.engine_top4(shown_baseline)
             hits1["baseline"] += bool(shown_baseline) and successor == shown_baseline[0]
             for name, chain in stem_arms:
                 shown = chain.predict_top3(head)
-                hit = successor in shown
+                hit = successor in metrics.visible_top3(shown)
                 hits3[name] += hit
+                hits4[name] += successor in metrics.engine_top4(shown)
                 hits1[name] += bool(shown) and successor == shown[0]
                 diag = diagnostics[name]
                 diag["hits_gained"] += hit and not hit_baseline
@@ -436,11 +441,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         sentence_base_keys.append(sum(len(word) for word in line_words) + len(line_words) - 1)
         for name, chain in arms.items():
             sentence_top3[name].append(hits3[name])
+            sentence_engine_top4[name].append(hits4[name])
             sentence_top1[name].append(hits1[name])
             simulated = completion_cost[line_words[0]]
             for head, successor in zip(line_words, line_words[1:]):
                 simulated += (
-                    1 if successor in chain.predict_top3(head) else completion_cost[successor]
+                    1
+                    if successor in metrics.visible_top3(chain.predict_top3(head))
+                    else completion_cost[successor]
                 )
             sentence_sim_keys[name].append(simulated)
 
@@ -453,6 +461,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             sentence_base_keys,
         )
     rates = paired_rate_samples(series)
+    visible = metrics.paired_metric_report(
+        sentence_top3["baseline"],
+        sentence_pairs,
+        sentence_top3["case_aware"],
+        sentence_pairs,
+        k=metrics.VISIBLE_TOP_K,
+        role="user",
+    )
+    engine = metrics.paired_metric_report(
+        sentence_engine_top4["baseline"],
+        sentence_pairs,
+        sentence_engine_top4["case_aware"],
+        sentence_pairs,
+        k=metrics.ENGINE_TOP_K,
+        role="diagnostic",
+    )
     eval_seconds = time.monotonic() - stage
 
     def rate_pct(name: str) -> float:
@@ -492,8 +516,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     aware_top1 = delta_block("case_aware", "top1")
     aware_ks = delta_block("case_aware", "ks")
     gate_passed = bool(
-        aware_top3["delta_pp"] >= GATE_DELTA_PP
-        and aware_top3["delta_ci95"][0] > 0.0
+        visible["delta"]["pp"] >= GATE_DELTA_PP
+        and visible["delta"]["ci95"][0] > 0.0
         and aware_top1["delta_ci95"][1] >= 0.0
         and aware_ks["delta_ci95"][1] >= 0.0
     )
@@ -555,7 +579,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ],
                 },
             },
+            "engine_top4_diagnostic": engine,
         },
+        "measurement": metrics.measurement_report(
+            units=len(lines),
+            denominator_name="adjacent next-word pairs",
+            visible_top3_report=visible,
+            engine_top4_report=engine,
+        ),
         "gate": {
             "arm": "case_aware",
             "delta_threshold_pp": GATE_DELTA_PP,

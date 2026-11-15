@@ -1,0 +1,11 @@
+{
+  "id": "asset-emoji-set-v1",
+  "revision": "emoji-set/15.1/v1",
+  "size_bytes": 7540,
+  "sha256": "8db92f8869355f79a0a163b3cc6172bc2ff1a8ddf1e0cab7b55aa42977d616c2",
+  "license": "Unicode-DFS-2016",
+  "source_role": "generated_emoji_panel",
+  "split_rule": "not-applicable",
+  "generation_command": "python3 scripts/emoji_pack.py build --input <local-emoji-test-15.1.txt> --output app/src/main/assets/emoji/emoji_set_v1.txt",
+  "path": "app/src/main/assets/emoji/emoji_set_v1.txt"
+}

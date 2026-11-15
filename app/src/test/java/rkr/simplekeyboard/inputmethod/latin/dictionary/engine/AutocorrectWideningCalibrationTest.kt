@@ -335,10 +335,10 @@ class AutocorrectWideningCalibrationTest {
         val raw = inflate(DictionaryArtifactSpec.TATAR_TOP100K_V1)
         val sortedFrequencies = vocabulary.map { requireNotNull(currentIndex).frequencyOf(it) }.sorted()
         val expected = mapOf(
-            10_000 to Triple(3_284L, 2_929, 4),
-            5_000 to Triple(7_566L, 2_178, 3),
-            2_000 to Triple(20_012L, 1_265, 2),
-            1_000 to Triple(38_359L, 755, 1),
+            10_000 to Triple(3_284L, 2_932, 4),
+            5_000 to Triple(7_566L, 2_183, 3),
+            2_000 to Triple(20_012L, 1_272, 2),
+            1_000 to Triple(38_359L, 757, 1),
         )
         for ((rank, pins) in expected) {
             val floor = sortedFrequencies[sortedFrequencies.size - rank]
@@ -546,9 +546,9 @@ class AutocorrectWideningCalibrationTest {
         private const val PIN_RU_WIDENED_SEEN_FORM = 0
         private const val PIN_RU_WIDENED_NEW_FORM = 0
         private const val PIN_RU_WIDENED_UNSEEN_STEM = 0
-        private const val PIN_TT_CURRENT_RECOVERED = 7
-        private const val PIN_TT_CURRENT_HARMFUL = 10
-        private const val PIN_TT_WIDENED_RECOVERED = 2_929
+        private const val PIN_TT_CURRENT_RECOVERED = 21
+        private const val PIN_TT_CURRENT_HARMFUL = 9
+        private const val PIN_TT_WIDENED_RECOVERED = 2_932
         private const val PIN_TT_WIDENED_HARMFUL = 0
         private const val PIN_RU_CURRENT_RECOVERED = 0
         private const val PIN_RU_CURRENT_HARMFUL = 4
@@ -568,7 +568,7 @@ class AutocorrectWideningCalibrationTest {
         private const val PIN_RU_GUARD_NEW_FORM = 0
         private const val PIN_RU_GUARD_UNSEEN_STEM = 0
         private const val PIN_RU_GUARD_FIRES = 0
-        private const val PIN_TT_GUARD_RECOVERED = 848
+        private const val PIN_TT_GUARD_RECOVERED = 856
         private const val PIN_TT_GUARD_HARMFUL = 0
         private const val PIN_RU_GUARD_RECOVERED = 797
         private const val PIN_RU_GUARD_HARMFUL = 0

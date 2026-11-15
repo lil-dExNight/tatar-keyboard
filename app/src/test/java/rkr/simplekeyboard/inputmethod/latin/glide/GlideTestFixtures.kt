@@ -38,7 +38,7 @@ internal object GlideTestFixtures {
 
     // Key widths in percent points, mirroring rows_tatar.xml.
     private val ROW_WIDTHS = listOf(
-        listOf(16.667, 16.667, 16.667, 16.667, 16.667, 16.667),
+        listOf(12.5, 12.5, 12.5, 12.5, 12.5, 12.5, 12.5, 12.5),
         listOf(9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091),
         listOf(9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091, 9.091),
         listOf(10.8, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711, 8.711),
@@ -80,9 +80,10 @@ internal object GlideTestFixtures {
      * long-press keys of the keyboard without the number row.
      */
     fun tatarRawKeys(): List<GlideKeyGeometry.RawKey> = listOf(
-        // Row 0 — the extra Tatar row.
+        // Row 0 — the extra Tatar row: the eight letters the ЙЦУКЕН rows do not carry.
         geoKey('ә', 0, 0), geoKey('ө', 0, 1), geoKey('ү', 0, 2),
         geoKey('җ', 0, 3), geoKey('ң', 0, 4), geoKey('һ', 0, 5),
+        geoKey('ё', 0, 6), geoKey('ъ', 0, 7),
         // Row 1.
         geoKey('й', 1, 0, more = "1"), geoKey('ц', 1, 1, more = "2"),
         geoKey('у', 1, 2, more = "ү3"), geoKey('к', 1, 3, more = "4"),

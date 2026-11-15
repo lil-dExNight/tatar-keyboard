@@ -1,0 +1,64 @@
+{
+  "language": "tat",
+  "note": "Train/development/final split declarations checked by scripts/evaluation_splits.py. Sentence collisions are checked across splits; frequency and dictionary-admission tables must not contain two rows that normalize to the same word. Raw corpus dumps (research/corpus, gitignored) and Leipzig inputs (~/corpora-leipzig, pinned in data/corpus-manifest.json) are provenance-pinned training inputs, not split-config rows; the eval builders exclude them at build time.",
+  "sources": [
+    {
+      "id": "tt-eval-sentences",
+      "kind": "sentences",
+      "split": "development",
+      "path": "app/src/test/resources/tt_eval_sentences.txt",
+      "role": "Tatoeba heldout rows id % 10 == 1; development/regression input"
+    },
+    {
+      "id": "tt-common-voice-final",
+      "kind": "sentences",
+      "split": "final",
+      "path": "app/src/test/resources/tt_common_voice_final.txt",
+      "role": "frozen Common Voice final evaluation; do not tune on these lines"
+    },
+    {
+      "id": "tt-ru-mix-sentences",
+      "kind": "sentences",
+      "split": "development",
+      "path": "app/src/test/resources/tt_ru_mix_sentences.txt",
+      "role": "hand-authored code-mix development/regression data"
+    },
+    {
+      "id": "tt-valid-oov-safety",
+      "kind": "dictionary_admissions",
+      "split": "development",
+      "path": "app/src/test/resources/tt_valid_oov_safety_set.tsv",
+      "role": "held-out plausible forms the engine must not harm"
+    },
+    {
+      "id": "tt-accepted-admissions",
+      "kind": "dictionary_admissions",
+      "split": "train",
+      "path": "data/dictionary/dict-accept/accepted-tt.tsv",
+      "word_namespace": "admission-decisions",
+      "role": "admission queue rows entering the shipped Tatar dictionary"
+    },
+    {
+      "id": "tt-rejected-admissions",
+      "kind": "dictionary_admissions",
+      "split": "train",
+      "path": "data/dictionary/dict-accept/rejected-tt.tsv",
+      "word_namespace": "admission-decisions",
+      "role": "admission queue rows rejected by rule or review"
+    },
+    {
+      "id": "tt-conv-frequencies",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "data/dictionary/dict-accept/conv-freq-tt.tsv",
+      "role": "conversational training frequency of dictionary pool words"
+    },
+    {
+      "id": "tt-bonus-frequencies",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "data/dictionary/dict-accept/bonus-freq-tt.tsv",
+      "role": "extra-corpus bonus frequency of dictionary pool words"
+    }
+  ]
+}

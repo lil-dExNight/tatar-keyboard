@@ -137,6 +137,26 @@ class CompanionListReaderTest {
         assertFalse(list.containsWord(""))
     }
 
+    @Test
+    fun compactStorageScalesLinearlyWithoutDuplicateRetainedWords() {
+        val smallWords = List(5_000) { "w${it.toString().padStart(5, '0')}" }
+        val largeWords = List(10_000) { "w${it.toString().padStart(5, '0')}" }
+        val smallRaw = buildRaw(smallWords)
+        val largeRaw = buildRaw(largeWords)
+        val small = CompanionListReader().validateRaw(smallRaw, specFor(smallRaw, smallWords))
+        val large = CompanionListReader().validateRaw(largeRaw, specFor(largeRaw, largeWords))
+
+        val smallPayload = smallWords.sumOf { it.toByteArray(Charsets.UTF_8).size.toLong() } +
+            (smallWords.size + 1) * Int.SIZE_BYTES
+        assertEquals(smallPayload, small.retainedByteEstimate)
+        assertEquals(small.retainedByteEstimate * 2 - Int.SIZE_BYTES, large.retainedByteEstimate)
+        val duplicateRepresentation = largeWords.sumOf {
+            it.length * 2L + it.toByteArray(Charsets.UTF_8).size + 8L
+        }
+        assertTrue(large.retainedByteEstimate < duplicateRepresentation)
+        assertEquals(largeWords, large.words)
+    }
+
     // --- validation: the fail-closed rules ------------------------------------------------------
 
     @Test
@@ -318,6 +338,20 @@ class CompanionListReaderTest {
         val list = locateAsset(spec).inputStream().use { CompanionListReader().read(it, spec) }
         assertEquals(spec.expectedWordCount, list.words.size.toLong())
         assertNotNull(list.words.firstOrNull { it == "мама" })
+    }
+
+    @Test
+    fun shippedListsRetainOnlyTheCompactPayloadAndOffsets() {
+        for (spec in CompanionListArtifactSpec.ALL) {
+            val list = locateAsset(spec).inputStream().use { CompanionListReader().read(it, spec) }
+            val expected = spec.expectedRawSize - TatCompFormat.HEADER_SIZE - spec.expectedWordCount +
+                (spec.expectedWordCount + 1) * Int.SIZE_BYTES
+            assertEquals(expected, list.retainedByteEstimate)
+            assertTrue(
+                "${spec.family}: compact payload ${list.retainedByteEstimate} exceeds the raw-size budget",
+                list.retainedByteEstimate <= spec.expectedRawSize * 2,
+            )
+        }
     }
 
     @Test

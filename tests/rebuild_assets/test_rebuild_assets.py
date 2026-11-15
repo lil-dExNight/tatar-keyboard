@@ -928,8 +928,10 @@ class WordformStageTest(unittest.TestCase):
         self.dict_accept_out.mkdir()
         (self.dict_accept_out / "accepted-tt.tsv").write_text(
             "# head\nword\theldout_hits\ttrain_freq\ttrain_freq_clean\tsources\t"
-            "license_status\tcap_ratio\tenters_top100k\trule\trule_detail\n"
-            "эшләп\t1\t9\t9\tTatoeba\tok\t0.00\tyes\ttwo-corpora\tx\n",
+            "license_status\tcap_ratio\tenters_top100k\tapproved\treviewer\treview_date\t"
+            "note\trule\trule_detail\n"
+            "эшләп\t1\t9\t9\tOpenSubtitles+Tatoeba\tok\t0.00\tyes\t\t\t\t\t"
+            "two-corpora\tx\n",
             encoding="utf-8")
         (self.dict_accept_out / "conv-freq-tt.tsv").write_text(
             "# head\nword\tconv_freq\nкитаплар\t3\n", encoding="utf-8")

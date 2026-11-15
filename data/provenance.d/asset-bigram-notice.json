@@ -1,0 +1,11 @@
+{
+  "id": "asset-bigram-notice",
+  "revision": "bigram-notice/v1",
+  "size_bytes": 5267,
+  "sha256": "20764e0a9c2116837c2c5c8cfba480315cf217ef29c80b15d990808d93a642e7",
+  "license": "Apache-2.0",
+  "source_role": "license_attribution",
+  "split_rule": "not-applicable",
+  "generation_command": "hand-maintained and validated by python3 scripts/provenance.py --root .",
+  "path": "app/src/main/assets/bigrams/NOTICE.txt"
+}

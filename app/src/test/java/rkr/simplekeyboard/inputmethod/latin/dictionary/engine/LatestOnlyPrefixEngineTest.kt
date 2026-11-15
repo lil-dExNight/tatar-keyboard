@@ -268,6 +268,116 @@ class LatestOnlyPrefixEngineTest {
     }
 
     @Test
+    fun adviceSettingTransitionsAreWorkerSerializedAndClearPublishedVerdicts() {
+        val executor = ManualEngineExecutor()
+        val events = mutableListOf<String>()
+        val computer = object : ClassifiedPrefixComputer, AutocorrectAdviceControl {
+            override val lastExactCount: Int = 0
+            private var enabled = true
+
+            @Volatile
+            override var lastAutocorrectAdvice: AutocorrectAdvice? = null
+                private set
+
+            override fun setAutocorrectAdviceEnabled(enabled: Boolean) {
+                if (enabled == this.enabled) return
+                this.enabled = enabled
+                lastAutocorrectAdvice = null
+                events += "set:$enabled"
+            }
+
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
+                events += "lookup:$enabled"
+                if (enabled) {
+                    lastAutocorrectAdvice = AutocorrectAdvice(
+                        normalizedPrefixUtf8.decodeUtf8(), "китап",
+                        5_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                    )
+                }
+                return listOf("китап")
+            }
+        }
+        val published = mutableListOf<LookupResult>()
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff { published += it },
+        )
+
+        engine.request(1, "tt", utf8("китәп"))
+        executor.runAll()
+        assertEquals("китап", engine.autocorrectAdvice()?.replacement)
+
+        engine.setAutocorrectAdviceEnabled(false)
+        assertNull("the disable transition clears the published verdict immediately",
+            engine.autocorrectAdvice())
+        engine.request(2, "tt", utf8("китәп"))
+        executor.runAll()
+        assertNull(engine.autocorrectAdvice())
+        assertEquals(listOf("китап"), published.last().suggestions)
+
+        engine.setAutocorrectAdviceEnabled(true)
+        assertNull(engine.autocorrectAdvice())
+        engine.request(3, "tt", utf8("китәп"))
+        executor.runAll()
+        assertEquals("китап", engine.autocorrectAdvice()?.replacement)
+        assertEquals(
+            listOf("lookup:true", "set:false", "lookup:false", "set:true", "lookup:true"),
+            events,
+        )
+    }
+
+    @Test
+    fun disableDuringRunningLookupSuppressesItsOldAdviceButNotItsSuggestions() {
+        val lookupStarted = CountDownLatch(1)
+        val releaseLookup = CountDownLatch(1)
+        val handedOff = CountDownLatch(1)
+        val published = AtomicReference<LookupResult>()
+        val computer = object : ClassifiedPrefixComputer, AutocorrectAdviceControl {
+            override val lastExactCount: Int = 0
+
+            @Volatile
+            override var lastAutocorrectAdvice: AutocorrectAdvice? = null
+                private set
+
+            override fun setAutocorrectAdviceEnabled(enabled: Boolean) {
+                if (!enabled) lastAutocorrectAdvice = null
+            }
+
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix): List<String> {
+                lookupStarted.countDown()
+                assertTrue(releaseLookup.await(5, TimeUnit.SECONDS))
+                lastAutocorrectAdvice = AutocorrectAdvice(
+                    normalizedPrefixUtf8.decodeUtf8(), "китап",
+                    5_000L, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                )
+                return listOf("китап")
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity,
+            computer,
+            ExecutorServiceEngineExecutor.singleThread(),
+            ResultHandoff {
+                published.set(it)
+                handedOff.countDown()
+            },
+        )
+        try {
+            engine.request(1, "tt", utf8("китәп"))
+            assertTrue(lookupStarted.await(5, TimeUnit.SECONDS))
+
+            engine.setAutocorrectAdviceEnabled(false)
+            releaseLookup.countDown()
+
+            assertTrue(handedOff.await(5, TimeUnit.SECONDS))
+            assertEquals(listOf("китап"), published.get().suggestions)
+            assertNull(engine.autocorrectAdvice())
+        } finally {
+            releaseLookup.countDown()
+            assertTrue(engine.destroy(5, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
     fun aWorkerFinishingDuringTeardownCannotPublishAutocorrectAdvice() {
         val executor = ManualEngineExecutor()
         val computer = object : ClassifiedPrefixComputer {

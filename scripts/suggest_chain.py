@@ -109,7 +109,7 @@ RUNTIME_SUFFIXES = frozenset(
         # present 3sg -A and the person endings riding the present base (bare -сың/-сең
         # also follow an и-final stem directly)
         "а", "ә",
-        "ам", "әм", "асың", "әсең", "асыз", "әсез", "алар", "әләр", "сың", "сең",
+        "ам", "әм", "асың", "әсең", "абыз", "әбез", "асыз", "әсез", "алар", "әләр", "сың", "сең",
         # negative present and its persons
         "мый", "ми", "мыйм", "мим", "мыйсың", "мисең", "мыйсыз", "мисез", "мыйлар", "миләр",
         # past -DI and persons
@@ -139,6 +139,8 @@ RUNTIME_SUFFIXES = frozenset(
         "асы", "әсе",
         "у", "ү", "ю",
         "макчы", "мәкче",
+        # interrogative clitic -мI (язам+мы, татар+мы)
+        "мы", "ме",
         # derivational suffixes
         "ча", "чә",
         "лык", "лек",

@@ -1,0 +1,11 @@
+{
+  "id": "eval-keys-russian-regression",
+  "revision": "keys-ru/v1",
+  "size_bytes": 919,
+  "sha256": "5f86194ae59126da3a444e8188fb74f19eb6216a29b1b224679cc4b3c0b8e3bd",
+  "license": "Apache-2.0",
+  "source_role": "regression_geometry",
+  "split_rule": "not-applicable",
+  "generation_command": "derive with KeyGeometryTsv.kt and check with ./gradlew :app:test --tests '*KeyGeometryTsvTest'",
+  "path": "app/src/test/resources/golden/keys-ru.tsv"
+}

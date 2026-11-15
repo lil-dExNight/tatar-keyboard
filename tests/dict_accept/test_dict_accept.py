@@ -46,9 +46,19 @@ QUEUE_HEADER = "\t".join(da.HEADER) + "\n"
 
 def make_row(word: str, *, freq: int = 100, heldout: int = 10,
              sources: str = "OpenSubtitles", cap_ratio: float = 0.0,
-             top100k: str = "no") -> da.Row:
+             top100k: str = "no", approved: str = "", reviewer: str = "",
+             review_date: str = "", note: str = "") -> da.Row:
     return da.Row([word, str(heldout), str(freq), str(freq), sources,
-                   "ok", f"{cap_ratio:.2f}", top100k])
+                   "ok", f"{cap_ratio:.2f}", top100k, approved, reviewer,
+                   review_date, note])
+
+
+def reviewed_row(word: str, **kwargs) -> da.Row:
+    kwargs.setdefault("reviewer", "reviewer-a")
+    kwargs.setdefault("review_date", "2026-11-14")
+    kwargs.setdefault("note", "checked inflection, spelling, and source context")
+    kwargs.setdefault("approved", "yes")
+    return make_row(word, **kwargs)
 
 
 def queue_text(rows: list[da.Row]) -> str:
@@ -57,7 +67,8 @@ def queue_text(rows: list[da.Row]) -> str:
         out += "\t".join([
             row.word, str(row.heldout), str(row.freq), str(row.freq_clean),
             row.sources, row.license, f"{row.cap_ratio:.2f}",
-            "yes" if row.enters_top100k else "no"]) + "\n"
+            "yes" if row.enters_top100k else "no", row.approved, row.reviewer,
+            row.review_date, row.note]) + "\n"
     return out
 
 
@@ -147,16 +158,24 @@ class PriorVerdictTest(unittest.TestCase):
         self.assertTrue(passed)
         self.assertEqual(rule, "shipped-word")
 
-    def test_shipped_paradigm_needs_three_other_forms(self) -> None:
-        row = make_row("работала", sources="OpenSubtitles")
+    def test_shipped_paradigm_needs_independent_attestation(self) -> None:
+        row = make_row("работала", sources="Tatoeba")
         shipped = frozenset({"работаю", "работает", "работаем"})
         passed, rule, detail = da.prior_verdict(row, "rus", shipped)
         self.assertTrue(passed)
         self.assertEqual(rule, "shipped-paradigm")
         self.assertIn("работа", detail)
 
-    def test_two_paradigm_siblings_are_not_enough(self) -> None:
+    def test_subtitle_only_paradigm_is_not_automatic(self) -> None:
+        # A shipped stem does not make an OpenSubtitles-only form an automatic admission.
         row = make_row("работала", sources="OpenSubtitles")
+        shipped = frozenset({"работаю", "работает", "работаем"})
+        passed, rule, _ = da.prior_verdict(row, "rus", shipped)
+        self.assertFalse(passed)
+        self.assertEqual(rule, "single-source")
+
+    def test_two_paradigm_siblings_are_not_enough(self) -> None:
+        row = make_row("работала", sources="Tatoeba")
         shipped = frozenset({"работаю", "работает"})
         passed, rule, _ = da.prior_verdict(row, "rus", shipped)
         self.assertFalse(passed)
@@ -192,22 +211,59 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(rejected, [])
         self.assertEqual(accepted[0][1], "two-corpora")
 
-    def test_widened_word_carries_the_old_rejection_reason(self) -> None:
-        accepted, _ = da.decide(
-            [make_row("приветик", sources="OpenSubtitles")], "rus", frozenset())
+    def test_reviewed_widened_word_carries_automatic_rejection_reason(self) -> None:
+        accepted, rejected = da.decide(
+            [reviewed_row("приветик", sources="OpenSubtitles")], "rus", frozenset())
+        self.assertEqual(rejected, [])
         self.assertEqual(accepted[0][1], "operator-widened")
         self.assertIn("single-source", accepted[0][2])
 
-    def test_cap_ratio_no_longer_decides(self) -> None:
-        # Capitalization evidence is a label in the details, not a rejection.
-        accepted, _ = da.decide(
-            [make_row("вася", cap_ratio=0.9)], "rus", frozenset())
+    def test_unreviewed_subtitle_noise_is_not_admitted(self) -> None:
+        accepted, rejected = da.decide(
+            [make_row("приветик", sources="OpenSubtitles")], "rus", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertEqual(rejected[0][1], "review-required")
+        self.assertIn("approved=yes", rejected[0][2])
+
+    def test_widened_review_requires_every_metadata_field(self) -> None:
+        for field in ("approved", "reviewer", "review_date", "note"):
+            with self.subTest(field=field):
+                row = reviewed_row("приветик")
+                setattr(row, field, "")
+                accepted, rejected = da.decide([row], "rus", frozenset())
+                self.assertEqual(accepted, [])
+                self.assertEqual(rejected[0][1], "review-required")
+                self.assertIn(field, rejected[0][2])
+
+    def test_widened_review_rejects_invalid_date(self) -> None:
+        row = reviewed_row("приветик", review_date="14.11.2026")
+        accepted, rejected = da.decide([row], "rus", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertIn("YYYY-MM-DD", rejected[0][2])
+
+    def test_explicit_rejection_wins_over_automatic_evidence(self) -> None:
+        row = make_row("давай", sources="OpenSubtitles+Tatoeba", approved="no",
+                       note="not an ordinary dictionary word")
+        accepted, rejected = da.decide([row], "rus", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertEqual(rejected[0][1], "review-rejected")
+
+    def test_proper_name_evidence_requires_complete_review(self) -> None:
+        accepted, rejected = da.decide(
+            [make_row("вася", sources="OpenSubtitles+Tatoeba", cap_ratio=0.9)],
+            "rus", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertEqual(rejected[0][1], "review-required")
+        accepted, rejected = da.decide(
+            [reviewed_row("вася", sources="OpenSubtitles+Tatoeba", cap_ratio=0.9)],
+            "rus", frozenset())
+        self.assertEqual(rejected, [])
         self.assertEqual(accepted[0][1], "operator-widened")
         self.assertIn("proper-noun-evidence", accepted[0][2])
 
-    def test_tatar_short_word_accepted_no_vowel_rejected(self) -> None:
+    def test_tatar_short_word_needs_review_no_vowel_is_fragment(self) -> None:
         accepted, rejected = da.decide(
-            [make_row("док"), make_row("щгл")], "tat", frozenset())
+            [reviewed_row("док"), make_row("щгл")], "tat", frozenset())
         self.assertEqual([r.word for r, _, _ in accepted], ["док"])
         self.assertEqual(rejected[0][0].word, "щгл")
         self.assertEqual(rejected[0][1], "fragment")
@@ -231,7 +287,7 @@ class SelectPackContractTest(unittest.TestCase):
         }
         self.queues["rus"].write_text(queue_text([
             make_row("давай", freq=1000, sources="OpenSubtitles+Tatoeba"),
-            make_row("работала", freq=500),
+            make_row("работала", freq=500, sources="Tatoeba"),
             make_row("ме", freq=19092),
             make_row("можна", freq=777, sources="OpenSubtitles+Tatoeba"),
         ]), encoding="utf-8")
@@ -267,8 +323,9 @@ class SelectPackContractTest(unittest.TestCase):
         self.assertEqual(rus["rejected_by_rule"],
                          {"fragment": 1, "operator-excluded": 1})
         tat = report["languages"]["tat"]
-        self.assertEqual(tat["accepted"], 2)  # сәлам + док (no length threshold)
-        self.assertEqual(tat["rejected"], 1)  # щгл has no vowel
+        self.assertEqual(tat["accepted"], 1)  # сәлам has two independent sources
+        self.assertEqual(tat["rejected"], 2)  # док needs review; щгл has no vowel
+        self.assertEqual(tat["rejected_by_rule"], {"fragment": 1, "review-required": 1})
 
     def test_accepted_tsv_rows_carry_rule_and_detail(self) -> None:
         code, _ = self._run_select()
@@ -278,12 +335,36 @@ class SelectPackContractTest(unittest.TestCase):
                 if line and not line.startswith("#")
                 and not line.startswith("word\t")]
         by_word = {row[0]: row for row in rows}
-        self.assertEqual(by_word["давай"][8], "two-corpora")
-        self.assertEqual(by_word["работала"][8], "shipped-paradigm")
-        self.assertIn("работа", by_word["работала"][9])
+        self.assertEqual(by_word["давай"][12], "two-corpora")
+        self.assertEqual(by_word["работала"][12], "shipped-paradigm")
+        self.assertIn("работа", by_word["работала"][13])
+        self.assertEqual(by_word["работала"][8:12], ["", "", "", ""])
         rejected = (self.out_dir / "rejected-ru.tsv").read_text(encoding="utf-8")
         self.assertIn("можна", rejected)
         self.assertIn("operator-excluded", rejected)
+
+    def test_widened_review_round_trips_and_tampering_stops_pack_input(self) -> None:
+        self.queues["tat"].write_text(queue_text([
+            reviewed_row("док", freq=50, note="ordinary interjection; checked context"),
+        ]), encoding="utf-8")
+        code, _ = self._run_select()
+        self.assertEqual(code, 0)
+        accepted_path = self.out_dir / "accepted-tt.tsv"
+        text = accepted_path.read_text(encoding="utf-8")
+        self.assertIn("док\t10\t50\t50\tOpenSubtitles", text)
+        self.assertIn("reviewer-a\t2026-11-14\tordinary interjection", text)
+        with patched(OUT_DIR=self.out_dir):
+            self.assertEqual(da.read_accepted("tat"), {"док": 50})
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            if line.startswith("док\t"):
+                fields = line.split("\t")
+                fields[9] = ""
+                lines[index] = "\t".join(fields)
+        accepted_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        with patched(OUT_DIR=self.out_dir):
+            with self.assertRaisesRegex(SystemExit, "reviewer"):
+                da.read_accepted("tat")
 
     def test_wrong_baseline_sha_stops_select(self) -> None:
         bad_pins = {tag: "0" * 64 for tag in self.pins}

@@ -476,6 +476,38 @@ class SuggestionsController internal constructor(
     /** The autocorrect setting, read live. OFF until LatinIME wires the real one. */
     private var autocorrectGate: AutocorrectGate = AutocorrectGate { false }
 
+    // --- Autocorrect advice gating (P0 performance): while the setting is off the engine skips
+    // the verdict computation and the cold-companion lists are never loaded; a setting change
+    // invalidates every verdict computed before it.
+    /** The last value pushed to every warm engine as a group; null before the first group push. */
+    private var groupPushedAutocorrectAdvice: Boolean? = null
+
+    /** The previous gate observation; a CHANGE is a verdict reset point (initial is not). */
+    private var lastObservedAutocorrectEnabled: Boolean? = null
+
+    /** Bumped on every observed setting change; compared with the serial captured at a request. */
+    private var adviceResetSerial: Int = 0
+
+    /** [adviceResetSerial] when the newest PREFIX request was issued. */
+    private var prefixRequestAdviceResetSerial: Int = 0
+
+    /**
+     * True after an observed setting change until a result of a request issued AFTER it arrives:
+     * the separator and the preview treat the old verdict as reset. Typo recovery, the exact-pass
+     * reports and companion fills are untouched — they are not verdicts.
+     */
+    private var adviceAwaitingFreshLookup: Boolean = false
+
+    /**
+     * The glide-index build deferred so the session's first prefix lookup finishes first on the
+     * engine worker. Released by that lookup's result, by a rejected request (no result will
+     * come) and by [onGlideArmed], which always forces the build because a decode is imminent.
+     */
+    private var glidePrewarmPending: Boolean = false
+
+    /** True once any PREFIX result of this editor session was applied; reset at session starts. */
+    private var prefixResultSeenInSession: Boolean = false
+
     // --- Autocorrect preview. Not persisted; both fields describe the current trailing word only.
     /**
      * The displayed text of the typed-word cell while the strip is a preview, null otherwise.
@@ -819,6 +851,12 @@ class SuggestionsController internal constructor(
         this.eligible = eligible && activeLanguage != null
         // Glide has its own setting and field gate, independent of the suggestions setting.
         this.glideEligible = glideEligible && activeLanguage != null
+        // Observe the autocorrect setting at this boundary (a settings trip changes it without
+        // a keystroke): engines learn the new value, and the fresh session starts with no live
+        // verdict, so the reset flag of the previous session does not linger.
+        syncAutocorrectAdviceState()
+        adviceAwaitingFreshLookup = false
+        prefixResultSeenInSession = false
         if (!this.eligible && !this.glideEligible) {
             strip.hideSuggestions()
             activeSlot()?.engine?.finishInput()
@@ -1106,6 +1144,10 @@ class SuggestionsController internal constructor(
         this.eligible = eligible && activeLanguage != null
         // The glide gate follows the new subtype like the suggestions gate does.
         this.glideEligible = glideEligible && activeLanguage != null
+        // Same observation point as onStartInput(): the session is fresh, so no live verdict.
+        syncAutocorrectAdviceState()
+        adviceAwaitingFreshLookup = false
+        prefixResultSeenInSession = false
         if (this.eligible) {
             val engineWasReady = usableEngine() != null
             if (engineWasReady) {
@@ -1244,6 +1286,10 @@ class SuggestionsController internal constructor(
         }
         setActiveLanguage(subtypeId)
         this.eligible = eligible && activeLanguage != null
+        // The suggestions switch is not the autocorrect one, but this boundary is still an
+        // observation point: an autocorrect change made in the same settings trip is pushed to
+        // the engines here, and a re-enabled autocorrect starts its cold-companion loads.
+        syncAutocorrectAdviceState()
         if (!this.eligible) {
             // The setting is on, but this field or subtype does not qualify. Nothing may become
             // visible, yet the observed transition still requests preparation so the dictionary is
@@ -1285,6 +1331,7 @@ class SuggestionsController internal constructor(
         displayedGlideAlternativesFor = null
         bandBaseCells = emptyList()
         clearCompanionRequest()
+        glidePrewarmPending = false
         // The engines are torn down below; no in-flight lookup will deliver.
         endLookupTrace()
         for (slot in slots.values) {
@@ -1613,6 +1660,10 @@ class SuggestionsController internal constructor(
             return
         }
         slot.engine = handle
+        // A fresh engine starts with advice computation on (its default); push the live setting
+        // before its first lookup so a disabled autocorrect never computes a verdict. Per-handle
+        // push: the group value in syncAutocorrectAdviceState() covers the other warm engines.
+        handle.setAutocorrectAdviceEnabled(autocorrectGate.isOn())
         // The lexicon reads the companion live, so a companion that warms up later counts at once.
         handle.setCompanionLexicon(companionLexiconFor(slot))
         // The cold-companion list of every OTHER language is the guard's cold half: started
@@ -2145,6 +2196,10 @@ class SuggestionsController internal constructor(
      */
     private fun requestCurrentPrefix(afterBigramTable: Boolean = false) {
         if (!eligible || keyguardGate.isLocked()) return
+        // The keystroke observation point: a setting change made since the last lookup is pushed
+        // to the engines before this request, so a disabled autocorrect never pays the verdict
+        // computation, and a re-enabled one recomputes it fresh.
+        syncAutocorrectAdviceState()
         val activeEngine = usableEngine()
         if (activeEngine == null) {
             // Text events can arrive while preparation/start is still in flight. Do not show the
@@ -2211,6 +2266,7 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         pendingPrefix = word
         requestSessionId = sessionId
+        prefixRequestAdviceResetSerial = adviceResetSerial
         val prefixBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(word))
         // The exact pass's context boost condition: the committed word before the trailing one,
         // by the NEXT_WORD context rule. Empty at a sentence start or when the editor cache cannot
@@ -2226,6 +2282,8 @@ class SuggestionsController internal constructor(
         if (token == null) {
             endLookupTrace()
             clearToReservedBand()
+            // No result will arrive for this lookup, so it cannot release the deferred prewarm.
+            releaseDeferredGlidePrewarm()
         }
     }
 
@@ -2295,7 +2353,8 @@ class SuggestionsController internal constructor(
             suspendForLock()
             return
         }
-        prewarmActiveGlideIndex()
+        // A decode is imminent: the deferred first-session build is forced, not deferred again.
+        runGlidePrewarmNow()
     }
 
     /**
@@ -2313,12 +2372,46 @@ class SuggestionsController internal constructor(
         prewarmActiveGlideIndex()
     }
 
-    /** The shared prewarm tail: the residency drop first, then the idempotent build. */
+    /**
+     * The shared prewarm tail. While suggestions are live and no PREFIX result has arrived in
+     * this editor session, the full index build is DEFERRED until the first prefix lookup has
+     * finished: both run on the engine's one worker, and the build would otherwise sit ahead of
+     * the answer the user is waiting for (the first keystroke of a session also arms the prewarm).
+     * [onGlideArmed] always forces the build immediately — a gesture is about to need the index —
+     * and a glide-only session (suggestions off) has no prefix lookup to wait for, so it builds
+     * at once, as before. The residency drop happens only when the build is actually posted.
+     */
     private fun prewarmActiveGlideIndex() {
+        if (!glideEligible || !glideGate.isOn()) return
+        val activeEngine = usableEngine() ?: return
+        if (eligible && !prefixResultSeenInSession) {
+            glidePrewarmPending = true
+            return
+        }
+        glidePrewarmPending = false
+        // The residency drop belongs to the build itself: a deferred prewarm drops nothing, so
+        // one effective build releases the other languages' indexes exactly once.
+        releaseGlideIndexesExcept(activeLanguage)
+        activeEngine.prewarmGlideIndex()
+    }
+
+    /**
+     * The immediate build, bypassing the first-prefix deferral: [onGlideArmed]'s tail (a decode
+     * is imminent) and the release of a deferred prewarm (the lookup already finished, or was
+     * rejected without a result to wait for).
+     */
+    private fun runGlidePrewarmNow() {
+        glidePrewarmPending = false
         if (!glideEligible || !glideGate.isOn()) return
         val activeEngine = usableEngine() ?: return
         releaseGlideIndexesExcept(activeLanguage)
         activeEngine.prewarmGlideIndex()
+    }
+
+    /** Releases a deferred prewarm once the first prefix lookup is done (or cannot answer). */
+    private fun releaseDeferredGlidePrewarm() {
+        if (!glidePrewarmPending) return
+        runGlidePrewarmNow()
     }
 
     /**
@@ -2614,12 +2707,50 @@ class SuggestionsController internal constructor(
     }
 
     /**
+     * Observes the live autocorrect gate at a lifecycle or lookup boundary. On every observed
+     * CHANGE the published verdicts are treated as reset ([adviceAwaitingFreshLookup]) and the
+     * new value is pushed to every warm engine, so the engine worker skips the whole advice
+     * computation while the setting is off and drops its own verdict on an actual transition.
+     * Pushing a same value is a no-op on the engine side, and the group value is only pushed
+     * when it differs. An OFF -> ON change also starts the cold-companion loads that were
+     * skipped while the setting was off (the lists serve only the autocorrect guard).
+     */
+    private fun syncAutocorrectAdviceState() {
+        val on = autocorrectGate.isOn()
+        val previous = lastObservedAutocorrectEnabled
+        lastObservedAutocorrectEnabled = on
+        if (previous != null && previous != on) {
+            adviceResetSerial++
+            adviceAwaitingFreshLookup = true
+        }
+        if (groupPushedAutocorrectAdvice != on) {
+            groupPushedAutocorrectAdvice = on
+            for (slot in slots.values) {
+                slot.engine?.setAutocorrectAdviceEnabled(on)
+            }
+        }
+        if (on && previous == false) {
+            for (slot in slots.values) {
+                if (slot.engine == null) continue
+                for (spec in DictionaryArtifactSpec.ALL) {
+                    if (spec.languageTag == slot.subtypeId) continue
+                    maybePrepareColdCompanion(spec.languageTag)
+                }
+            }
+        }
+    }
+
+    /**
      * Starts [language]'s one-per-process background load of its cold-companion list, at most
-     * once. A factory or executor failure is silent and terminal: a cold companion then
-     * protects nothing, exactly as before the list existed.
+     * once. Skipped entirely while autocorrect is off: the list only feeds the correction
+     * guard, so with the setting off the parse and the retained words are pure cost. The skip
+     * happens BEFORE the one-per-process mark, so [syncAutocorrectAdviceState] can still start
+     * the load when the setting turns on. A factory or executor failure is silent and terminal:
+     * a cold companion then protects nothing, exactly as before the list existed.
      */
     private fun maybePrepareColdCompanion(language: String) {
-        if (destroyed || language in coldCompanionLoadRequested) return
+        if (destroyed || !autocorrectGate.isOn()) return
+        if (language in coldCompanionLoadRequested) return
         val backgroundExecutor = backgroundExecutor() ?: return
         val preparation = coldCompanionPreparationFactory(backgroundExecutor, language)
             ?: return
@@ -2836,13 +2967,25 @@ class SuggestionsController internal constructor(
         val activeEngine = usableEngine() ?: return
         if (!activeEngine.isCurrent(token)) return
         when (kind) {
-            LookupKind.PREFIX -> applyPrefixResult(suggestions)
+            LookupKind.PREFIX -> {
+                applyPrefixResult(suggestions)
+                prefixResultSeenInSession = true
+                // The first prefix lookup of this session has finished on the engine worker; a
+                // deferred full index build may now run without delaying that first answer.
+                releaseDeferredGlidePrewarm()
+            }
             LookupKind.NEXT_WORD -> applyNextWordResult(suggestions)
             LookupKind.GLIDE -> applyGlideResult(suggestions)
         }
     }
 
     private fun applyPrefixResult(suggestions: List<String>) {
+        syncAutocorrectAdviceState()
+        // A result computed for a request issued BEFORE the last observed setting change still
+        // carries the old verdict: only a request issued after the change clears the reset.
+        if (prefixRequestAdviceResetSerial == adviceResetSerial) {
+            adviceAwaitingFreshLookup = false
+        }
         // Typo recovery and personal words can fill a strip whose exact dictionary pass was
         // empty; the learning rule needs only the empty exact pass.
         val exactMiss = usableEngine()?.exactMissPrefix()
@@ -2897,7 +3040,9 @@ class SuggestionsController internal constructor(
             autocorrectGate, pendingPrefix, suppressedPreviewWord, refusedCorrections,
             refusedCorrectionSource,
         ) {
-            usableEngine()?.autocorrectAdvice()
+            // A verdict computed before the last setting change is reset: no preview until a
+            // fresh lookup recomputes one.
+            if (adviceAwaitingFreshLookup) null else usableEngine()?.autocorrectAdvice()
         }
         previewKeepTypedCell = preview?.typedShown
         if (preview != null) {
@@ -3044,6 +3189,9 @@ class SuggestionsController internal constructor(
      */
     fun maybeAutocorrectBeforeSeparator(separatorCodePoint: Int): Boolean {
         if (destroyed || !eligible || keyguardGate.isLocked()) return false
+        // Observation point: a setting changed since the last lookup is pushed to the engines
+        // here, and its old verdict counts as reset until a fresh lookup (below).
+        syncAutocorrectAdviceState()
         if (!autocorrectGate.isOn()) return false
         val activeEngine = usableEngine() ?: return false
         if (!editor.hasKnownCursor()) return false
@@ -3077,6 +3225,9 @@ class SuggestionsController internal constructor(
                     requiresAutocorrectGate = true)
             }
         }
+        // The verdict of a lookup that ran before the last setting change is reset; the legacy
+        // spelling rule above is deterministic, not a verdict, so it is unaffected.
+        if (adviceAwaitingFreshLookup) return false
         val advice = activeEngine.autocorrectAdvice() ?: return false
         if (advice.typedWord != normalized) return false
         // The exact correction (this typed word to this replacement) was undone enough times to be

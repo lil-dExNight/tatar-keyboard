@@ -1,0 +1,11 @@
+{
+  "id": "asset-sentstart-russian-v1",
+  "revision": "russian_sentstart_v1",
+  "size_bytes": 1925,
+  "sha256": "dbc78d75eddc2a50d82d8a445acdbf53cd48587382c427b28117914439e8c186",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles-No-Grant",
+  "source_role": "generated_sentence_start_list",
+  "split_rule": "training output; excludes final evaluation records",
+  "generation_command": "python3 scripts/rebuild_assets.py --only russian --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
+  "path": "app/src/main/assets/dictionaries/russian_sentstart_v1.txt"
+}

@@ -37,8 +37,6 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDurableFil
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -101,6 +99,10 @@ internal class BackupCoordinator(
     private val uiPoster: (Runnable) -> Unit = { Handler(Looper.getMainLooper()).post(it) },
 ) {
     private val appContext = context.applicationContext
+    private val importJournalFiles = BackupImportJournalFiles(
+        appContext.noBackupFilesDir,
+        AndroidDurableFileOps,
+    )
     private val executor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "backup-transfer").apply { isDaemon = true }
     }
@@ -316,55 +318,14 @@ internal class BackupCoordinator(
             )
         }
 
-        override fun readImportJournal(): ByteArray? {
-            val file = importJournalFile()
-            if (!file.exists()) return null
-            if (!file.isFile || file.length() > BackupImportJournal.MAX_SERIALIZED_BYTES) {
-                throw IOException("cannot read import journal")
-            }
-            return file.readBytes()
-        }
+        override fun readImportJournal(): ByteArray? = importJournalFiles.read()
 
-        override fun writeImportJournal(bytes: ByteArray): Boolean {
-            val directory = appContext.noBackupFilesDir
-            val temporary = importJournalTemporaryFile()
-            return try {
-                if (temporary.exists() && !AndroidDurableFileOps.delete(temporary)) return false
-                FileOutputStream(temporary).use { output ->
-                    output.write(bytes)
-                    output.flush()
-                    AndroidDurableFileOps.syncFile(output.fd)
-                }
-                AndroidDurableFileOps.atomicReplace(temporary, importJournalFile())
-                AndroidDurableFileOps.syncDirectory(directory)
-                true
-            } catch (_: Exception) {
-                if (temporary.exists()) runCatching { AndroidDurableFileOps.delete(temporary) }
-                false
-            }
-        }
+        override fun writeImportJournal(bytes: ByteArray): Boolean =
+            importJournalFiles.write(bytes)
 
-        override fun clearImportJournal(): Boolean {
-            // The temporary copy left by a write cut short holds the same old and new states.
-            return try {
-                var deleted = false
-                for (file in listOf(importJournalTemporaryFile(), importJournalFile())) {
-                    if (!file.exists()) continue
-                    if (!AndroidDurableFileOps.delete(file) && file.exists()) return false
-                    deleted = true
-                }
-                if (deleted) AndroidDurableFileOps.syncDirectory(appContext.noBackupFilesDir)
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
+        override fun commitImportJournal(): Boolean = importJournalFiles.commit()
 
-        private fun importJournalFile(): File =
-            File(appContext.noBackupFilesDir, "backup-import-journal.bin")
-
-        private fun importJournalTemporaryFile(): File =
-            File(appContext.noBackupFilesDir, "${importJournalFile().name}.tmp")
+        override fun clearImportJournal(): Boolean = importJournalFiles.clear()
 
         private fun personalDirectory(): File =
             File(appContext.noBackupFilesDir, AndroidPersonalDictionaryStorage.PERSONAL_DIRECTORY_NAME)

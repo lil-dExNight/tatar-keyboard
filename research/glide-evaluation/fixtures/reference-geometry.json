@@ -1,0 +1,592 @@
+{
+  "ru": {
+    "grid_width": 100000,
+    "key_radius": 6971,
+    "keys": [
+      {
+        "bottom": 10185,
+        "left": 870,
+        "letter": "й",
+        "more": [],
+        "right": 8222,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 9961,
+        "letter": "ц",
+        "more": [],
+        "right": 17313,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 19052,
+        "letter": "у",
+        "more": [
+          "ү"
+        ],
+        "right": 26404,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 28143,
+        "letter": "к",
+        "more": [],
+        "right": 35495,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 37234,
+        "letter": "е",
+        "more": [
+          "ё"
+        ],
+        "right": 44586,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 46325,
+        "letter": "н",
+        "more": [
+          "ң"
+        ],
+        "right": 53676,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 55415,
+        "letter": "г",
+        "more": [],
+        "right": 62767,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 64506,
+        "letter": "ш",
+        "more": [],
+        "right": 71858,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 73597,
+        "letter": "щ",
+        "more": [],
+        "right": 80949,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 82688,
+        "letter": "з",
+        "more": [],
+        "right": 90040,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 91779,
+        "letter": "х",
+        "more": [
+          "һ"
+        ],
+        "right": 99130,
+        "top": 1204
+      },
+      {
+        "bottom": 20648,
+        "left": 870,
+        "letter": "ф",
+        "more": [],
+        "right": 8222,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 9961,
+        "letter": "ы",
+        "more": [],
+        "right": 17313,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 19052,
+        "letter": "в",
+        "more": [],
+        "right": 26404,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 28143,
+        "letter": "а",
+        "more": [
+          "ә"
+        ],
+        "right": 35495,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 37234,
+        "letter": "п",
+        "more": [],
+        "right": 44586,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 46325,
+        "letter": "р",
+        "more": [],
+        "right": 53676,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 55415,
+        "letter": "о",
+        "more": [
+          "ө"
+        ],
+        "right": 62767,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 64506,
+        "letter": "л",
+        "more": [],
+        "right": 71858,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 73597,
+        "letter": "д",
+        "more": [],
+        "right": 80949,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 82688,
+        "letter": "ж",
+        "more": [
+          "җ"
+        ],
+        "right": 90040,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 91779,
+        "letter": "э",
+        "more": [],
+        "right": 99130,
+        "top": 11667
+      },
+      {
+        "bottom": 31111,
+        "left": 11670,
+        "letter": "я",
+        "more": [],
+        "right": 18642,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 20381,
+        "letter": "ч",
+        "more": [],
+        "right": 27353,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 29092,
+        "letter": "с",
+        "more": [],
+        "right": 36064,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 37803,
+        "letter": "м",
+        "more": [],
+        "right": 44775,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 46514,
+        "letter": "и",
+        "more": [],
+        "right": 53485,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 55224,
+        "letter": "т",
+        "more": [],
+        "right": 62196,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 63935,
+        "letter": "ь",
+        "more": [
+          "ъ"
+        ],
+        "right": 70907,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 72646,
+        "letter": "б",
+        "more": [],
+        "right": 79618,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 81357,
+        "letter": "ю",
+        "more": [],
+        "right": 88329,
+        "top": 22130
+      }
+    ],
+    "model": "grid-v1"
+  },
+  "tt": {
+    "grid_width": 100000,
+    "key_radius": 6971,
+    "keys": [
+      {
+        "bottom": 10185,
+        "left": 870,
+        "letter": "ә",
+        "more": [],
+        "right": 11631,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 13370,
+        "letter": "ө",
+        "more": [],
+        "right": 24131,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 25870,
+        "letter": "ү",
+        "more": [],
+        "right": 36631,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 38370,
+        "letter": "җ",
+        "more": [],
+        "right": 49131,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 50870,
+        "letter": "ң",
+        "more": [],
+        "right": 61630,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 63369,
+        "letter": "һ",
+        "more": [],
+        "right": 74130,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 75869,
+        "letter": "ё",
+        "more": [],
+        "right": 86630,
+        "top": 1204
+      },
+      {
+        "bottom": 10185,
+        "left": 88369,
+        "letter": "ъ",
+        "more": [],
+        "right": 99130,
+        "top": 1204
+      },
+      {
+        "bottom": 20648,
+        "left": 870,
+        "letter": "й",
+        "more": [],
+        "right": 8222,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 9961,
+        "letter": "ц",
+        "more": [],
+        "right": 17313,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 19052,
+        "letter": "у",
+        "more": [],
+        "right": 26404,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 28143,
+        "letter": "к",
+        "more": [],
+        "right": 35495,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 37234,
+        "letter": "е",
+        "more": [],
+        "right": 44586,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 46325,
+        "letter": "н",
+        "more": [],
+        "right": 53676,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 55415,
+        "letter": "г",
+        "more": [],
+        "right": 62767,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 64506,
+        "letter": "ш",
+        "more": [],
+        "right": 71858,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 73597,
+        "letter": "щ",
+        "more": [],
+        "right": 80949,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 82688,
+        "letter": "з",
+        "more": [],
+        "right": 90040,
+        "top": 11667
+      },
+      {
+        "bottom": 20648,
+        "left": 91779,
+        "letter": "х",
+        "more": [],
+        "right": 99130,
+        "top": 11667
+      },
+      {
+        "bottom": 31111,
+        "left": 870,
+        "letter": "ф",
+        "more": [],
+        "right": 8222,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 9961,
+        "letter": "ы",
+        "more": [],
+        "right": 17313,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 19052,
+        "letter": "в",
+        "more": [],
+        "right": 26404,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 28143,
+        "letter": "а",
+        "more": [],
+        "right": 35495,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 37234,
+        "letter": "п",
+        "more": [],
+        "right": 44586,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 46325,
+        "letter": "р",
+        "more": [],
+        "right": 53676,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 55415,
+        "letter": "о",
+        "more": [],
+        "right": 62767,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 64506,
+        "letter": "л",
+        "more": [],
+        "right": 71858,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 73597,
+        "letter": "д",
+        "more": [],
+        "right": 80949,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 82688,
+        "letter": "ж",
+        "more": [],
+        "right": 90040,
+        "top": 22130
+      },
+      {
+        "bottom": 31111,
+        "left": 91779,
+        "letter": "э",
+        "more": [],
+        "right": 99130,
+        "top": 22130
+      },
+      {
+        "bottom": 41574,
+        "left": 11670,
+        "letter": "я",
+        "more": [],
+        "right": 18642,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 20381,
+        "letter": "ч",
+        "more": [],
+        "right": 27353,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 29092,
+        "letter": "с",
+        "more": [],
+        "right": 36064,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 37803,
+        "letter": "м",
+        "more": [],
+        "right": 44775,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 46514,
+        "letter": "и",
+        "more": [],
+        "right": 53485,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 55224,
+        "letter": "т",
+        "more": [],
+        "right": 62196,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 63935,
+        "letter": "ь",
+        "more": [],
+        "right": 70907,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 72646,
+        "letter": "б",
+        "more": [],
+        "right": 79618,
+        "top": 32593
+      },
+      {
+        "bottom": 41574,
+        "left": 81357,
+        "letter": "ю",
+        "more": [],
+        "right": 88329,
+        "top": 32593
+      }
+    ],
+    "model": "grid-v1"
+  }
+}

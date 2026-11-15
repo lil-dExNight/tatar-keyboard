@@ -128,6 +128,32 @@ class RecentClipSourceContractTest {
     }
 
     @Test
+    fun theClipboardIsNeverReadInAnIneligibleField() {
+        // The field-eligibility gate must run before any clipboard byte is read — a password,
+        // numeric, NO_PERSONALIZED_LEARNING or locked-session field never shows the cell, so its
+        // clipboard must not be touched at all.
+        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
+        val eligibility = capture.indexOf("if (!isSuggestionsEligible()) {")
+        val read = capture.indexOf("mClipboardManager.getPrimaryClip()")
+        assertTrue("the field-eligibility gate runs before the clipboard read",
+            eligibility in 0 until read)
+        // It also precedes the fresh keyguard read: eligibility is the cheapest, most protective
+        // gate, so an ineligible field never even pays for a lock re-read.
+        val freshLock = capture.indexOf("noteFreshPrivacyLock()")
+        assertTrue("eligibility precedes the fresh keyguard read", eligibility in 0 until freshLock)
+        assertTrue("an ineligible field clears the held offer",
+            capture.substring(eligibility, read).contains("controller.onPrimaryClipChanged(null, 0L);"))
+        // Both entry points (the show-time read and the change listener) go through this one
+        // gated method, so the single check covers every recent-clip clipboard read.
+        val register = methodBody(latinImeSource(), "private void registerRecentClipListener()")
+        assertTrue("the show-time read goes through the gated capture",
+            register.contains("capturePrimaryClipForOffer()"))
+        assertTrue("the change listener goes through the gated capture",
+            latinImeSource().substringAfter("public void onPrimaryClipChanged() {")
+                .substringBefore("}").contains("capturePrimaryClipForOffer();"))
+    }
+
+    @Test
     fun aSensitiveClipClearsTheOfferBeforeItsTextIsRead() {
         val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
         val extras = capture.indexOf("clip.getDescription().getExtras()")
@@ -160,6 +186,40 @@ class RecentClipSourceContractTest {
         val binderCommit = commit.indexOf("mConnection.commitText(")
         assertTrue("an oversized clip cannot open a batch or reach commitText",
             commitGuard in 0 until batch && batch < binderCommit)
+    }
+
+    @Test
+    fun aStaleClipClearsTheOfferBeforeItsTextIsRead() {
+        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
+        val timestamp = capture.indexOf("clip.getDescription().getTimestamp()")
+        val gate = capture.indexOf("ageMillis > RecentClipCell.TTL_MILLIS")
+        val textRead = capture.indexOf("clip.getItemAt(0).getText()")
+        assertTrue("the timestamp is read from the clip description", timestamp >= 0)
+        assertTrue("the age gate runs after the timestamp read", gate in timestamp until textRead)
+        assertTrue("a timestamp the platform cannot prove still fails to no offer",
+            capture.contains("if (timestamp <= 0L)"))
+        assertTrue("a stale clip clears the held offer before the text is read",
+            capture.substring(gate, textRead).contains("controller.onPrimaryClipChanged(null, 0L);"))
+    }
+
+    @Test
+    fun theAgeGateUsesTheCellsFreshnessWindow() {
+        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
+        // The same window the cell applies: future-stamped or older than TTL clears, and a clip
+        // exactly at the TTL boundary is still fresh.
+        assertTrue(capture.contains("ageMillis < 0L || ageMillis > RecentClipCell.TTL_MILLIS"))
+        assertFalse("a clip exactly at the TTL boundary must stay offerable",
+            capture.contains("ageMillis >= RecentClipCell.TTL_MILLIS"))
+    }
+
+    @Test
+    fun platformsWithoutClipTimestampsKeepTheFreshEventMomentFallback() {
+        val capture = methodBody(latinImeSource(), "private void capturePrimaryClipForOffer()")
+        val apiGuard = capture.indexOf("Build.VERSION.SDK_INT >= Build.VERSION_CODES.O")
+        val timestamp = capture.indexOf("clip.getDescription().getTimestamp()")
+        assertTrue("the timestamp read is API 26+ only", apiGuard in 0 until timestamp)
+        assertTrue("pre-26 clips keep the change event's moment as their set-time",
+            capture.contains("setAtMillis = System.currentTimeMillis();"))
     }
 
     @Test

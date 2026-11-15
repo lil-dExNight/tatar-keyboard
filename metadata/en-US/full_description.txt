@@ -1,4 +1,4 @@
-A native Android keyboard (IME) with full Tatar support: the standard ЙЦУКЕН layout plus a dedicated, always-visible fifth row for <b>ә ө ү җ ң һ</b>. All 39 letters of the Tatar alphabet are one tap away.
+A native Android keyboard (IME) with full Tatar support: the standard ЙЦУКЕН layout plus a dedicated, always-visible fifth row for <b>ә ө ү җ ң һ ё ъ</b>. All 39 letters of the Tatar alphabet are one tap away.
 
 To enable the keyboard:
 
@@ -7,7 +7,7 @@ To enable the keyboard:
 
 <b>Layout and languages:</b>
 
-* Tatar layout: ЙЦУКЕН + a visible fifth row with ә ө ү җ ң һ
+* Tatar layout: ЙЦУКЕН + a visible fifth row with ә ө ү җ ң һ ё ъ — every Tatar alphabet letter, ё and ъ included, has its own direct key
 * Three languages: Tatar, Russian, English — switch with the globe key
 * Long-press duplicates on the Russian layout: а→ә, о→ө, у→ү, ж→җ, н→ң, х→һ, plus е→ё and ь→ъ
 
@@ -37,6 +37,7 @@ To enable the keyboard:
 
 <b>Everyday typing:</b>
 
+* Glide typing for Tatar and Russian: slide your finger over the letters; the word is inserted when you lift it, with alternatives in the strip. On by default and can be switched off in settings
 * Double-space → period, swipe on space to move the cursor, several simultaneous touches without lost letters
 * Key-press preview, long-press alternatives popup, sound and vibration (all configurable)
 * Light and dark themes
@@ -53,6 +54,6 @@ To enable the keyboard:
 
 <b>Size:</b>
 
-* The app is under 2 MB — dictionaries, prediction tables and emoji data included
+* The release APK stays under 5 MB — dictionaries, prediction tables and emoji data included
 
 Open source under Apache-2.0. A fork of Simple Keyboard, which is based on the AOSP LatinIME keyboard.

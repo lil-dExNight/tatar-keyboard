@@ -124,6 +124,16 @@ interface EngineHandle {
     fun setCompanionLexicon(lexicon: CompanionLexicon?) {}
 
     /**
+     * The live autocorrect setting, pushed by the controller at publish and on every observed
+     * change. Worker-serialized: while false the engine skips the PREFIX advice computation
+     * entirely; every actual enabled-state transition also clears the published verdict (the
+     * token-bound one and the computer's), without touching the exact-pass reports, typo
+     * recovery or companion filtering. Pushing the current value again is a no-op. Default
+     * no-op: a fake handle computes no verdicts anyway.
+     */
+    fun setAutocorrectAdviceEnabled(enabled: Boolean) {}
+
+    /**
      * The autocorrect verdict of the current completed lookup, or null when nothing may be
      * replaced. Its generation is invalidated by a newer request, [finishInput] and teardown.
      * Read on the UI thread when a word separator is pressed. Default null: never autocorrects.
@@ -232,6 +242,9 @@ class MappedEngineHandle private constructor(
 
     override fun setCompanionLexicon(lexicon: CompanionLexicon?) =
         engine.setCompanionLexicon(lexicon)
+
+    override fun setAutocorrectAdviceEnabled(enabled: Boolean) =
+        engine.setAutocorrectAdviceEnabled(enabled)
 
     override fun autocorrectAdvice(): AutocorrectAdvice? = engine.autocorrectAdvice
 

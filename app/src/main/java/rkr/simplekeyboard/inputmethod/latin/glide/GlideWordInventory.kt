@@ -38,9 +38,35 @@ interface GlideWordInventory {
 
     /** Visits every entry exactly once, in dictionary order, with its word and frequency. */
     fun forEachWord(visitor: GlideWordVisitor)
+
+    /**
+     * The byte-level counterpart of [forEachWord], used by [GlideWordIndex.build] so a
+     * dictionary-backed inventory can serve its stored UTF-8 directly instead of materializing
+     * a [String] per entry. The bytes in `[0, length)` are exactly `word.toByteArray(UTF_8)` of
+     * the word [forEachWord] would yield, in the same order with the same frequencies; the
+     * buffer is reused and valid only for the duration of the visit, so the visitor must not
+     * retain it. The default re-encodes the String forms through one shared scratch buffer —
+     * no per-entry allocation either — and an inventory backed by UTF-8 storage overrides it
+     * with its direct walk.
+     */
+    fun forEachWordUtf8(visitor: GlideWordUtf8Visitor) {
+        val encoder = GlideUtf8.Encoder()
+        forEachWord { word, frequency ->
+            val length = encoder.encode(word)
+            visitor.visit(encoder.buffer, length, frequency)
+        }
+    }
 }
 
 /** Primitive-friendly visitor (no boxed Long per word) for the index-build walk. */
 fun interface GlideWordVisitor {
     fun visit(word: String, frequency: Long)
+}
+
+/**
+ * The [GlideWordInventory.forEachWordUtf8] visitor: no String and no boxed Long per word.
+ * [wordUtf8] holds the word's UTF-8 in `[0, length)` and is valid only during the call.
+ */
+fun interface GlideWordUtf8Visitor {
+    fun visit(wordUtf8: ByteArray, length: Int, frequency: Long)
 }

@@ -158,7 +158,12 @@ class GlideWordIndex private constructor(
             var skipped = 0
             var maxFrequency = 0L
             val pairCounts = IntArray(keyCount * keyCount)
-            inventory.forEachWord { word, frequency ->
+            // The byte-level walk: a UTF-8-backed inventory (the dictionary) serves its stored
+            // bytes directly, so no Java String is created per entry. Decoding reproduces
+            // String.codePointAt exactly for well-formed input, and a malformed sequence yields
+            // U+FFFD — no key, so the word is skipped, exactly as the String-based walk skipped
+            // it. See GlideUtf8.
+            inventory.forEachWordUtf8 { word, wordLength, frequency ->
                 val entry = wordCount + skipped
                 // The letter sequence as key indices; a word with an unmappable letter is not
                 // indexable and gets an EMPTY sequence range (start == end), which no bucket
@@ -170,9 +175,10 @@ class GlideWordIndex private constructor(
                 var letters = 0
                 var previousLetter = -1
                 val start = poolSize
-                while (i < word.length) {
-                    val codePoint = word.codePointAt(i)
-                    i += Character.charCount(codePoint)
+                while (i < wordLength) {
+                    val packed = GlideUtf8.nextCodePoint(word, i, wordLength)
+                    val codePoint = (packed and 0xffff_ffffL).toInt()
+                    i += (packed ushr 32).toInt()
                     val letter = Character.toLowerCase(codePoint)
                     val key = geometry.keyIndexOfLetter(letter)
                     if (key < 0) {

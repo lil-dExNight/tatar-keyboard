@@ -69,12 +69,16 @@ position `i % 8`. The bigram tables depend on this index-based access.
 **Validation** (`storage/TdictValidator.kt`). `inflateAsset` accepts a single zlib stream with
 no preset dictionary and no trailing or concatenated data. It stops as soon as the input exceeds
 the pinned compressed size or the output exceeds `MAX_RAW_SIZE`. The compressed size, compressed
-SHA-256 and raw size must equal the pins. Both validation tiers then require:
+SHA-256 and raw size must equal the pins. The full validation tier then requires:
 
 - the file length equals the pinned raw size, and the header constants equal the spec;
 - entryCount is non-zero and equals the pin, and every section field has the value in the
   table above (overflow-checked, within u32);
 - the checksum matches, and the SHA-256 of the whole file equals the pinned raw SHA-256.
+
+The pinned-content tier, `verifyPinnedContent`, checks the same bounds, header constants and
+section arithmetic and then verifies the pinned raw SHA-256 in one streaming pass; the pinned
+match authenticates the embedded checksum, so that field is not re-verified there.
 
 The full tier, `validateRaw`, additionally walks the file: the first block offset equals
 blocksOffset, block offsets strictly increase within the file; `firstLength` is 1..128,
@@ -82,10 +86,9 @@ blocksOffset, block offsets strictly increase within the file; `firstLength` is 
 varint is minimal; every word is strict UTF-8, 1..64 code points, NFC lowercase, and in the
 Tatar alphabet (a superset of the Russian alphabet, so the Russian file passes the same check);
 words strictly increase, so there are no duplicates, and every frequency is > 0; each block ends
-exactly where the next one starts, and the last block ends at end of file. The pinned-content
-tier, `verifyPinnedContent`, stops after the shared checks: a file whose size and SHA-256 match
-the pinned artifact is exactly the file the full walk accepted at publication, so the walk adds
-value only on never-before-seen bytes.
+exactly where the next one starts, and the last block ends at end of file. A file whose size and
+SHA-256 match the pinned artifact is exactly the file the full walk accepted at publication, so
+the walk adds value only on never-before-seen bytes.
 
 The runtime reader (`engine/TdictPrefixIndex.kt`, `open`) checks the header and the section
 arithmetic again on the memory-mapped file, and walks every entry unless the store hands it a
@@ -145,20 +148,23 @@ Four sections follow the header, with no padding between them:
 
 **Validation** (`storage/TatBigrValidator.kt`). Inflation follows the same rules as for TATDICT,
 with the input bounded by `TatBigrFormat.MAX_COMPRESSED_SIZE` and the output by
-`TatBigrFormat.MAX_RAW_SIZE`. Both validation tiers require:
+`TatBigrFormat.MAX_RAW_SIZE`. The full validation tier requires:
 
 - the header constants, headCount (non-zero, equal to the pin) and the linked dictionary SHA-256
   equal the spec, and the reserved bytes are zero;
 - every section offset has its required value, and fileSize equals the file length;
 - the checksum matches, and the SHA-256 of the whole file equals the pinned raw SHA-256.
 
+The pinned-content tier, `verifyPinnedContent`, checks the same header, dictionary-link and
+section arithmetic and verifies the pinned raw SHA-256 in one streaming pass; the pinned match
+authenticates the embedded checksum, so that field is not re-verified there.
+
 The full tier, `validateRaw`, additionally walks the streams: block `firstDictIndex` values
 strictly increase; stream offsets never decrease and stay inside their sections; the first
 block's offsets are 0; head indices strictly increase, every varint is minimal, and every count
 is ≥ 1; each delta stream ends exactly where the next block's stream starts, each success stream
 starts at its record's offset, the counts sum to pairCount, and the success stream ends exactly
-at the end of its section. The pinned-content tier, `verifyPinnedContent`, stops after the shared
-checks; see the TATDICT section for when the store uses which tier.
+at the end of its section. See the TATDICT section for when the store uses which tier.
 
 The validator does not have the dictionary, so it cannot check upper bounds on indices.
 `engine/TatBigrPrefixIndex.kt` (`open`) checks the header again, requires the linked SHA-256 to

@@ -17,32 +17,73 @@
 package rkr.simplekeyboard.inputmethod.latin.utils
 
 import java.io.File
+import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * App screens and keyboard chrome use the system resolution for tt, ru and en;
- * unsupported system languages are forced to English. The pure mapping is tested directly;
- * Android wrapping is pinned at source level because a JVM has no real Resources.
+ * App screens and keyboard chrome follow the FIRST SUPPORTED language of the whole system locale
+ * list, not just its first entry: [de, tt] is a Tatar-speaking user and must get the Tatar UI.
+ * The pure mapping is tested directly; Android wrapping is pinned at source level because a JVM
+ * has no real Resources.
  */
 class AppLocaleTest {
 
     @Test
-    fun shippedSystemLanguagesKeepTheirOwnResolution() {
-        for (language in listOf("tt", "ru", "en")) {
-            assertNull("$language resolves to shipped resources on its own",
-                AppLocale.forcedLocaleFor(language))
+    fun aSupportedFirstEntryKeepsTheSystemResolution() {
+        for (list in listOf(listOf("tt"), listOf("ru"), listOf("en"),
+                listOf("tt", "de"), listOf("ru", "tt"), listOf("en", "ru"))) {
+            assertNull("$list resolves to shipped resources on its own",
+                AppLocale.forcedLocaleFor(list))
         }
     }
 
     @Test
-    fun unsupportedSystemLanguagesAreForcedToEnglish() {
-        for (language in listOf("de", "tr", "zh", "ar", "")) {
-            assertEquals("system '$language' must land on English",
-                "en", AppLocale.forcedLocaleFor(language)?.language)
+    fun aSupportedLanguageLaterInTheListIsForced() {
+        assertEquals("tt", AppLocale.forcedLocaleFor(listOf("de", "tt"))?.language)
+        assertEquals("tt", AppLocale.forcedLocaleFor(listOf("de", "fr", "tt", "ru"))?.language)
+        assertEquals("ru", AppLocale.forcedLocaleFor(listOf("de", "ru", "tt"))?.language)
+        assertEquals("en", AppLocale.forcedLocaleFor(listOf("tr", "zh", "en"))?.language)
+        // The earliest supported entry wins, not the last and not a fixed preference order.
+        assertEquals("ru", AppLocale.forcedLocaleFor(listOf("de", "ru", "tt", "en"))?.language)
+        assertEquals("tt", AppLocale.forcedLocaleFor(listOf("de", "tt", "ru", "en"))?.language)
+    }
+
+    @Test
+    fun anUnsupportedListFallsBackToEnglish() {
+        for (list in listOf(listOf("de"), listOf("de", "tr", "zh"), listOf(""), emptyList())) {
+            assertEquals("$list must land on English",
+                "en", AppLocale.forcedLocaleFor(list)?.language)
         }
+    }
+
+    @Test
+    fun theFirstSupportedLanguageScansTheWholeListInOrder() {
+        assertEquals("tt", AppLocale.firstSupportedLanguage(listOf("de", "tt", "ru")))
+        assertEquals("en", AppLocale.firstSupportedLanguage(listOf("en", "tt")))
+        assertNull(AppLocale.firstSupportedLanguage(listOf("de", "tr")))
+        assertNull(AppLocale.firstSupportedLanguage(emptyList()))
+    }
+
+    @Test
+    fun theForcedLocaleCarriesOnlyTheLanguage() {
+        // createConfigurationContext must not invent a country the user never chose.
+        assertEquals(Locale("tt"), AppLocale.forcedLocaleFor(listOf("de", "tt")))
+    }
+
+    @Test
+    fun theWrapScansTheWholeSystemLocaleList() {
+        val source = read(
+            "src/main/java/rkr/simplekeyboard/inputmethod/latin/utils/AppLocale.kt",
+            "app/src/main/java/rkr/simplekeyboard/inputmethod/latin/utils/AppLocale.kt",
+        )
+        assertFalse("the wrap must not stop at the first system locale",
+            source.contains("locales[0]"))
+        assertTrue("the wrap must walk every entry of the system locale list",
+            source.contains("0 until locales.size()"))
     }
 
     @Test

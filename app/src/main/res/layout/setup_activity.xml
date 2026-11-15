@@ -188,18 +188,13 @@
                 android:text="@string/setup_done_title"
                 android:textAppearance="?android:attr/textAppearanceLarge" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/setup_done_hint"
-                android:textAppearance="?android:attr/textAppearanceMedium" />
-
-            <!-- Gesture cheatsheet: the four gestures this keyboard has, one line each,
-                 the same texts the Preferences "Gestures" card shows. Read-only TextViews
-                 inside one card; nothing here is a tap target. -->
+            <!-- The single onboarding guide: the Tatar layout (the extra top row and the
+                 long-press partners), the four gestures and saving a word to the personal
+                 dictionary. One card, one line per fact — the same gesture wording the
+                 Preferences "Gestures" card shows, not a second summary repeated above it.
+                 Read-only TextViews; nothing here is a tap target. -->
             <LinearLayout
-                android:id="@+id/setup_gestures_card"
+                android:id="@+id/setup_guide_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
@@ -210,13 +205,25 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/gestures_card_title"
+                    android:text="@string/setup_guide_title"
                     android:textAppearance="?android:attr/textAppearanceMedium" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
+                    android:text="@string/setup_guide_layout"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/setup_guide_long_press"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
                     android:text="@string/setup_gesture_glide"
                     android:textAppearance="?android:attr/textAppearanceSmall" />
                 <TextView
@@ -236,6 +243,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="@string/setup_gesture_word_delete_flick"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/setup_guide_save_word"
                     android:textAppearance="?android:attr/textAppearanceSmall" />
             </LinearLayout>
 

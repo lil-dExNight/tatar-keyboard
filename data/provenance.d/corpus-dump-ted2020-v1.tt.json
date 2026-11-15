@@ -1,0 +1,11 @@
+{
+  "generation_command": "research/corpus/dl.sh  # TED2020-v1.tt.txt.gz",
+  "id": "corpus-dump-ted2020-v1.tt",
+  "license": "CC-BY-4.0",
+  "path": "research/corpus/TED2020-v1.tt.txt.gz",
+  "revision": "TED2020-v1.tt",
+  "sha256": "979610c6ebbf2f6d6cf6d49d0a7218485ac9cd1ebd4e9964a06cb4775e429be2",
+  "size_bytes": 9124,
+  "source_role": "raw_corpus",
+  "split_rule": "training input; not split upstream"
+}

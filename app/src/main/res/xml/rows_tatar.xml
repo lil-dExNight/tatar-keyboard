@@ -21,9 +21,12 @@
 <merge
     xmlns:latin="http://schemas.android.com/apk/res-auto"
 >
-    <!-- Fifth row on TOP: ә ө ү җ ң һ — 6 keys × 16.667%p ≈ 100% -->
+    <!-- Fifth row on TOP: ә ө ү җ ң һ ё ъ — 8 keys × 12.5%p = 100%. The eight keys are the
+         Tatar letters the three ЙЦУКЕН rows do not carry directly, so every one of the 39
+         Tatar alphabet letters has its own key; ё and ъ keep their long-press duplicates on
+         е and ь. OneHandedMode.FIFTH_ROW_KEY_FRACTION mirrors this row's pitch. -->
     <Row
-        latin:keyWidth="16.667%p"
+        latin:keyWidth="12.5%p"
     >
         <include
             latin:keyboardLayout="@xml/rowkeys_tatar_extra" />

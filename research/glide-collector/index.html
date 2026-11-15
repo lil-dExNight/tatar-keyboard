@@ -7,8 +7,9 @@
   - the page makes no network requests and loads no framework, font or analytics;
   - the only stored content is the prompted-word trace record: the prompt word (drawn from
     the small embedded pool below), the trace resampled to 50 points in key-radius units,
-    per-point timing, the layout id, the screen density bucket, the board size in CSS pixels
-    and a random pseudonymous participant id;
+    per-point timing, the layout id and exact key geometry, the screen density bucket, board
+    size and orientation, fixed trial/speed labels, and random pseudonymous participant,
+    device and session ids;
   - records live in the browser's local storage and leave it only when the participant
     downloads the JSONL file and sends it themselves;
   - the page has no text fields and never sees anything the participant types elsewhere.
@@ -16,10 +17,12 @@
   The prompt pools start from the 20 most frequent 4–7-letter words of the repository's own
   tt/ru evaluation corpora whose letters all sit on base keys of the respective layout
   (proper-name forms excluded), plus probe classes the decoder handles specially: doubled
-  letters (one key visited twice), alias letters (Tatar ъ traces over the ь key, Russian ё over
-  е — both are long-press letters without a key of their own) and the Tatar extra-row letters
-  һ/ә. The gate below maps an alias letter to its base key and treats a doubled letter as one
-  key visit, so these words are traceable exactly as the app decodes them.
+  letters (one key visited twice), alias letters and the Tatar extra-row letters. The Tatar
+  layout carries every alphabet letter on a key: its extra row is eight keys (ә ө ү җ ң һ ё ъ),
+  so ё and ъ trace their own keys there. The Russian layout has no extra row, so the six
+  Tatar-only letters plus ё/ъ are long-press aliases of their base keys. The gate below maps
+  an alias letter to its base key and treats a doubled letter as one key visit, so these words
+  are traceable exactly as the app decodes them.
 -->
 <html lang="en">
 <head>
@@ -58,10 +61,12 @@
   <section id="consent">
     <p>This page collects swipe traces of prompted words on an on-screen keyboard, for
     calibrating an offline Tatar/Russian gesture decoder.</p>
-    <p>Each kept record contains exactly: the prompt word, the trace resampled to 50 points
-    in key-radius units, per-point timing, the layout id, the screen density bucket, the
-    board size in pixels, and a random participant id shown on the next screen. The page has
-    no text fields: it never sees anything you type anywhere else.</p>
+    <p>Each kept record contains the prompt word, the trace resampled to 50 points in
+    key-radius units, per-point timing, the layout and exact key geometry, screen density,
+    board size and orientation, fixed trial/speed labels, and random participant, device and
+    session ids. Failed and canceled traces are kept with a rejection reason; they are never
+    silently filtered. The page has no text fields: it never sees anything you type anywhere
+    else.</p>
     <p>Records stay in this browser's local storage and leave it only when you download them
     yourself and send the file to the researchers. You can delete single records or all of
     them at any time. The page makes no network requests — once it has loaded, you can
@@ -77,6 +82,25 @@
       <button id="lang-ru">Русский</button>
       <span class="muted">participant <code id="pid"></code></span>
       <button id="newid">new id</button>
+      <span class="muted">session <code id="sid"></code></span>
+      <button id="newsession">new session</button>
+    </div>
+    <div class="row">
+      <label>trial <select id="trial-kind">
+        <option value="ordinary">ordinary swipe</option>
+        <option value="tap">negative: tap</option>
+        <option value="tremor">negative: tremor</option>
+        <option value="canceled">negative: canceled</option>
+        <option value="short_drag">negative: short drag</option>
+        <option value="unintended_start">negative: unintended start</option>
+      </select></label>
+      <label>speed <select id="speed-condition">
+        <option value="unspecified">unspecified</option>
+        <option value="slow">slow</option>
+        <option value="normal">normal</option>
+        <option value="fast">fast</option>
+      </select></label>
+      <button id="canceltrace">save active trace as canceled</button>
     </div>
     <div id="prompt"></div>
     <div id="statusline" class="muted">swipe the word through its letters, in one motion</div>
@@ -98,8 +122,9 @@
  * Key-grid geometry: the same model the app builds from its layout XML — rows of
  * percent-width keys with a horizontal gap and side padding, computed in a
  * 100 000-unit grid and scaled to the board's pixel width. The Tatar layout adds
- * its extra row (ә ө ү җ ң һ) on top; both layouts put nine letters on the bottom
- * letter row between two spacer keys (shift/delete in the app, inert here).
+ * its eight-key extra row (ә ө ү җ ң һ ё ъ) on top; both layouts put nine letters
+ * on the bottom letter row between two spacer keys (shift/delete in the app,
+ * inert here).
  * ------------------------------------------------------------------------- */
 var GRID = 100000;
 var H_GAP = 1.739 / 100 * GRID;   // horizontal gap between keys
@@ -122,21 +147,24 @@ function bottomRow() {
 var LAYOUTS = {
   tt: {
     rows: [
-      letterRow('әөүҗңһ', 16.667),
+      letterRow('әөүҗңһёъ', 12.5),
       letterRow('йцукенгшщзх', 9.091),
       letterRow('фывапролджэ', 9.091),
       bottomRow(),
     ],
-    /* Letters without a key of their own trace over their base key (in the app they are the
-     * base key's long-press letters and the decoder's aliases): the hard sign rides ь. */
-    aliases: { 'ъ': 'ь' },
+    /* Every Tatar alphabet letter has a key of its own — ё and ъ sit on the extra row (in the
+     * app they also remain long-press duplicates of е and ь) — so this layout has no trace
+     * aliases. */
+    aliases: {},
     prompts: ['белән', 'минем', 'миңа', 'өчен', 'түгел', 'моны', 'аның', 'алар', 'кирәк',
               'нәрсә', 'синең', 'генә', 'гына', 'сиңа', 'идем', 'сезнең', 'монда', 'кеше',
               'безнең', 'инде',
               /* Doubled letters (one key visited twice in a row). */
               'сәлләм', 'милли', 'теллә', 'әллә', 'җилләр',
-              /* The hard sign, traced over the ь key. */
+              /* The hard sign, a direct extra-row key. */
               'вәгъдә', 'мәгълүм', 'тәкъдим', 'тәъмин', 'вәҗһ',
+              /* ё, a direct extra-row key; the shipped dictionary attests these loans. */
+              'режиссёр', 'режиссёрның',
               /* The extra-row letters һ and ә. */
               'һөнәр', 'һөҗүм', 'мөһим', 'һәрбер', 'бәләкәй', 'тәрәзә'],
   },
@@ -146,8 +174,10 @@ var LAYOUTS = {
       letterRow('фывапролджэ', 9.091),
       bottomRow(),
     ],
-    /* ё has no key of its own on this layout; it traces over е. */
-    aliases: { 'ё': 'е' },
+    /* Letters without a key of their own trace over their base key (in the app they are the
+     * base key's long-press letters and the decoder's aliases): ё rides е, ъ rides ь and the
+     * six Tatar-only letters ride their row keys. */
+    aliases: { 'ё': 'е', 'ә': 'а', 'җ': 'ж', 'ң': 'н', 'һ': 'х', 'ү': 'у', 'ъ': 'ь', 'ө': 'о' },
     prompts: ['меня', 'тебя', 'было', 'есть', 'почему', 'очень', 'тебе', 'сегодня', 'этом',
               'надо', 'когда', 'много', 'сказал', 'тому', 'больше', 'были', 'если', 'чтобы',
               'лучше', 'хочу',
@@ -171,7 +201,9 @@ function buildGeometry(rows) {
       var pitch = rows[r][i][1] / 100 * BASE_W;
       var w = pitch - H_GAP;
       if (x + w > RIGHT_EDGE) w = RIGHT_EDGE - x;
-      keys.push({ c: c, left: x, top: top, right: x + w, bottom: top + KEY_H });
+      var left = Math.round(x);
+      var right = Math.round(x + w);
+      keys.push({ c: c, left: left, top: top, right: right, bottom: top + KEY_H });
       x += pitch;
     }
   }
@@ -245,33 +277,44 @@ function resampleGesture(xs, ys, ts, keyRadius, n) {
 }
 
 /* ---------------------------------------------------------------------------
- * The decoder-free correctness gate: the trace starts on the prompt's first key,
- * finishes on its last key and passes every letter's key in order (within one key
- * radius of the center). An alias letter (ъ, ё) maps to its base key, and a letter
- * whose key equals the previous letter's — a doubled letter, or a letter right after
- * its own alias — is one key visit, exactly as the app's decoder reads the gesture.
- * Failed traces are not stored; the participant retries.
+ * Decoder-free diagnostics: the trace starts on the prompt's first key, finishes on its last
+ * key and passes every letter's key in order (within one key radius of the center). An alias
+ * letter (the Russian layout's long-press letters) maps to its base key, and a repeated key
+ * is one visit. A diagnostic never discards a trace: its stable reason code is exported
+ * alongside the failed path.
  * ------------------------------------------------------------------------- */
+var GATE_MESSAGES = {
+  too_few_samples: 'too few samples — swipe through the letters',
+  too_fast: 'too fast — swipe a little slower',
+  unmappable_prompt: 'this word is not traceable on the layout',
+  bad_start: 'start on the first letter',
+  bad_end: 'finish on the last letter',
+  missed_letter: 'the trace misses a letter',
+  unreadable_trace: 'the trace was not readable',
+  pointer_cancel: 'interrupted by the browser',
+  manual_cancel: 'canceled by the participant',
+  geometry_changed: 'interrupted by a geometry change',
+};
 function gateTrace(tr, prompt, centers, radius, aliases) {
-  if (tr.x.length < 5) return 'too few samples — swipe through the letters';
-  if (tr.t[tr.t.length - 1] - tr.t[0] < 80) return 'too fast — swipe a little slower';
+  if (tr.x.length < 5) return 'too_few_samples';
+  if (tr.t[tr.t.length - 1] - tr.t[0] < 80) return 'too_fast';
   aliases = aliases || {};
   var chain = [];
   var prevKeyChar = null;
   for (var i = 0; i < prompt.length; i++) {
     var keyChar = aliases[prompt.charAt(i)] || prompt.charAt(i);
     var c = centers[keyChar];
-    if (!c) return 'this word is not traceable on the layout';
+    if (!c) return 'unmappable_prompt';
     if (keyChar === prevKeyChar) continue; // a doubled letter is one key visit
     chain.push(c);
     prevKeyChar = keyChar;
   }
   var dStart = Math.hypot(tr.x[0] - chain[0].x, tr.y[0] - chain[0].y);
-  if (dStart > radius) return 'start on the first letter';
+  if (dStart > radius) return 'bad_start';
   var last = chain.length - 1;
   var dEnd = Math.hypot(tr.x[tr.x.length - 1] - chain[last].x,
                         tr.y[tr.y.length - 1] - chain[last].y);
-  if (dEnd > 1.5 * radius) return 'finish on the last letter';
+  if (dEnd > 1.5 * radius) return 'bad_end';
   var j = 0;
   for (var m = 0; m < chain.length; m++) {
     var hit = false;
@@ -282,7 +325,7 @@ function gateTrace(tr, prompt, centers, radius, aliases) {
         break;
       }
     }
-    if (!hit) return 'the trace misses a letter';
+    if (!hit) return 'missed_letter';
   }
   return null;
 }
@@ -314,7 +357,10 @@ function randomParticipantId() {
 if (typeof document !== 'undefined') (function () {
   var STORE_RECORDS = 'ggc.records';
   var STORE_PID = 'ggc.participant';
+  var STORE_DEVICE = 'ggc.device';
   var STORE_CONSENT = 'ggc.consent';
+  var SESSION_ID = 'ggc.session';
+  var SESSION_SEQUENCE = 'ggc.sequence';
 
   function loadRecords() {
     try { return JSON.parse(localStorage.getItem(STORE_RECORDS) || '[]'); }
@@ -328,6 +374,9 @@ if (typeof document !== 'undefined') (function () {
     lang: 'tt',
     prompt: null,
     pid: localStorage.getItem(STORE_PID),
+    deviceId: localStorage.getItem(STORE_DEVICE),
+    sessionId: sessionStorage.getItem(SESSION_ID),
+    sequence: Number(sessionStorage.getItem(SESSION_SEQUENCE) || 0),
     records: loadRecords(),
     trace: null,      // {id, x:[], y:[], t:[]}
     geometry: null,
@@ -339,6 +388,14 @@ if (typeof document !== 'undefined') (function () {
   if (!state.pid) {
     state.pid = randomParticipantId();
     localStorage.setItem(STORE_PID, state.pid);
+  }
+  if (!state.deviceId) {
+    state.deviceId = randomParticipantId();
+    localStorage.setItem(STORE_DEVICE, state.deviceId);
+  }
+  if (!state.sessionId) {
+    state.sessionId = randomParticipantId();
+    sessionStorage.setItem(SESSION_ID, state.sessionId);
   }
 
   var board = document.getElementById('board');
@@ -354,7 +411,8 @@ if (typeof document !== 'undefined') (function () {
 
   function nextPrompt() {
     var pool = LAYOUTS[state.lang].prompts;
-    // Every pool word traces on the layout's keys, alias letters (ъ, ё) riding their base key.
+    // Every pool word traces on the layout's keys, alias letters riding their base key on
+    // the Russian layout; on Tatar every letter has its own key.
     state.prompt = pool[Math.floor(Math.random() * pool.length)];
     promptEl.textContent = state.prompt;
   }
@@ -395,13 +453,14 @@ if (typeof document !== 'undefined') (function () {
   }
 
   function refreshCounts() {
-    var tt = 0, ru = 0;
+    var tt = 0, ru = 0, failed = 0;
     for (var i = 0; i < state.records.length; i++) {
       if (state.records[i].layout_id === 'tt') tt++;
       else if (state.records[i].layout_id === 'ru') ru++;
+      if (state.records[i].gate_passed === false) failed++;
     }
     countEl.textContent = 'kept: ' + state.records.length +
-      ' (tt: ' + tt + ', ru: ' + ru + ')';
+      ' (tt: ' + tt + ', ru: ' + ru + ', failed/canceled: ' + failed + ')';
   }
 
   function drawTrace(color) {
@@ -431,40 +490,73 @@ if (typeof document !== 'undefined') (function () {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
-  function finishTrace() {
+  function screenOrientation() {
+    return window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait';
+  }
+
+  function exportGeometry() {
+    var aliases = LAYOUTS[state.lang].aliases;
+    var keys = [];
+    for (var k = 0; k < state.geometry.keys.length; k++) {
+      var key = state.geometry.keys[k];
+      if (!key.c) continue;
+      var more = [];
+      for (var alias in aliases) {
+        if (Object.prototype.hasOwnProperty.call(aliases, alias) && aliases[alias] === key.c) {
+          more.push(alias);
+        }
+      }
+      keys.push({ letter: key.c, left: key.left, top: key.top,
+                  right: key.right, bottom: key.bottom, more: more.sort() });
+    }
+    return { model: 'grid-v1', grid_width: GRID, key_radius: state.geometry.radius, keys: keys };
+  }
+
+  function finishTrace(terminalReason) {
     var tr = state.trace;
     state.trace = null;
     if (!tr) return;
     var radiusPx = state.geometry.radius * state.scale;
-    var problem = gateTrace(tr, state.prompt, gridCentersToPx(), radiusPx,
-                            LAYOUTS[state.lang].aliases);
-    if (problem) {
-      setStatus(problem + ' — try again', 'bad');
-      clearTraceSoon('#b00020');
-      return;
-    }
+    var problem = terminalReason || gateTrace(tr, state.prompt, gridCentersToPx(), radiusPx,
+                                               LAYOUTS[state.lang].aliases);
     var sample = resampleGesture(tr.x, tr.y, tr.t, radiusPx, SAMPLE_COUNT);
-    if (!sample) {
-      setStatus('the trace was not readable — try again', 'bad');
-      clearTraceSoon('#b00020');
-      return;
-    }
+    if (!sample && !problem) problem = 'unreadable_trace';
+    var trialKind = document.getElementById('trial-kind').value;
+    var speedCondition = document.getElementById('speed-condition').value;
+    state.sequence++;
+    sessionStorage.setItem(SESSION_SEQUENCE, String(state.sequence));
     state.records.push({
+      collector_schema: 2,
+      record_id: state.sessionId + '-' + state.sequence,
       participant: state.pid,
+      device_id: state.deviceId,
+      session_id: state.sessionId,
       layout_id: state.lang,
       prompt: state.prompt,
-      path_x: sample.x,
-      path_y: sample.y,
-      dt_ms: sample.dt,
+      path_x: sample ? sample.x : [],
+      path_y: sample ? sample.y : [],
+      dt_ms: sample ? sample.dt : [],
       density_bucket: densityBucket(),
       board_w: Math.round(state.boardW),
       board_h: Math.round(state.boardH),
-      gate_passed: true,
+      orientation: screenOrientation(),
+      key_geometry: exportGeometry(),
+      trial_kind: trialKind,
+      speed_condition: speedCondition,
+      trace_status: problem === 'pointer_cancel' || problem === 'manual_cancel' ||
+        problem === 'geometry_changed' ? 'canceled' : 'completed',
+      gate_passed: !problem,
+      rejection_reason: problem,
     });
     saveRecords(state.records);
     refreshCounts();
-    setStatus('kept', 'ok');
-    clearTraceSoon('#137333', nextPrompt);
+    if (problem) {
+      setStatus('kept failed trace: ' + (GATE_MESSAGES[problem] || problem), 'bad');
+      clearTraceSoon('#b00020', trialKind === 'ordinary' ? null : nextPrompt);
+    } else {
+      setStatus('kept', 'ok');
+      clearTraceSoon('#137333', nextPrompt);
+    }
   }
 
   /* The gate and the resampler run in board CSS pixels; the centers map follows
@@ -512,10 +604,8 @@ if (typeof document !== 'undefined') (function () {
   }
   function onCancel(e) {
     if (!state.trace || e.pointerId !== state.trace.id) return;
-    state.trace = null;
-    var ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, state.boardW, state.boardH);
-    setStatus('interrupted — try again', 'bad');
+    finishTrace('pointer_cancel');
+    e.preventDefault();
   }
 
   function setLang(lang) {
@@ -538,7 +628,7 @@ if (typeof document !== 'undefined') (function () {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'gesture-traces-' + state.pid + '-' +
+    a.download = 'gesture-traces-' + state.pid + '-' + state.sessionId + '-' +
       new Date().toISOString().slice(0, 10) + '.jsonl';
     document.body.appendChild(a);
     a.click();
@@ -560,6 +650,18 @@ if (typeof document !== 'undefined') (function () {
     localStorage.setItem(STORE_PID, state.pid);
     document.getElementById('pid').textContent = state.pid;
   });
+  document.getElementById('newsession').addEventListener('click', function () {
+    if (state.trace) finishTrace('manual_cancel');
+    state.sessionId = randomParticipantId();
+    state.sequence = 0;
+    sessionStorage.setItem(SESSION_ID, state.sessionId);
+    sessionStorage.setItem(SESSION_SEQUENCE, '0');
+    document.getElementById('sid').textContent = state.sessionId;
+    nextPrompt();
+  });
+  document.getElementById('canceltrace').addEventListener('click', function () {
+    finishTrace('manual_cancel');
+  });
   document.getElementById('undolast').addEventListener('click', function () {
     state.records.pop();
     saveRecords(state.records);
@@ -573,11 +675,12 @@ if (typeof document !== 'undefined') (function () {
   });
   document.getElementById('export').addEventListener('click', exportRecords);
   window.addEventListener('resize', function () {
-    if (state.trace) { state.trace = null; }
+    if (state.trace) finishTrace('geometry_changed');
     if (!document.getElementById('collector').hidden) renderBoard();
   });
 
   document.getElementById('pid').textContent = state.pid;
+  document.getElementById('sid').textContent = state.sessionId;
   if (!window.PointerEvent) {
     setStatus('this browser has no pointer input — please use a current browser', 'bad');
   } else {

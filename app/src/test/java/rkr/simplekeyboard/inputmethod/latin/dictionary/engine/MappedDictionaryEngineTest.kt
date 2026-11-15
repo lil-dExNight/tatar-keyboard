@@ -259,6 +259,53 @@ class MappedDictionaryEngineTest {
     }
 
     @Test
+    fun adviceTransitionsKeepRecoveryExactMissAndCompanionFiltering() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val engine = requireNotNull(
+            MappedDictionaryEngine.start(
+                SingleLeaseCatalog(DictionaryFileLease(autocorrectDictionaryFixture()) {}),
+                ResultHandoff { published += it },
+                executorFactory = { executor },
+                mapper = DictionaryMapper { file, _ -> ByteBuffer.wrap(file.readBytes()) },
+                autocorrectMinCandidateFrequency = 0L,
+            )
+        )
+        engine.updateKeyNeighbors(LongPressTestFixtures.tatarNeighborTable())
+
+        engine.request(1, "tt", utf8("китәп"))
+        executor.runAll()
+        val enabledResults = published.last().suggestions
+        assertEquals("китап", engine.autocorrectAdvice?.replacement)
+        assertEquals("китәп", engine.exactMissPrefix)
+        assertEquals(0, engine.lastExactCount)
+
+        engine.setAutocorrectAdviceEnabled(false)
+        assertNull(engine.autocorrectAdvice)
+        executor.runAll()
+        engine.request(2, "tt", utf8("китәп"))
+        executor.runAll()
+        assertEquals(enabledResults, published.last().suggestions)
+        assertEquals("китәп", engine.exactMissPrefix)
+        assertEquals(0, engine.lastExactCount)
+        assertNull(engine.autocorrectAdvice)
+
+        engine.setCompanionLexicon(CompanionLexicon { true })
+        engine.setAutocorrectAdviceEnabled(true)
+        executor.runAll()
+        engine.request(3, "tt", utf8("китәп"))
+        executor.runAll()
+        assertEquals(enabledResults, published.last().suggestions)
+        assertNull("the companion guard survives both setting transitions", engine.autocorrectAdvice)
+
+        engine.setCompanionLexicon(null)
+        engine.request(4, "tt", utf8("китәп"))
+        executor.runAll()
+        assertEquals("китап", engine.autocorrectAdvice?.replacement)
+        assertTrue(engine.destroy(1, TimeUnit.SECONDS))
+    }
+
+    @Test
     fun corruptMappingFailsClosedReleasesLeaseAndNeverCreatesExecutor() {
         val fixture = dictionaryFixture(1)
         val events = mutableListOf<String>()

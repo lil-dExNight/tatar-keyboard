@@ -1,0 +1,11 @@
+{
+  "id": "asset-emoji-search-v1",
+  "revision": "emoji-search/cldr44/v1",
+  "size_bytes": 226018,
+  "sha256": "f2d986e2fd8743ec7d5b488eb91d497c1fca2e272ad5292d777c72ea68b8c798",
+  "license": "Unicode-DFS-2016 AND Apache-2.0",
+  "source_role": "generated_emoji_search_index",
+  "split_rule": "not-applicable",
+  "generation_command": "python3 scripts/emoji_search_pack.py build --cldr-dir <local-cldr44-dir> --panel-asset app/src/main/assets/emoji/emoji_set_v1.txt --tt-extra scripts/emoji_search_tt_extra.txt --tt-names scripts/emoji_search_tt_names.txt --output app/src/main/assets/emoji/emoji_search_v1.txt",
+  "path": "app/src/main/assets/emoji/emoji_search_v1.txt"
+}

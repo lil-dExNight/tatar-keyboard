@@ -1,0 +1,34 @@
+{
+  "freeze_rule": "final is immutable before decoder tuning; no per-record partitioning",
+  "schema": "glide-benchmark-dataset-v1",
+  "split_policy": "whole-session-and-device-v1",
+  "splits": {
+    "development": {
+      "devices": [
+        "participant-fallback:cc5a098c"
+      ],
+      "frozen": true,
+      "inputs": [
+        {
+          "invalid_records": 0,
+          "path": "research/glide-evaluation/datasets/session-1.jsonl",
+          "records": 101,
+          "sha256": "dcb2208c53bc107371b1936ce6b6ff1034616a6f7431ce56a9b039a2ea7fa152",
+          "size_bytes": 90769
+        }
+      ],
+      "records": 101,
+      "sessions": [
+        "legacy-session:dcb2208c53bc1073"
+      ],
+      "source_kind": "recorded",
+      "split_fingerprint": "479544661350c597b40fe2ffd1bdc31cee894d3b26aa99a2e8cd3835d62d67a6"
+    },
+    "final": {
+      "devices": [],
+      "frozen": false,
+      "inputs": [],
+      "sessions": []
+    }
+  }
+}

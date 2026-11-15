@@ -1,0 +1,29 @@
+// Host-only compile/task wiring. Used with `gradlew -I`; does not alter the repository build
+// files or package benchmark code in an APK.
+allprojects { project ->
+    if (project.name != 'app') return
+    project.pluginManager.withPlugin('com.android.application') {
+        // Feed the bridge source to the unit-test Kotlin compile task directly. Adding a
+        // source-set directory here (android.sourceSets.test.java.srcDir) is not enough under
+        // AGP 9: the variant's compile inputs are captured before this callback can extend the
+        // source set, so the bridge would never be compiled.
+        def bridgeSource = project.rootProject.file('research/glide-evaluation/kotlin')
+        project.tasks.configureEach { task ->
+            if (task.name == 'compileDebugUnitTestKotlin') {
+                task.source bridgeSource
+            }
+        }
+        // Register eagerly but configure lazily: AGP registers its per-variant test tasks from
+        // its own afterEvaluate, which runs after this init-script callback, so testDebugUnitTest
+        // is only resolvable once the task graph realizes this task.
+        project.tasks.register('glideBenchmark', JavaExec) {
+            group = 'verification'
+            description = 'Replays normalized records through the production glide decoder.'
+            def debugTest = project.tasks.named('testDebugUnitTest').get()
+            dependsOn 'compileDebugUnitTestKotlin'
+            classpath = debugTest.classpath + project.files(debugTest.testClassesDirs)
+            mainClass = 'rkr.simplekeyboard.inputmethod.latin.glide.GlideBenchmark'
+            workingDir = project.rootProject.projectDir
+        }
+    }
+}

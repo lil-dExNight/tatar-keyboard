@@ -81,6 +81,15 @@ fun interface ColdWordVisitor {
 }
 
 /**
+ * Byte form of [ColdWordVisitor]: the word's UTF-8 bytes in a scratch valid only during
+ * [visit], with the same order and frequencies. The glide index build reads this form, so no
+ * String is materialized per dictionary entry.
+ */
+fun interface ColdWordBytesVisitor {
+    fun visit(wordUtf8: ByteArray, length: Int, frequency: Long)
+}
+
+/**
  * A [PrefixComputer] that also reports how many of the results it just returned were exact
  * dictionary candidates; the rest come from typo recovery.
  *
@@ -217,7 +226,7 @@ internal class TdictPrefixIndex private constructor(
     private val fuzzyPolicy: FuzzyEditPolicy,
     private val autocorrectMinCandidateFrequency: Long,
 ) : ContextBoostedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource,
-    TopFrequencySource, ExactPrefixRangeChecker {
+    TopFrequencySource, ExactPrefixRangeChecker, AutocorrectAdviceControl {
     // Reusable per-index scratch, touched only inside lookup(), whose exclusivity is guaranteed by
     // LatestOnlyPrefixEngine serialization (at most one active worker). updateKeyNeighbors() only
     // swaps a @Volatile reference.
@@ -294,6 +303,10 @@ internal class TdictPrefixIndex private constructor(
     private val autocorrectCodePointScratch = IntArray(MAX_PREFIX_BYTES)
     private val autocorrectVariantScratch = ByteArray(MAX_PREFIX_BYTES + VARIANT_HEADROOM)
 
+    // Worker-confined like the scratch above: the engine applies the setting before each PREFIX
+    // lookup and through its serialized worker on a transition.
+    private var autocorrectAdviceEnabled = true
+
     @Volatile
     private var neighborTable: KeyNeighborTable? = null
 
@@ -323,6 +336,14 @@ internal class TdictPrefixIndex private constructor(
     /** Drops the current verdict; called when the engine idles or is torn down. */
     fun clearAutocorrectAdvice() {
         lastAutocorrectAdvice = null
+    }
+
+    /** Skips later advice work after a disable and clears the verdict on either transition. */
+    override fun setAutocorrectAdviceEnabled(enabled: Boolean) {
+        if (enabled == autocorrectAdviceEnabled) return
+        autocorrectAdviceEnabled = enabled
+        lastAutocorrectAdvice = null
+        lastAutocorrectProbeCount = 0
     }
 
     // Test-only counters of the last lookup's typo-recovery work: plain ints assigned on the hot
@@ -493,7 +514,10 @@ internal class TdictPrefixIndex private constructor(
             }
             // Outside the `resultCount < MAX_RESULTS` guard: the autocorrect verdict is about the
             // typed word itself and must not depend on how full the strip is.
-            computeAutocorrectAdvice(normalizedPrefixUtf8, prefixLength, exactLowerBound)
+            computeAutocorrectAdvice(
+                normalizedPrefixUtf8, prefixLength, exactLowerBound,
+                enabled = autocorrectAdviceEnabled,
+            )
             if (resultCount == 0) return emptyList()
             ArrayList<String>(resultCount).also { result ->
                 for (slot in 0 until resultCount) {
@@ -535,7 +559,9 @@ internal class TdictPrefixIndex private constructor(
         normalizedPrefixUtf8: ImmutableUtf8Prefix,
         prefixLength: Int,
         typedEntry: Int,
+        enabled: Boolean,
     ) {
+        if (!enabled) return
         val table = neighborTable ?: return
         if (table.isEmpty) return
         val codePointCount = countCodePointsByLeadBytes(exactScratch, prefixLength)
@@ -1298,11 +1324,18 @@ internal class TdictPrefixIndex private constructor(
      * Cold enumeration of every entry with its frequency, for the glide decoder's one-time
      * word-index build. One sequential pass over the mapping with local varint state; like
      * [containsWordCold] it never touches the block cache or the shared [varintValue]/[varintNext].
-     * Allocates one String per word, once per dictionary.
      */
     internal fun forEachWordCold(visitor: ColdWordVisitor) {
+        forEachWordBytesCold { bytes, length, frequency ->
+            visitor.visit(String(bytes, 0, length, Charsets.UTF_8), frequency)
+        }
+    }
+
+    /** The byte-level counterpart of [forEachWordCold], with no per-entry allocation. */
+    internal fun forEachWordBytesCold(visitor: ColdWordBytesVisitor) {
         val wordBytes = ByteArray(TdictFormat.BLOCK_SIZE * TdictFormat.MAX_WORD_BYTES)
         val wordStarts = IntArray(TdictFormat.BLOCK_SIZE + 1)
+        val visitorWord = ByteArray(TdictFormat.MAX_WORD_BYTES)
         for (block in 0 until blockCount) {
             var cursor = blockOffset(block)
             val inBlock = minOf(TdictFormat.BLOCK_SIZE, entryCount - block * TdictFormat.BLOCK_SIZE)
@@ -1347,10 +1380,9 @@ internal class TdictPrefixIndex private constructor(
                     shift += 7
                 }
                 val start = wordStarts[entry]
-                visitor.visit(
-                    String(wordBytes, start, wordStarts[entry + 1] - start, Charsets.UTF_8),
-                    frequency.toLong() and MAX_U32,
-                )
+                val length = wordStarts[entry + 1] - start
+                System.arraycopy(wordBytes, start, visitorWord, 0, length)
+                visitor.visit(visitorWord, length, frequency.toLong() and MAX_U32)
             }
         }
     }

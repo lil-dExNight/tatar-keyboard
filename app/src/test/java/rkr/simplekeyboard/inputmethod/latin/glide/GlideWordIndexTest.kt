@@ -58,14 +58,42 @@ class GlideWordIndexTest {
         assertEquals(200L, index.maxFrequency)
     }
 
+    /**
+     * A geometry with one alias-only letter: 'в' appears only as a long-press of 'б'. The shipped
+     * Tatar row carries every letter as its own key now, so the alias rule is exercised here.
+     */
+    private fun aliasGeometry(): GlideKeyGeometry = GlideKeyGeometry.build(
+        listOf(
+            GlideKeyGeometry.RawKey('а'.code, 0, 0, 10, 10),
+            GlideKeyGeometry.RawKey('б'.code, 20, 0, 30, 10, "в".codePoints().toArray()),
+            GlideKeyGeometry.RawKey('ш'.code, 40, 0, 50, 10),
+        ),
+    )
+
     @Test
     fun wordsWithAnAliasLetterAreIndexedOnTheBaseKey() {
+        val geometry = aliasGeometry()
+        val index = GlideWordIndex.build(
+            ListGlideInventory(listOf("вб" to 10L, "бб" to 5L)),
+            geometry,
+        )
+        assertEquals(2, index.wordCount)
+        assertEquals(0, index.skippedWordCount)
+        val aliasKey = geometry.keyIndexOfLetter('в'.code)
+        assertEquals("the alias folds onto its base key", geometry.keyIndexOfLetter('б'.code), aliasKey)
+        assertEquals(aliasKey, index.keySeqAt(index.keySeqStart(0)))
+        assertEquals(aliasKey, index.keySeqAt(index.keySeqStart(1)))
+    }
+
+    @Test
+    fun visibleLettersAreIndexedOnTheirOwnBaseKeys() {
+        // ё and ъ sit on the visible Tatar row: each is a base key, no longer an alias.
         val index = index(listOf("игътибар" to 10L, "ёлка" to 5L))
         assertEquals(2, index.wordCount)
         assertEquals(0, index.skippedWordCount)
         val hardSign = index.keySeqStart(0) + 2
-        assertEquals(geometry.keyIndexOfLetter('ь'.code), index.keySeqAt(hardSign))
-        assertEquals(geometry.keyIndexOfLetter('е'.code), index.keySeqAt(index.keySeqStart(1)))
+        assertEquals(geometry.keyIndexOfLetter('ъ'.code), index.keySeqAt(hardSign))
+        assertEquals(geometry.keyIndexOfLetter('ё'.code), index.keySeqAt(index.keySeqStart(1)))
     }
 
     @Test
@@ -92,9 +120,7 @@ class GlideWordIndexTest {
                 "сәлләм" to 1L, // no сәләм: twinless
                 "ааллаа" to 1L, // every run collapsed: twin ала
                 "ммаммм" to 1L, // collapsed мам is absent: twinless
-                "ееш" to 1L, // collapsed еш equals ёш on the same keys: alias twin
-                "ёш" to 1L,
-                "её" to 1L, // е and its alias ё fold onto one key: an alias fold, not a doubled letter
+                "её" to 1L, // two different letters on different keys: never a doubled letter
                 "китап" to 1L, // no doubled key: never twinless
             ),
         )
@@ -104,10 +130,23 @@ class GlideWordIndexTest {
         assertFalse(index.isTwinlessAt(3))
         assertTrue(index.isTwinlessAt(4))
         assertFalse(index.isTwinlessAt(5))
+        assertEquals(-1f, index.loopLengthAt(5), 0f)
         assertFalse(index.isTwinlessAt(6))
-        assertFalse(index.isTwinlessAt(7))
-        assertEquals(-1f, index.loopLengthAt(7), 0f)
-        assertFalse(index.isTwinlessAt(8))
+    }
+
+    @Test
+    fun theTwinBitCountsAliasTwins() {
+        // The alias fold, not key adjacency: "ввш" doubles the ALIAS letter в, and its collapsed
+        // sequence equals "бш" on the same key, so it is not twinless. "вш" doubles nothing.
+        val geometry = aliasGeometry()
+        val index = GlideWordIndex.build(
+            ListGlideInventory(listOf("ввш" to 1L, "бш" to 1L, "вш" to 1L)),
+            geometry,
+        )
+        assertTrue(index.loopLengthAt(0) > 0f)
+        assertFalse(index.isTwinlessAt(0))
+        assertFalse(index.isTwinlessAt(1))
+        assertFalse(index.isTwinlessAt(2))
     }
 
     @Test

@@ -65,29 +65,44 @@ class OneHandedModeTest {
 
     @Test
     fun theReferenceDeviceKeepsThePinnedScale() {
-        // 720 px: the fifth-row pitch under the scale (0.16667 × 612 ≈ 102 px) sits far above
-        // the floor, so the guard must not bite on the reference device.
+        // 720 px: the fifth-row pitch under the scale (0.125 × 612 = 76.5 px) sits above the
+        // 62.7 px floor, so the guard must not bite on the reference device.
         assertEquals(OneHandedMode.WIDTH_SCALE, OneHandedMode.effectiveScale(left, 720))
         assertEquals(OneHandedMode.WIDTH_SCALE, OneHandedMode.effectiveScale(right, 720))
     }
 
     @Test
     fun aNarrowScreenClampsTheScaleToTheFloor() {
-        // 400 px: 0.85 would give the fifth-row keys 0.16667 × 340 ≈ 56.7 px — below the floor —
-        // so the scale climbs to 62.7 / (0.16667 × 400) ≈ 0.9405 and the grid stays hittable.
-        val scale = OneHandedMode.effectiveScale(left, 400)
+        // 550 px: 0.85 would give the fifth-row keys 0.125 × 467.5 ≈ 58.4 px — below the floor —
+        // so the scale climbs to 62.7 / (0.125 × 550) ≈ 0.912 and the grid stays hittable.
+        val scale = OneHandedMode.effectiveScale(left, 550)
         assertTrue("the scale must rise above the pinned one", scale > OneHandedMode.WIDTH_SCALE)
+        assertTrue("the clamp must stay a real dock, not the degenerate full width", scale < 1.0f)
         assertEquals(OneHandedMode.MIN_FIFTH_ROW_KEY_WIDTH_PX,
-                OneHandedMode.FIFTH_ROW_KEY_FRACTION * 400 * scale, 0.01f)
+                OneHandedMode.FIFTH_ROW_KEY_FRACTION * 550 * scale, 0.01f)
     }
 
     @Test
     fun aScreenTooNarrowForTheFloorGetsNoDock() {
-        // 300 px: even the full width gives the fifth-row keys 0.16667 × 300 = 50 px, below the
+        // 300 px: even the full width gives the fifth-row keys 0.125 × 300 = 37.5 px, below the
         // floor — the dock degenerates to the full-width grid instead of shrinking past it.
         assertEquals(1.0f, OneHandedMode.effectiveScale(left, 300))
         assertEquals(300, OneHandedMode.gridWidthPx(300, right))
         assertArrayEquals(intArrayOf(0, 0), OneHandedMode.dockPaddingsPx(300, left))
+    }
+
+    @Test
+    fun theFloorClampKeepsEveryDockedFifthRowKeyAboveTheFloor() {
+        // Across the widths a phone can report, a docked grid never squeezes the eight extra-row
+        // keys below the floor; below the clamp's reach the dock degenerates to full width.
+        for (width in 240..1200 step 10) {
+            val scale = OneHandedMode.effectiveScale(left, width)
+            if (scale < 1.0f) {
+                val pitch = OneHandedMode.FIFTH_ROW_KEY_FRACTION * width * scale
+                assertTrue("${width}px: docked fifth-row pitch $pitch fell below the floor",
+                        pitch >= OneHandedMode.MIN_FIFTH_ROW_KEY_WIDTH_PX - 0.01f)
+            }
+        }
     }
 
     @Test
@@ -186,7 +201,7 @@ class OneHandedModeTest {
             val fifthRowKeys = descendants(parse(File(file.parentFile,
                     "rowkeys_tatar_extra.xml")))
                     .filter { it.tagName == "Key" }
-            assertEquals("${file.name}: the fifth row is six keys", 6, fifthRowKeys.size)
+            assertEquals("${file.name}: the fifth row is eight keys", 8, fifthRowKeys.size)
             assertTrue("${file.name}: a fifth-row key must not override the row's width",
                     fifthRowKeys.none { it.hasAttribute("latin:keyWidth") })
             // The floor, on the 720 px reference width the floor constant is derived from.
@@ -216,7 +231,7 @@ class OneHandedModeTest {
     /**
      * The tablet Tatar rows keep the phone's structure where it matters: the extra row stays
      * the FIRST row (the layout probes of scripts/emulator-smoke.sh tap it by that position)
-     * and reuses the shared six keys — the tablet pitch lives on the include, so there is no
+     * and reuses the shared eight keys — the tablet pitch lives on the include, so there is no
      * tablet rowkeys copy to drift from the phone one.
      */
     @Test
@@ -237,7 +252,7 @@ class OneHandedModeTest {
                 .firstOrNull(File::isFile)
                 ?: error("rowkeys_tatar_extra.xml must resolve through the tablet chain")
         val keys = descendants(parse(rowkeys)).filter { it.tagName == "Key" }
-        assertEquals("the extra row is six keys", 6, keys.size)
+        assertEquals("the extra row is eight keys", 8, keys.size)
         assertTrue("an extra-row key must not override the include's width",
                 keys.none { it.hasAttribute("latin:keyWidth") })
     }

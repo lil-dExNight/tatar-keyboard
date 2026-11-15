@@ -276,7 +276,7 @@ class CommittedSetIdentityTest(unittest.TestCase):
         )
         self.assertEqual(len(result.data), 310834)
         self.assertEqual(
-            result.sha256, "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8"
+            result.sha256, "ee64e2699257d1daa9ad11d4a32c987240e783165b7c44a11777f37b3183b8c3"
         )
 
     def test_every_class_is_present(self) -> None:
@@ -294,16 +294,16 @@ class CommittedSetIdentityTest(unittest.TestCase):
         self.assertEqual(self.result.data, again.data)
 
 
-class NativePlausibilityFilterTest(unittest.TestCase):
+class CorpusPlausibilityFilterTest(unittest.TestCase):
     def test_accepts_normalized_words_with_a_vowel(self) -> None:
-        self.assertTrue(pack.is_native_plausible_form("бала", pack.TATAR))
-        self.assertTrue(pack.is_native_plausible_form("расчёска", pack.RUSSIAN))
+        self.assertTrue(pack.is_plausible_form("бала", pack.TATAR))
+        self.assertTrue(pack.is_plausible_form("расчёска", pack.RUSSIAN))
 
     def test_rejects_formal_fragments_and_unnormalized_text(self) -> None:
         for word in ("ббб", "аааа", "Бала", "bala", "е\u0308", "а" * 33):
             with self.subTest(word=word):
-                self.assertFalse(pack.is_native_plausible_form(word, pack.TATAR))
-        self.assertFalse(pack.is_native_plausible_form("бәла", pack.RUSSIAN))
+                self.assertFalse(pack.is_plausible_form(word, pack.TATAR))
+        self.assertFalse(pack.is_plausible_form("бәла", pack.RUSSIAN))
 
 
 class BuildValidOovSafetySetTest(unittest.TestCase):
@@ -385,13 +385,13 @@ class TatarValidOovSafetySetIdentityTest(unittest.TestCase):
 
     def test_set_identity_and_strata(self) -> None:
         self.assertEqual(self.result.size, 220)
-        self.assertEqual(len(self.result.data), 7814)
+        self.assertEqual(len(self.result.data), 7924)
         self.assertEqual(
-            self.result.sha256, "fc539f876541dce34c3706cefc00c0c2b05b60e8b559aa606a1693539a8b4dd2"
+            self.result.sha256, "d8835f1051e6405949d7ee85ffa2d1528342fbf35030880a2af3e53eb4afa954"
         )
         self.assertEqual(
             self.result.stratum_counts,
-            {"seen_form": 6, "new_form_of_seen_stem": 87, "unseen_stem": 127},
+            {"seen_form": 6, "new_form_of_seen_stem": 98, "unseen_stem": 116},
         )
 
     def test_committed_file_is_byte_identical(self) -> None:
@@ -455,7 +455,7 @@ class CliTest(unittest.TestCase):
             self.assertEqual(report["rows"], 9524)
             self.assertEqual(
                 report["set_sha256"],
-                "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8",
+                "ee64e2699257d1daa9ad11d4a32c987240e783165b7c44a11777f37b3183b8c3",
             )
             self.assertEqual(report["set_bytes"], 310834)
             self.assertEqual(report["substrate_words"], 2381)

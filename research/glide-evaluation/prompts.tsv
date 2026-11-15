@@ -1,0 +1,71 @@
+prompt	layout	classes	speeds	orientation	geometry	attribution	native_review
+белән	tt	ordinary,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+минем	tt	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+миңа	tt	ordinary,extra_row,extra_row:ң,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+өчен	tt	ordinary,extra_row,extra_row:ө,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+түгел	tt	ordinary,extra_row,extra_row:ү,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+моны	tt	ordinary	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+аның	tt	ordinary,extra_row,extra_row:ң,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+алар	tt	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+кирәк	tt	ordinary,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+нәрсә	tt	ordinary,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+синең	tt	ordinary,extra_row,extra_row:ң,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+генә	tt	ordinary,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+гына	tt	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+сиңа	tt	ordinary,extra_row,extra_row:ң,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+идем	tt	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+сезнең	tt	ordinary,extra_row,extra_row:ң,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+монда	tt	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+кеше	tt	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+безнең	tt	ordinary,extra_row,extra_row:ң,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+инде	tt	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+сәлләм	tt	doubled_letter,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; shipped dictionary entry; no native review claimed	no
+милли	tt	doubled_letter,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+теллә	tt	doubled_letter,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; deliberately OOV dictionary-review candidate	no
+әллә	tt	doubled_letter,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+җилләр	tt	doubled_letter,extra_row,extra_row:җ,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+вәгъдә	tt	extra_row,extra_row:ъ,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+мәгълүм	tt	extra_row,extra_row:ъ,extra_row,extra_row:ә,extra_row:ү,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+тәкъдим	tt	extra_row,extra_row:ъ,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+тәъмин	tt	extra_row,extra_row:ъ,extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; OOV old-orthography probe; evaluator performs no remapping	no
+вәҗһ	tt	extra_row,extra_row:ә,extra_row:җ,extra_row:һ,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; OOV dictionary-review candidate	no
+режиссёр	tt	extra_row,extra_row:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	shipped dictionary entry; embedded collector pool	no
+режиссёрның	tt	extra_row,extra_row:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	shipped dictionary entry; embedded collector pool	no
+һөнәр	tt	extra_row,extra_row:һ,extra_row:ө,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+һөҗүм	tt	extra_row,extra_row:һ,extra_row:ө,extra_row:җ,extra_row:ү,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+мөһим	tt	extra_row,extra_row:ө,extra_row:һ,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+һәрбер	tt	extra_row,extra_row:һ,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+бәләкәй	tt	extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+тәрәзә	tt	extra_row,extra_row:ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	existing session-1 probe; corpus-derived word	no
+меня	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+тебя	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+было	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+есть	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+почему	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+очень	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+тебе	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+сегодня	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+этом	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+надо	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+когда	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+много	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+сказал	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+тому	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+больше	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+были	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+если	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+чтобы	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+лучше	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+хочу	ru	ordinary,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-frequency top-20 pool of research/glide-collector/index.html	no
+русский	ru	doubled_letter,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+суббота	ru	doubled_letter,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+длинный	ru	doubled_letter,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+группа	ru	doubled_letter,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+ранний	ru	doubled_letter,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+своё	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+пришёл	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+нашёл	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+лёгкий	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+тёмный	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+зелёный	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
+—	any	negative:tap,negative:tremor,negative:canceled,negative:short_drag,negative:unintended_start	slow,normal,fast	portrait,landscape	each reserved device	protocol procedure; prompt is the displayed word, no new word pool	no

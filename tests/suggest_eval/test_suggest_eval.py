@@ -200,12 +200,17 @@ class SuffixTableTest(unittest.TestCase):
 
     def test_table_matches_the_runtime_size(self) -> None:
         # TatarSuffixRules.suffixCount pins the same number on the JVM side.
-        self.assertEqual(167, len(suggest_chain.RUNTIME_SUFFIXES))
+        self.assertEqual(171, len(suggest_chain.RUNTIME_SUFFIXES))
 
     def test_membership(self) -> None:
         self.assertTrue(suggest_chain.is_inflected_continuation("лар"))
         self.assertTrue(suggest_chain.is_inflected_continuation("мыйсыз"))
         self.assertTrue(suggest_chain.is_inflected_continuation("ннан"))
+        # Present 1pl and the interrogative clitic, added on both sides together.
+        self.assertTrue(suggest_chain.is_inflected_continuation("абыз"))
+        self.assertTrue(suggest_chain.is_inflected_continuation("әбез"))
+        self.assertTrue(suggest_chain.is_inflected_continuation("мы"))
+        self.assertTrue(suggest_chain.is_inflected_continuation("ме"))
         self.assertFalse(suggest_chain.is_inflected_continuation(""))
         self.assertFalse(suggest_chain.is_inflected_continuation("лара"))
         self.assertFalse(suggest_chain.is_inflected_continuation("xyz"))
@@ -503,22 +508,22 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["strip_empty_prefix_pct"], "1.9835")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
         # The shipped default strip shows three cells; the fourth-cell arm is the opt-in setting.
-        self.assertEqual(table["ks_simulated_keys"], "21902")
-        self.assertEqual(table["ks_pct"], "35.9516")
-        self.assertEqual(table["ks_cells4_simulated_keys"], "21095")
-        self.assertEqual(table["ks_cells4_pct"], "38.3115")
+        self.assertEqual(table["ks_simulated_keys"], "21894")
+        self.assertEqual(table["ks_pct"], "35.9750")
+        self.assertEqual(table["ks_cells4_simulated_keys"], "21089")
+        self.assertEqual(table["ks_cells4_pct"], "38.3290")
         # The context boost (the armed exact pass) over the cp>=2 prefix moments; the JVM pins
         # in TtSuggestEvalTest assert the same values on the real index.
         self.assertEqual(table["ctxboost_cp2plus_moments"], "18789")
-        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "34.7970")
-        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "37.7668")
+        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "34.8182")
+        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "37.7881")
         self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+2.9698")
         self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+2.5397")
         self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+3.4434")
-        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "51.1948")
-        self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "53.4515")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "55.3090")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "57.2676")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "51.2481")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "53.5100")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "55.3515")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "57.3101")
 
     def test_russian_pins(self) -> None:
         table = self.tables["rus"]
@@ -569,8 +574,8 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertGreaterEqual(float(table["prefix_top1_cp2_pct"]), 5.3504 * 0.95)
         self.assertGreaterEqual(float(table["prefix_top1_cp3_pct"]), 15.8499 * 0.95)
         self.assertGreaterEqual(float(table["prefix_visible_top3_cp3_pct"]), 29.7090 * 0.95)
-        self.assertGreaterEqual(float(table["ks_pct"]), 35.9516 * 0.95)
-        self.assertGreaterEqual(float(table["ks_cells4_pct"]), 38.3115 * 0.95)
+        self.assertGreaterEqual(float(table["ks_pct"]), 35.9750 * 0.95)
+        self.assertGreaterEqual(float(table["ks_cells4_pct"]), 38.3290 * 0.95)
 
     def test_russian_quality_floors(self) -> None:
         table = self.tables["rus"]

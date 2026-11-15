@@ -1,0 +1,11 @@
+{
+  "id": "eval-sentences-russian-development",
+  "revision": "ru-eval-sentences/2026-07-08/v1",
+  "size_bytes": 61512,
+  "sha256": "90359e851423dfe7b60a20d6e98ab3209c9c20218208d4e5fccdcf7b8f5b4691",
+  "license": "CC-BY-2.0-FR",
+  "source_role": "development_regression_evaluation",
+  "split_rule": "Tatoeba heldout rows id % 10 == 0; development/regression only, never final",
+  "generation_command": "python3 scripts/make_ru_eval_set.py",
+  "path": "app/src/test/resources/ru_eval_sentences.txt"
+}

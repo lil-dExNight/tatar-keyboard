@@ -823,7 +823,6 @@ class PersonalBigramStoreWriteTest {
         quarantineCorruptingChecksum(directory)
         store(directory, RecordingOps(), RealOpener).prime()
         val copy = File(directory, quarantineName())
-        val originalBytes = copy.readBytes()
         val failing = object : RecordingOps() {
             override fun atomicReplace(source: File, destination: File) {
                 if (destination.name.endsWith(".quarantine")) throw IOException("replace failed")
@@ -832,11 +831,43 @@ class PersonalBigramStoreWriteTest {
         }
         val store = store(directory, failing, RealOpener)
         store.restoreQuarantine()
+        val originalBytes = copy.readBytes()
+        val activeBytes = destinationFile(directory).readBytes()
 
-        store.forget("сәләм", "дөнья")
+        var outcome: Boolean? = null
+        store.forget("сәләм", "дөнья") { outcome = it }
 
-        assertArrayEquals(originalBytes, copy.readBytes())
+        assertEquals(false, outcome)
+        assertTrue("the active pair is back", store.snapshot.indexOfPair("сәләм", "дөнья") >= 0)
+        assertArrayEquals("the active file is unchanged", activeBytes, destinationFile(directory).readBytes())
+        assertArrayEquals("the quarantine is unchanged", originalBytes, copy.readBytes())
         assertEquals(2, PersonalBigramQuarantineSalvage.read(copy, subtype)?.pairCount)
+    }
+
+    @Test
+    fun aFailedQuarantineDeleteAlsoFailsClosed() {
+        val directory = newPersonalDir()
+        store(directory, RecordingOps(), RealOpener).also {
+            repeat(2) { _ -> it.notePair("сәләм", "дөнья") }
+        }
+        val copy = File(directory, quarantineName())
+        copy.writeBytes(destinationFile(directory).readBytes())
+        val failing = object : RecordingOps() {
+            override fun delete(file: File): Boolean =
+                if (file.name.endsWith(".quarantine")) false else super.delete(file)
+        }
+        val store = store(directory, failing, RealOpener)
+        store.restoreQuarantine()
+        val activeBytes = destinationFile(directory).readBytes()
+        val quarantineBytes = copy.readBytes()
+
+        var outcome: Boolean? = null
+        store.forget("сәләм", "дөнья") { outcome = it }
+
+        assertEquals(false, outcome)
+        assertTrue(store.snapshot.indexOfPair("сәләм", "дөнья") >= 0)
+        assertArrayEquals(activeBytes, destinationFile(directory).readBytes())
+        assertArrayEquals(quarantineBytes, copy.readBytes())
     }
 
     @Test

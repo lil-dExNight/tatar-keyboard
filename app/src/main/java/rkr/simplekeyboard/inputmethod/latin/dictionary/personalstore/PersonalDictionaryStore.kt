@@ -158,8 +158,9 @@ internal class PersonalDictionaryStore(
      * never lands restores the previous snapshot; a directory fsync failure after the atomic
      * replace or delete reports false but keeps the installed removal in memory and on disk.
      *
-     * The word is also purged from the quarantined file when that copy can be rewritten safely. A
-     * rewrite failure leaves the copy intact so its other recoverable words are not lost.
+     * The word is also purged from the quarantined file. If that cleanup fails after the active
+     * removal succeeds, the active file and snapshot are rolled back and the answer is false, so a
+     * reported deletion can never be undone by a later quarantine restore.
      */
     fun forget(word: String, outcome: PersonalMutationOutcome? = null) = onWorker {
         // The body runs inside a try: the worker has no UncaughtExceptionHandler, so a throw here
@@ -178,29 +179,32 @@ internal class PersonalDictionaryStore(
         if (!open()) return false
         if (alphabet == null) return false
         val normalized = PersonalWordFilter.normalize(word)
-        // The pending hash goes with the word, so three more completions do not learn it again.
-        salt?.let { existing ->
-            val key = PendingCounters.keyOf(existing, normalized)
-            if (pending.countOf(key) > 0) {
-                pending = pending.without(key)
-                pendingDirty = true
-            }
-        }
         val candidate = entries.remove(normalized)
         if (candidate === entries) {
             // The word was not saved, so it is gone as asked. The quarantine purge still runs: a
             // word can sit in the quarantined file without ever having been restored.
-            purgeFromQuarantine(normalized)
+            if (!purgeFromQuarantine(normalized)) return false
+            dropPending(normalized)
             return true
         }
+        val previousEntries = entries
         val previousSnapshot = snapshot
+        val activeFile = File(
+            runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false,
+            TpersFormat.personalFileName(subtypeId),
+        )
+        // The active file is the rollback source when the quarantine half of the delete fails.
+        val previousActiveBytes = try {
+            if (activeFile.isFile) activeFile.readBytes() else null
+        } catch (_: Exception) {
+            return false
+        }
         publish(
             if (candidate.isEmpty) PersonalDictionary.EMPTY else candidate.toSnapshot(subtypeId),
             structural = true,
         )
         lastWriteInstalled = false
-        // A throw before the replace or delete restores the old snapshot below. A post-mutation
-        // fsync throw instead adopts the installed candidate while still reporting failure.
+        // A throw before the replace or delete restores the old snapshot below.
         val removed = try {
             if (candidate.isEmpty) {
                 // Deletion fails only by throwing; the catch below handles it.
@@ -212,11 +216,10 @@ internal class PersonalDictionaryStore(
         } catch (_: Exception) {
             false
         }
-        if (removed) {
-            entries = candidate
-        } else {
-            // A directory fsync failure after the replace or delete installed [candidate]. Adopt it
-            // here as well as in [writeWhole], since deletion has no later commit block of its own.
+        if (!removed) {
+            // A directory fsync failure after the replace or delete installed [candidate]. Keep the
+            // installed state in memory; the quarantine must not be purged when the active result
+            // is not known to be durable.
             if (lastWriteInstalled) {
                 entries = candidate
             } else {
@@ -224,40 +227,115 @@ internal class PersonalDictionaryStore(
             }
             return false
         }
-        purgeFromQuarantine(normalized)
+        entries = candidate
+        if (!purgeFromQuarantine(normalized)) {
+            // The user asked for one deletion, not a half one: the active word comes back unless
+            // its quarantined copy is gone as well. Only a successful rollback puts memory back:
+            // when the file could not be restored, memory must keep the deletion the disk still
+            // shows, or the two disagree. Either way the answer stays false.
+            if (restoreActiveFile(activeFile, previousActiveBytes)) {
+                entries = previousEntries
+                publish(previousSnapshot, structural = true)
+            }
+            return false
+        }
+        dropPending(normalized)
         return true
     }
 
+    /** The pending hash goes with a confirmed word, so it is not learned again from scratch. */
+    private fun dropPending(normalizedWord: String) {
+        salt?.let { existing ->
+            val key = PendingCounters.keyOf(existing, normalizedWord)
+            if (pending.countOf(key) > 0) {
+                pending = pending.without(key)
+                pendingDirty = true
+            }
+        }
+    }
+
+    /** Puts the active file back after a failed multi-file deletion; false means it could not. */
+    private fun restoreActiveFile(activeFile: File, bytes: ByteArray?): Boolean = try {
+        val directory = directoryProvider.personalDirectory()
+        if (bytes == null) {
+            deleteFile(directory, activeFile)
+        } else {
+            writeBytesDurably(directory, activeFile, bytes)
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+
     /**
-     * Drops the word from the quarantined file when possible. An empty rewritten copy is deleted;
-     * a failed rewrite preserves the original bytes for recovery.
+     * Drops the word from the quarantined file. An empty rewritten copy is deleted; false means the
+     * copy was not cleaned, so the caller must not report the word gone.
+     *
+     * Fails closed in both directions. A copy that was not read to its end may hold the word in the
+     * unread part, so only a copy read whole can be rewritten or deleted; any other outcome means
+     * the word could survive in the slot and be resurrected by a restore. And a delete or rewrite
+     * whose directory fsync failed may be rolled back to the original bytes: only a slot
+     * byte-identical to the expected result proves the purge is not that way. The read below must
+     * reach the slot's real length: a short read says the delete only partly landed, which is as
+     * much an unknown as a mismatch.
      */
-    private fun purgeFromQuarantine(normalizedWord: String) {
-        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return
+    private fun purgeFromQuarantine(normalizedWord: String): Boolean {
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false
         val copy = File(directory, quarantineFileName())
-        if (!copy.isFile) return
+        if (!copy.isFile) return true
+        // A failed fsync on a previous operation may have left a stale temp behind; removing it
+        // keeps any following createExclusiveTemp from stepping on it.
+        cleanupTemps(directory)
         val salvage = try {
             PersonalQuarantineSalvage.read(copy, subtypeId)
         } catch (_: Exception) {
             null
-        } ?: return
+        } ?: return false
+        val salvageWhole = salvage.readToEnd
         val kept = (0 until salvage.wordCount).filter { index ->
             salvage.normalizedForms[index] != normalizedWord
         }
-        if (kept.size == salvage.wordCount) return // the word was not in the copy: nothing to purge
-        try {
-            var candidate = PersonalEntries.empty(maxEntries)
-            for (index in kept) {
-                candidate = candidate.upsert(salvage.rawForms[index], salvage.normalizedForms[index])
-            }
-            if (candidate.isEmpty) {
-                deleteFile(directory, copy)
-            } else {
-                writeBytesDurably(directory, copy, candidate.serialize(subtypeId))
-            }
-        } catch (_: Exception) {
-            // Keep the original copy: the other recoverable words are still the user's data.
+        if (kept.size == salvage.wordCount && salvageWhole) return true // provably not in the copy
+        if (!salvageWhole) return false // part of the copy is unread; the word may be in it
+        var candidate = PersonalEntries.empty(maxEntries)
+        for (index in kept) {
+            candidate = candidate.upsert(salvage.rawForms[index], salvage.normalizedForms[index])
         }
+        if (candidate.isEmpty) {
+            return try {
+                if (!fileOps.delete(copy) || copy.exists()) return false
+                fileOps.syncDirectory(directory)
+                // The fsync landed; the empty slot above proves the delete.
+                true
+            } catch (_: Exception) {
+                // A failed step may still have unlinked the copy; only an unreadable slot (the
+                // reader's answer for a missing one) proves the delete is not rolled back.
+                quarantineSlotIsEmpty(copy)
+            }
+        }
+        val expected = candidate.serialize(subtypeId)
+        return try {
+            writeBytesDurably(directory, copy, expected)
+            true
+        } catch (_: Exception) {
+            // The temp, the open or the write may have failed before the replace and left the
+            // original copy intact; only the expected bytes prove the purge.
+            quarantineSlotHas(copy, expected)
+        }
+    }
+
+    /** Whether the quarantine slot holds exactly [expected]; false on a missing or unreadable slot. */
+    private fun quarantineSlotHas(copy: File, expected: ByteArray): Boolean = try {
+        copy.isFile && copy.length() == expected.size.toLong() && copy.readBytes().contentEquals(expected)
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Whether nothing can be read out of the slot, which is what a landed delete leaves behind. */
+    private fun quarantineSlotIsEmpty(copy: File): Boolean = try {
+        !copy.isFile || PersonalQuarantineSalvage.read(copy, subtypeId) == null
+    } catch (_: Exception) {
+        false
     }
 
     /**

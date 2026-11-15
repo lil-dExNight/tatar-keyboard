@@ -30,9 +30,10 @@ SEARCH_ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_searc
 # Pins for the committed asset, in the emoji_pack pattern: a rebuild that
 # changes the shipped index must update these together with the asset.
 COMMITTED_LINE_COUNT = 1389
-COMMITTED_TATAR_NAME_COUNT = 603
+COMMITTED_TATAR_NAME_COUNT = 604
+COMMITTED_TATAR_UNNAMED_COUNT = 785
 COMMITTED_ASSET_SHA256 = (
-    "6e4324dcbddde4a0b59b6887cc430a111b6c028a2d6e9479dc447fe8687b71cc"
+    "f2d986e2fd8743ec7d5b488eb91d497c1fca2e272ad5292d777c72ea68b8c798"
 )
 
 
@@ -753,6 +754,23 @@ class CommittedAssetTest(unittest.TestCase):
             bad = set(fields[3]) - pack.TATAR_WORD_CHARS
             self.assertFalse(bad, msg=f"non-Tatar characters {bad} in {line[:60]}")
 
+    def test_unnamed_primary_aliases_remain_ambiguous_for_native_review(self) -> None:
+        """Audit the naming gaps without inventing ambiguous TalkBack labels."""
+        names = pack.read_tt_names(
+            ROOT / "scripts" / "emoji_search_tt_names.txt", self.panel_sequences)
+        extra = pack.read_tt_extra(
+            ROOT / "scripts" / "emoji_search_tt_extra.txt", self.panel_sequences)
+        owners: dict[str, set[str]] = {}
+        for sequence, aliases in extra.items():
+            for alias in aliases:
+                owners.setdefault(alias, set()).add(sequence)
+        unnamed = set(self.panel_sequences) - set(names)
+        self.assertEqual(COMMITTED_TATAR_UNNAMED_COUNT, len(unnamed))
+        ambiguous = {sequence for sequence in unnamed
+                     if len(owners[extra[sequence][0]]) > 1}
+        self.assertEqual(unnamed, ambiguous)
+        self.assertEqual("баскетбол", names["🏀"])
+
     def test_index_never_offers_what_the_panel_cannot_draw(self) -> None:
         panel = set(self.panel_sequences)
         indexed = [line.split("\t")[0] for line in self.search_lines]
@@ -792,6 +810,7 @@ class CommittedAssetTest(unittest.TestCase):
             "💙": "",
             "🐓": "әтәч",
             "🕌": "мәчет",
+            "🏀": "баскетбол",
             "#️⃣": "нумар төймәсе",
         }
         by_sequence = {line.split("\t")[0]: line.split("\t")[3]

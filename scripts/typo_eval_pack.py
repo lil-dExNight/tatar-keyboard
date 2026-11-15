@@ -20,8 +20,8 @@ builds the reviewed valid-OOV sets from held-out forms absent from the pinned di
 ``new_form_of_seen_stem`` and ``unseen_stem`` cover the remaining forms. Conservative admission
 requires NFC lowercase text in the language alphabet, 3..32 code points, a vowel, and no run of
 four identical letters. These rules reject formal fragments, not subtle misspellings, so every
-admitted word also appears in the explicit native-plausibility review list below. Exits 2 on
-missing or invalid input.
+admitted word also appears in the explicit corpus-plausibility list below. Corpus analysis is not
+native human approval. Exits 2 on missing or invalid input.
 """
 
 from __future__ import annotations
@@ -57,9 +57,9 @@ CLASS_NAMES = tuple(sorted(CLASS_TAGS, key=CLASS_TAGS.get))
 MIN_SAFETY_WORD_CODE_POINTS = 3
 MAX_SAFETY_WORD_CODE_POINTS = 32
 
-# Corpus attestation does not establish spelling. These held-out forms passed a separate
-# native-plausibility review; grouping documents their expected stratum on the pinned inputs.
-REVIEWED_VALID_OOV_WORDS = {
+# Corpus attestation does not establish spelling or native human approval. These held-out forms
+# passed mechanical plausibility checks; grouping documents their expected stratum on pinned inputs.
+PROPOSED_VALID_OOV_WORDS = {
     "tat": (
         # Seen form in filtered conversational training.
         "ашарсыңмы", "ниятләрендә", "салышмагыз", "сүндердеңме", "тотканымны", "фадил",
@@ -482,7 +482,7 @@ class ValidOovSafetySet:
         return hashlib.sha256(self.data).hexdigest()
 
 
-def is_native_plausible_form(word: str, language: LanguageSpec) -> bool:
+def is_plausible_form(word: str, language: LanguageSpec) -> bool:
     """Apply conservative formal checks; the review list decides actual admission."""
     if not MIN_SAFETY_WORD_CODE_POINTS <= len(word) <= MAX_SAFETY_WORD_CODE_POINTS:
         return False
@@ -556,7 +556,7 @@ def build_valid_oov_safety_set(
             raise typo_pack.TypoPackError(f"reviewed safety word is not held out: {word}")
         if word in vocabulary:
             raise typo_pack.TypoPackError(f"reviewed safety word is not OOV: {word}")
-        if not is_native_plausible_form(word, language):
+        if not is_plausible_form(word, language):
             raise typo_pack.TypoPackError(f"reviewed safety word fails formal checks: {word}")
         rows.append((word, valid_oov_stratum(word, vocabulary, seen_frequencies, language)))
     rows.sort()
@@ -619,7 +619,7 @@ def generate_valid_oov_safety_set(
         expected_entry_count=language.dictionary_entry_count,
     )
     return build_valid_oov_safety_set(
-        REVIEWED_VALID_OOV_WORDS[language.tag],
+        PROPOSED_VALID_OOV_WORDS[language.tag],
         dictionary_words,
         read_eval_words(eval_set_path),
         read_conv_frequencies(conv_frequency_path),

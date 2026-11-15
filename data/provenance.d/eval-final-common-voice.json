@@ -1,0 +1,23 @@
+{
+  "candidate_count": 2465,
+  "drop_counts": {
+    "dropped_collision": {
+      "conversational_train": 303,
+      "development": 7,
+      "leipzig_train": 380
+    },
+    "dropped_no_surviving_tokens": 6,
+    "dropped_normalized_duplicate": 4,
+    "dropped_word_count_outside_bounds": 526
+  },
+  "generation_command": "python3 research/corpus-sources/fetch_sources.py && python3 research/corpus/acquire_common_voice_final.py --mirror-text",
+  "id": "eval-final-common-voice-tt-v1",
+  "license": "CC0-1.0",
+  "path": "app/src/test/resources/tt_common_voice_final.txt",
+  "revision": "common_voice_17_0/tt-dev/final-1000",
+  "sample_seed": "common-voice-final/2026-11-14",
+  "sha256": "3eda4ab3d0abf7ec9b66060aaf2d31b31e5a839bdd2c2e8d68b74c36d9f663d8",
+  "size_bytes": 69709,
+  "source_role": "final_evaluation_sentences",
+  "split_rule": "final: frozen before tuning; independent of train and development (no shared normalized sentence)"
+}

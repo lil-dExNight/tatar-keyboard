@@ -1,0 +1,11 @@
+{
+  "id": "eval-oov-tatar-development",
+  "revision": "tt-valid-oov/v1",
+  "size_bytes": 7924,
+  "sha256": "d8835f1051e6405949d7ee85ffa2d1528342fbf35030880a2af3e53eb4afa954",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles-No-Grant",
+  "source_role": "development_regression_evaluation",
+  "split_rule": "reviewed development/regression safety data; never final",
+  "generation_command": "python3 scripts/typo_eval_pack.py safety-set --language tat --eval-set app/src/test/resources/tt_eval_sentences.txt --dictionary app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib --conv-frequency data/dictionary/dict-accept/conv-freq-tt.tsv --output app/src/test/resources/tt_valid_oov_safety_set.tsv",
+  "path": "app/src/test/resources/tt_valid_oov_safety_set.tsv"
+}

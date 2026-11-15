@@ -101,3 +101,5 @@ research/corpus/out/
 research/corpus/licenses/
 research/corpus/__pycache__/
 research/corpus/chunks/
+# Gesture evaluator output is run evidence; the datasets and fixtures are tracked.
+research/glide-evaluation/reports/

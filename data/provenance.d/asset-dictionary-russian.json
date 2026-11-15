@@ -1,0 +1,11 @@
+{
+  "id": "asset-dictionary-russian-top100k-v1",
+  "revision": "russian_top100k_v1",
+  "size_bytes": 539948,
+  "sha256": "273f1a6928f74fdbd7f0fda4490978124b3748160ac283d0b51e8c913fea5fde",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles-No-Grant",
+  "source_role": "generated_dictionary",
+  "split_rule": "training output; excludes final evaluation records",
+  "generation_command": "python3 scripts/rebuild_assets.py --only russian --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
+  "path": "app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib"
+}

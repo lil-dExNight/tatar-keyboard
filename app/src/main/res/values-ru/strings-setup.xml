@@ -28,9 +28,13 @@
     <string name="setup_step2_button">Выбрать</string>
 
     <string name="setup_done_title">Готово!</string>
-    <string name="setup_done_hint">Печатать можно и свайпом: ведите пальцем по буквам. По пробелу — курсор, от клавиши стирания — стирание, быстрый рывок влево удаляет слово целиком</string>
 
-    <!-- One line per gesture in the done-block card: gesture name first, then the effect,
+    <string name="setup_guide_title">Татарская раскладка и жесты</string>
+    <string name="setup_guide_layout">Верхний ряд: ә ө ү җ ң һ ё ъ — у каждой татарской буквы есть своя клавиша</string>
+    <string name="setup_guide_long_press">Долгое нажатие открывает буквы-партнёры: е → ё, ь → ъ, а → ә, о → ө, у → ү, ж → җ, н → ң, г и х → һ</string>
+    <string name="setup_guide_save_word">Свои слова: нажмите и удерживайте слово в полосе подсказок над клавиатурой, чтобы добавить его в личный словарь</string>
+
+    <!-- One line per gesture in the done-block guide: gesture name first, then the effect,
          in the same order as the Preferences "Gestures" card. -->
     <string name="setup_gesture_glide">Набор свайпом: ведите по буквам, чтобы набрать слово</string>
     <string name="setup_gesture_space_trackpad">Пробел-трекпад: ведите по пробелу, чтобы двигать курсор</string>

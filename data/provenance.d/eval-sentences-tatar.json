@@ -1,0 +1,11 @@
+{
+  "id": "eval-sentences-tatar-development",
+  "revision": "tt-eval-sentences/2026-10-31/v1",
+  "size_bytes": 66470,
+  "sha256": "e0e52b5e64254a9b7bfc2f056a53c827ece086f689563fe0ae5521a01597a553",
+  "license": "CC-BY-2.0-FR",
+  "source_role": "development_regression_evaluation",
+  "split_rule": "Tatoeba heldout rows id % 10 == 1; development/regression only, never final",
+  "generation_command": "python3 scripts/make_eval_set.py",
+  "path": "app/src/test/resources/tt_eval_sentences.txt"
+}

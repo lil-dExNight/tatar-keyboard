@@ -34,10 +34,10 @@ data class InflatedAsset(
  * Two tiers: the full [validateRaw] walks every block, word and varint over one in-memory copy
  * of the raw file (bounded by [DictionaryArtifactSpec.maxRawSize], because the front-coded
  * blocks are easier to walk over a byte array), while [verifyPinnedContent] checks the bounds,
- * the header constants, the section arithmetic, the embedded checksum and a streaming SHA-256
- * against the pinned raw SHA-256 through one fixed-size buffer. A pinned SHA-256 match implies
- * the walk's outcome, so activation uses the fast tier; publication and any hash mismatch (which
- * deletes the bad file and republishes fresh bytes) use the full one.
+ * the header constants, the section arithmetic and the pinned raw SHA-256 through one fixed-size
+ * buffer. A pinned SHA-256 match implies the embedded checksum and the walk's outcome, so
+ * activation uses the fast tier; publication and any hash mismatch (which deletes the bad file
+ * and republishes fresh bytes) use the full one.
  */
 class TdictValidator {
     fun inflateAsset(
@@ -233,10 +233,10 @@ class TdictValidator {
     }
 
     /**
-     * [verifyPinnedContent]'s phase: the same bounds, header, section-arithmetic, checksum and
-     * raw SHA-256 checks as [verifyHeaderAndPinnedRawSha], but streamed through one fixed-size
-     * buffer instead of an in-memory copy of the file. Returns the decoded header only; the
-     * raw bytes are not kept.
+     * [verifyPinnedContent]'s phase: the same bounds, header, section arithmetic and pinned raw
+     * SHA-256 checks as [verifyHeaderAndPinnedRawSha], but streamed through one fixed-size buffer
+     * instead of an in-memory copy of the file. Returns the decoded header only; the raw bytes are
+     * not kept.
      */
     private fun verifyHeaderStreaming(
         file: File,
@@ -260,24 +260,19 @@ class TdictValidator {
 
             val rawDigest = MessageDigest.getInstance("SHA-256")
             rawDigest.update(header)
-            val checksumDigest = MessageDigest.getInstance("SHA-256")
-            checksumDigest.update(header, 0, TdictFormat.CHECKSUM_OFFSET)
-            checksumDigest.update(ByteArray(TdictFormat.CHECKSUM_SIZE))
             var remaining = length - TdictFormat.HEADER_SIZE
             val buffer = ByteArray(VERIFY_BUFFER_SIZE)
             while (remaining > 0) {
                 val count = minOf(VERIFY_BUFFER_SIZE.toLong(), remaining).toInt()
                 readExact(stream, buffer, count)
                 rawDigest.update(buffer, 0, count)
-                checksumDigest.update(buffer, 0, count)
                 remaining -= count
             }
             if (stream.read() != -1) {
                 throw DictionaryValidationException("raw dictionary changed while reading")
             }
-            if (!MessageDigest.isEqual(decoded.storedChecksum, checksumDigest.digest())) {
-                throw DictionaryValidationException("SHA-256 checksum mismatch")
-            }
+            // A pinned raw match also authenticates the stored checksum. Publication and a hash
+            // mismatch still verify that checksum independently during the full walk.
             if (!constantTimeHexEquals(rawDigest.digest().toHex(), spec.expectedRawSha256)) {
                 throw DictionaryValidationException("unexpected raw SHA-256")
             }

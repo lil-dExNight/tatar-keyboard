@@ -39,4 +39,10 @@
     <!-- U+04BB: "һ" CYRILLIC SMALL LETTER SHHA -->
     <Key
         latin:keySpec="&#x04BB;" />
+    <!-- U+0451: "ё" CYRILLIC SMALL LETTER IO; also on long-press U+0435: "е" -->
+    <Key
+        latin:keySpec="&#x0451;" />
+    <!-- U+044A: "ъ" CYRILLIC SMALL LETTER HARD SIGN; also on long-press U+044C: "ь" -->
+    <Key
+        latin:keySpec="&#x044A;" />
 </merge>

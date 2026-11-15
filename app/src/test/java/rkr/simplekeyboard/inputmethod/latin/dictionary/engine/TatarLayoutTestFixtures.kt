@@ -1,7 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 /**
- * Shared fixture: the full Tatar alphabet keyboard (all 37 letter keys of `rows_tatar.xml`, in
+ * Shared fixture: the full Tatar alphabet keyboard (all 39 letter keys of `rows_tatar.xml`, in
  * layout order) with the long-press partners of `rowkeys_tatar*.xml`. Unlike
  * [LongPressTestFixtures], which lists only the letters its tests use, the node set here is the
  * complete layout alphabet that edit class #4 substitutes from.
@@ -10,14 +10,14 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * neighbor bonus) is exercised under the production wiring. The x edges are the device model of
  * scripts/typo_pack.py (build_device_geometry) on the 100 000-unit reference grid; the y edges
  * follow the shipped 5-row variant (rowHeight 20%p, vertical gap 2.814%p of the keyboard
- * height), so the key height is 17 186 and the row pitch 20 000 reference units. Under the
- * table's radius the relation reproduces all 32 pairs of TypoMutatedEvalTest.GEOMETRIC_NEIGHBORS
- * plus the 33 same-row adjacent pairs — asserted by
- * TypoMutatedEvalTest.theFixtureTableRecognizesEveryEvalNeighborPair.
+ * height), so the key height is 17 186 and the row pitch 20 000 reference units. The extra top
+ * row is the eight Tatar-only letters at 12.5%p, so ё and ъ are direct keys of the layout.
  *
  * Production derives the table from the live keyboard (`KeyNeighborTableBuilder.fromKeyboard`);
  * no production source carries a Cyrillic literal (asserted by
- * [EngineLayoutLiteralSourceContractTest]).
+ * [EngineLayoutLiteralSourceContractTest]). The eval mutation substrate's recorded neighbor map
+ * (TypoMutatedEvalTest.GEOMETRIC_NEIGHBORS) and its pins are regenerated from the layout by
+ * scripts/typo_pack.py in the asset-rebuild step, so they trail this fixture until then.
  */
 internal object TatarLayoutTestFixtures {
     fun tatarNeighborTable(subtypeId: String = "tt_RU"): KeyNeighborTable =
@@ -25,10 +25,11 @@ internal object TatarLayoutTestFixtures {
             subtypeId,
             true,
             listOf(
-                // The extra Tatar row: ә ө ү җ ң һ (row top 0)
-                geoKey(870, 0, 15798, 'ә'), geoKey(17537, 0, 32465, 'ө'),
-                geoKey(34204, 0, 49131, 'ү'), geoKey(50870, 0, 65798, 'җ'),
-                geoKey(67537, 0, 82465, 'ң'), geoKey(84204, 0, 99130, 'һ'),
+                // The extra Tatar row: ә ө ү җ ң һ ё ъ (row top 0), eight keys at 12.5%p.
+                geoKey(870, 0, 11631, 'ә'), geoKey(13370, 0, 24131, 'ө'),
+                geoKey(25870, 0, 36631, 'ү'), geoKey(38370, 0, 49131, 'җ'),
+                geoKey(50870, 0, 61630, 'ң'), geoKey(63369, 0, 74130, 'һ'),
+                geoKey(75869, 0, 86630, 'ё'), geoKey(88369, 0, 99130, 'ъ'),
                 // й ц у к е н г ш щ з х (row top 20000)
                 geoKey(870, 20000, 8222, 'й'), geoKey(9961, 20000, 17313, 'ц'),
                 geoKey(19052, 20000, 26404, 'у', 'ү'), geoKey(28143, 20000, 35495, 'к'),

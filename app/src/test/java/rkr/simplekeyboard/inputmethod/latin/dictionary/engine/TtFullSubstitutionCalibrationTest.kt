@@ -461,7 +461,7 @@ class TtFullSubstitutionCalibrationTest {
         // candidate-arm counts moved up when the geometry-neighbor bonus was armed: neighbor
         // substitutions reach the strip's four cells more often.
         private const val PIN_BASE_W5 = 43_420
-        private const val PIN_CAND_W5 = 30_327
+        private const val PIN_CAND_W5 = 30_296
         private const val PIN_BASE_W5_SUBSET = 98_071
         private const val PIN_CAND_W5_SUBSET = 101_417
         private const val PIN_EVAL_PREFIXES_GE4 = 7_599
@@ -470,10 +470,10 @@ class TtFullSubstitutionCalibrationTest {
 
         // Pins of the same-set lift measurement.
         private const val PIN_LIFT_BASE_W5_WHOLE = 533
-        private const val PIN_LIFT_CAND_W5_WHOLE = 30_336
+        private const val PIN_LIFT_CAND_W5_WHOLE = 30_305
         private const val PIN_LIFT_ACTIVE_ROWS = 101_417
         private const val PIN_LIFT_BASE_W5_ACTIVE = 524
-        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_327
+        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_296
         private const val PIN_LIFT_BASE_W3_WHOLE = 116
         private const val PIN_LIFT_CAND_W3_WHOLE = 120
 

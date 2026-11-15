@@ -1,0 +1,35 @@
+# Reviewable Tatar language and autocorrect evaluation cases.
+# evaluation=preserve means the complete input, including spelling and casing, must survive
+# without a harmful replacement. These are proposed expected results, not measured engine output.
+# Corpus IDs refer to tat_sentences.tsv.bz2 and its Tatoeba-v2026-10-31 source revision.
+# token=N records the measured occurrence count when the row represents a token rather than a
+# pinned sentence. Corpus analysis is not native human approval; review fields stay empty until
+# a reviewer records approved=yes, reviewer, review_date=YYYY-MM-DD, and note.
+case_id	category	input	expected_output	evaluation	source_context	approved	reviewer	review_date	note
+conv-pride-2pl	conversational	Сез балаларыгыз белән горурланасыз булса кирәк.	Сез балаларыгыз белән горурланасыз булса кирәк.	preserve	Tatoeba:13636256				Checks the attested present second-person plural in an ordinary sentence.
+conv-today-gerund	conversational	Бүгөн матур көн, һәм мин йөрөп килергә телим.	Бүгөн матур көн, һәм мин йөрөп килергә телим.	preserve	Tatoeba:13417955				Keep the disputed variants unchanged until native review; do not silently rewrite both.
+conv-harmal	conversational	Борчылма. Син һәрмәлдә миңа таяна аласың.	Борчылма. Син һәрмәлдә миңа таяна аласың.	preserve	Tatoeba:8833718				Checks a single-source form whose meaning and spelling are unresolved.
+conv-present-back	conversational	Әйдә пляжга барабыз.	Әйдә пляжга барабыз.	preserve	Tatoeba:988601				Checks present first-person plural -абыз.
+conv-present-front	conversational	Бүген китәбез.	Бүген китәбез.	preserve	Tatoeba:2843912				Checks present first-person plural -әбез.
+conv-present-negative	conversational	Бүген без мәктәпкә бармыйбыз.	Бүген без мәктәпкә бармыйбыз.	preserve	Tatoeba:4144276				Checks negative present first-person plural.
+safety-today	autocorrect_safety	бүгөн	бүгөн	preserve	Tatoeba:13417955				Do not replace with бүген without native confirmation.
+safety-pride	autocorrect_safety	горурланасыз	горурланасыз	preserve	Tatoeba:13636256;extra=present				Do not replace with горурлана or горурланасы.
+safety-gerund	autocorrect_safety	йөрөп	йөрөп	preserve	Tatoeba:13417955				Do not replace with йөреп without native confirmation.
+safety-harmal	autocorrect_safety	һәрмәлдә	һәрмәлдә	preserve	Tatoeba:8833718				Do not split, delete, or replace the single-source form without native confirmation.
+proper-tom	proper_name	Том миңа бөтен паркны күрсәтеп чыкты.	Том миңа бөтен паркны күрсәтеп чыкты.	preserve	Tatoeba:912480				Proper-name negative: preserve capitalization and spelling.
+proper-maria	proper_name	Мария бик тә чибәр кыз.	Мария бик тә чибәр кыз.	preserve	Tatoeba:912486				Proper-name negative: do not substitute a common word.
+proper-japan	proper_name	Бу - Япония флагы.	Бу - Япония флагы.	preserve	Tatoeba:404364				Place-name negative inside a conversational sentence.
+proper-latin-name	proper_name	Mär’yam äle dä eşlärgä tiyeşlesen eşlämi.	Mär’yam äle dä eşlärgä tiyeşlesen eşlämi.	preserve	Tatoeba:13547927				Proper-name negative with Latin script and a curly apostrophe.
+casing-initial	casing	Бүген китәбез.	Бүген китәбез.	preserve	Tatoeba:2843912				Sentence-initial uppercase must not become lowercase.
+casing-mid-sentence	casing	Без бүген китәбез.	Без бүген китәбез.	preserve	proposed-test-case				Mid-sentence lowercase must not be capitalized automatically.
+casing-all-caps	casing	БҮГЕН КИТӘБЕЗ.	БҮГЕН КИТӘБЕЗ.	preserve	proposed-test-case				All-caps input must not be lowercased or replaced by a mixed-case suggestion.
+casing-latin-name	casing	Mär’yam	Mär’yam	preserve	Tatoeba:13547927				Script-specific uppercase must survive token normalization.
+hyphen-reciprocal	internal_hyphen	бер-берсенә	бер-берсенә	preserve	Tatoeba:532208;token=51				Keep the reciprocal as one token; do not split at the internal hyphen.
+hyphen-parents	internal_hyphen	әти-әнисе	әти-әнисе	preserve	Tatoeba:2877637;token=26				Keep the coordinated compound and its possessive ending intact.
+hyphen-women	internal_hyphen	хатын-кызлар	хатын-кызлар	preserve	Tatoeba:2802029;token=20				Keep the plural coordinated compound intact.
+hyphen-openly	internal_hyphen	ачыктан-ачык	ачыктан-ачык	preserve	Tatoeba:3283943;token=29				Keep the reduplicated adverb intact.
+apostrophe-computer	apostrophe	komp’yuter	komp’yuter	preserve	Tatoeba:13274350;token=10				Preserve the curly apostrophe in a common Latin-script Tatar word.
+apostrophe-issue	apostrophe	mäs’äläne	mäs’äläne	preserve	Tatoeba:13023982;token=10				Preserve an inflected apostrophe word as one token.
+apostrophe-name	apostrophe	Mär’yam	Mär’yam	preserve	Tatoeba:13547927;token=11				Preserve both capitalization and the curly apostrophe.
+apostrophe-new-york	apostrophe	N’yu-Yorkta	N’yu-Yorkta	preserve	Tatoeba:13157634;token=5				Preserve the combined apostrophe and internal hyphen.
+apostrophe-ascii	apostrophe	komp'yuter	komp'yuter	preserve	proposed-straight-apostrophe-variant				Review straight and curly apostrophes separately; do not silently normalize the input.

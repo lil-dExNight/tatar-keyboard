@@ -1,0 +1,11 @@
+{
+  "generation_command": "research/corpus/dl.sh  # QED-v2.0a.tt.txt.gz",
+  "id": "corpus-dump-qed-v2.0a.tt",
+  "license": "CC-BY-SA-4.0",
+  "path": "research/corpus/QED-v2.0a.tt.txt.gz",
+  "revision": "QED-v2.0a.tt",
+  "sha256": "e1a26d3c5dc7a256e0808dd1449f3d1ab1942c37a745026a012f985e9ab48ddd",
+  "size_bytes": 34607,
+  "source_role": "raw_corpus",
+  "split_rule": "training input; not split upstream"
+}

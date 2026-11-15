@@ -1,0 +1,14 @@
+{
+  "baseline": {
+    "hits": [0, 1, 1, 0],
+    "denominators": [2, 2, 2, 2]
+  },
+  "candidate": {
+    "hits": [1, 1, 1, 1],
+    "denominators": [2, 2, 2, 2]
+  },
+  "k": 3,
+  "role": "user",
+  "rounds": 100,
+  "seed": 20261001
+}

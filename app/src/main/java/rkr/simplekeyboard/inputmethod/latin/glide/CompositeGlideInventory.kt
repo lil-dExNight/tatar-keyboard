@@ -102,4 +102,24 @@ class CompositeGlideInventory(
             visitor.visit(personalNormalizedForms[index], frequency)
         }
     }
+
+    override fun forEachWordUtf8(visitor: GlideWordUtf8Visitor) {
+        // The base walks its own bytes (a dictionary serves its stored UTF-8 directly); the
+        // personal tail re-encodes through one scratch buffer, exactly the default fallback.
+        var baseMax = 0L
+        base.forEachWordUtf8 { wordUtf8, length, frequency ->
+            if (frequency > baseMax) baseMax = frequency
+            visitor.visit(wordUtf8, length, frequency)
+        }
+        if (personalRawForms.isEmpty()) return
+        var maxUsage = 1
+        for (usage in personalUsageCounts) if (usage > maxUsage) maxUsage = usage
+        val encoder = GlideUtf8.Encoder()
+        for (index in personalNormalizedForms.indices) {
+            // Same frequency rule as forEachWord; the two walks must agree entry for entry.
+            val frequency = maxOf(1L, baseMax * personalUsageCounts[index] / maxUsage)
+            val length = encoder.encode(personalNormalizedForms[index])
+            visitor.visit(encoder.buffer, length, frequency)
+        }
+    }
 }

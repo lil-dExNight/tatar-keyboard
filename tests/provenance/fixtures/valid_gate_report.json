@@ -1,0 +1,38 @@
+{
+  "measurement": {
+    "unit": "sentence",
+    "units": 4,
+    "denominator_name": "adjacent next-word pairs",
+    "gate_metric": "visible_top3",
+    "metrics": {
+      "visible_top3": {
+        "k": 3,
+        "role": "user",
+        "baseline": {"hits": 2, "denominator": 8, "pct": 25.0, "ci95": [0.0, 62.5]},
+        "candidate": {"hits": 4, "denominator": 8, "pct": 50.0, "ci95": [12.5, 87.5]},
+        "delta": {
+          "pp": 25.0,
+          "ci95": [-25.0, 50.0],
+          "paired": true,
+          "method": "paired-sentence-bootstrap",
+          "resampling": "shared-record-indices",
+          "rounds": 100
+        }
+      },
+      "engine_top4": {
+        "k": 4,
+        "role": "diagnostic",
+        "baseline": {"hits": 3, "denominator": 8, "pct": 37.5, "ci95": [0.0, 75.0]},
+        "candidate": {"hits": 5, "denominator": 8, "pct": 62.5, "ci95": [25.0, 100.0]},
+        "delta": {
+          "pp": 25.0,
+          "ci95": [-25.0, 50.0],
+          "paired": true,
+          "method": "paired-sentence-bootstrap",
+          "resampling": "shared-record-indices",
+          "rounds": 100
+        }
+      }
+    }
+  }
+}

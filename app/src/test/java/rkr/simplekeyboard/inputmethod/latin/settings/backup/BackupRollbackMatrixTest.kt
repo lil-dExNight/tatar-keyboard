@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.settings.backup
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -31,9 +32,10 @@ import java.nio.ByteBuffer
 /**
  * The rollback matrix of [BackupTransfer] over a fake device: process death before and after
  * every store apply, a store refusing at every apply boundary, journals that fail validation, a
- * refused journal write, a failed commit delete and an erase-all with a lingering journal. Every
- * row must end in the old state with no journal left. [BackupCoordinator] only wires this seam
- * to the device, so the matrix runs on the JVM.
+ * refused journal write, a failed commit and an erase-all with a lingering journal. Every
+ * recoverable row must end in the old state with no journal left; a damaged journal fails closed
+ * and keeps its exact bytes until an explicit erase. [BackupCoordinator] only wires this seam to
+ * the device, so the matrix runs on the JVM.
  */
 class BackupRollbackMatrixTest {
     @get:Rule
@@ -137,7 +139,46 @@ class BackupRollbackMatrixTest {
     }
 
     @Test
-    fun aJournalFailingValidationIsDiscardedWithoutTouchingTheDevice() {
+    fun aFailureAfterTheCombinedPrivacyApplyRestoresTheExactPreviousSwitches() {
+        // The archive asks to learn (personal dictionary ON, not paused); the device has learning
+        // OFF and pause ON. The forward apply writes the COMBINED values (OFF, ON) — safe — but a
+        // commit-delete failure forces a rollback, which must restore the exact previous switches,
+        // not the combined ones and not the archive's.
+        val directory = temporaryFolder.newFolder("privacy-rollback")
+        val device = FakeDevice()
+        device.preferences["pref_personal_dictionary"] = false
+        device.preferences["pref_incognito_mode"] = true
+        device.preferences["legacy_setting"] = "keep me"
+        val archive = BackupArchive.create(VERSION_CODE, mapOf(
+            "pref_personal_dictionary" to true,
+            "pref_incognito_mode" to false,
+        ), listOf(
+            VerifiedPersonalFile(BackupFormat.PersonalKind.WORDS, "tt_RU",
+                BackupTestStores.writeWords(directory, "tt_RU", listOf("абыйлар"))),
+        ))
+        val beforePreferences = LinkedHashMap(device.preferences)
+
+        val target = FakeBackupTarget(device)
+        // The apply succeeds but clearing the journal fails, so import reports WRITE_FAILED with
+        // the journal still present; recovery then rolls the whole state back.
+        target.failJournalClear = true
+        assertEquals(BackupImportResult.WRITE_FAILED, BackupTransfer.import(target, archive))
+        assertNotNull(device.journal)
+
+        val recovering = FakeBackupTarget(device)
+        assertTrue(BackupTransfer.recoverPending(recovering))
+        assertNull(device.journal)
+        // Exact previous privacy state, not the combined (false, true) forward-applied values and
+        // not the archive's (true, false): both switches match the pre-import device byte-for-byte.
+        assertEquals(beforePreferences, device.preferences)
+        assertEquals(false, device.preferences["pref_personal_dictionary"])
+        assertEquals(true, device.preferences["pref_incognito_mode"])
+        // The imported personal file did not survive the rollback either.
+        assertTrue(device.personalFiles.isEmpty())
+    }
+
+    @Test
+    fun aJournalFailingValidationFailsClosedAndKeepsItsExactBytes() {
         val variants = mutableListOf<Pair<String, ByteArray>>()
         variants += "random-bytes" to ByteArray(64) { it.toByte() }
         variants += "bad-magic" to wellFramedJournal("magic").also {
@@ -157,14 +198,66 @@ class BackupRollbackMatrixTest {
             val fixture = newMatrixFixture("journal-$detail")
             fixture.device.journal = journalBytes
 
-            assertTrue(detail, BackupTransfer.recoverPending(FakeBackupTarget(fixture.device)))
-            assertNull("$detail: a journal that can never be applied is deleted",
-                fixture.device.journal)
-            assertDeviceState(detail, fixture)
+            assertFalse("$detail: damaged rollback evidence fails closed",
+                BackupTransfer.recoverPending(FakeBackupTarget(fixture.device)))
+            assertArrayEquals("$detail: the exact damaged bytes stay for evidence",
+                journalBytes, fixture.device.journal)
+            assertDeviceState("$detail: nothing is silently applied", fixture)
 
-            assertEquals("$detail: a discarded journal blocks no later import",
-                BackupImportResult.IMPORTED,
+            assertEquals("$detail: the next import fails explicitly",
+                BackupImportResult.WRITE_FAILED,
                 BackupTransfer.import(FakeBackupTarget(fixture.device), fixture.archive))
+            assertNull("$detail: export fails explicitly while recovery is unresolved",
+                BackupTransfer.export(FakeBackupTarget(fixture.device)))
+            assertArrayEquals(journalBytes, fixture.device.journal)
+
+            assertTrue("$detail: only the explicit erase resolves it",
+                BackupTransfer.discardPending(FakeBackupTarget(fixture.device)))
+            assertNull(fixture.device.journal)
+            assertTrue(BackupTransfer.recoverPending(FakeBackupTarget(fixture.device)))
+        }
+    }
+
+    @Test
+    fun aJournalDamagedAfterOneStoreReplacementNeverSilentlyAcceptsTheMixedState() {
+        for (variant in listOf("corrupted", "truncated")) {
+            val fixture = newMatrixFixture("journal-$variant-after-replacement")
+            val dying = FakeBackupTarget(fixture.device)
+            dying.crashAfterApplies = 1
+            try {
+                BackupTransfer.import(dying, fixture.archive)
+                throw AssertionError("death after one replacement did not happen")
+            } catch (expected: SimulatedProcessDeath) {
+            }
+            assertNotNull("one replacement is committed and the journal survives",
+                fixture.device.journal)
+            val damaged = fixture.device.journal!!.let { journal ->
+                if (variant == "corrupted") {
+                    journal.also { corruptFirstEntryPayload(it, JOURNAL_HEADER_BYTES) }
+                } else {
+                    journal.copyOf(JOURNAL_HEADER_BYTES + 10)
+                }
+            }
+            fixture.device.journal = damaged
+            val mixedPreferences = LinkedHashMap(fixture.device.preferences)
+            val mixedFiles = fixture.device.personalFiles.mapValues { it.value.copyOf() }
+
+            assertFalse("$variant: a damaged journal after a partial apply fails closed",
+                BackupTransfer.recoverPending(FakeBackupTarget(fixture.device)))
+            assertArrayEquals("$variant: the exact damaged bytes stay for evidence",
+                damaged, fixture.device.journal)
+            assertEquals("$variant: no mixed state is reported as recovered", mixedPreferences,
+                fixture.device.preferences)
+            assertEquals("$variant: no mixed state is reported as recovered", mixedFiles.keys,
+                fixture.device.personalFiles.keys)
+            for ((name, bytes) in mixedFiles) {
+                assertArrayEquals("$variant: $name", bytes, fixture.device.personalFiles[name])
+            }
+            assertEquals("$variant: the next import fails explicitly", BackupImportResult.WRITE_FAILED,
+                BackupTransfer.import(FakeBackupTarget(fixture.device), fixture.archive))
+            assertNull("$variant: export fails explicitly while recovery is unresolved",
+                BackupTransfer.export(FakeBackupTarget(fixture.device)))
+            assertArrayEquals("$variant: still untouched", damaged, fixture.device.journal)
         }
     }
 

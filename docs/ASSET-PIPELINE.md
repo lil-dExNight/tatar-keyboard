@@ -53,7 +53,18 @@ These inputs are not in the repository:
   every corpus in `BIGRAMS[].train` (`rus_news_2023_1M` and `rus_news_2024_1M` included).
   `conv-freq-ru.tsv` excludes counts contributed by eval lines; the same words can still have
   counts from other training lines. The suggestion evaluations, the typo eval sets and the glide
-  calibration set are built from these two files.
+  calibration set are built from these two files. The Tatar side also has a frozen final
+  evaluation set, `app/src/test/resources/tt_common_voice_final.txt` (CC0): Tatar Common Voice
+  dev-split sentences extracted by `research/corpus/acquire_common_voice_final.py
+  --mirror-text` from the hash-verified mirror text, checked for independence against the
+  conversational train split, the Leipzig training sentences and the development sets, and
+  frozen before any tuning. The two held-out sets keep their roles: the Tatoeba-based one is
+  the development and regression input, the Common Voice set is the final evaluation, and
+  neither may be trained or tuned on. Split assignments and normalized collisions across
+  sentences, word-frequency tables, dictionary admissions and bigram training are declared in
+  `data/evaluation/splits-tt.json` and checked by `python3 scripts/evaluation_splits.py
+  data/evaluation/splits-tt.json` (a cross-split normalized-sentence leak is an error; a word
+  table may not hold two rows that normalize to the same word).
 - Conversational training files `tt_conv_train90-sentences.txt` and
   `rus_conv_thinned60-sentences.txt`. `research/corpus/dl.sh` downloads the Tatoeba and
   OpenSubtitles dumps (Tatar Tatoeba: the weekly tatoeba.org export, which OPUS lags; the
@@ -76,18 +87,47 @@ These inputs are in the repository:
   (the Leipzig and conversational files above), with a short `source` note. Its entry set must equal the files named in `BIGRAMS[].train` and
   `WORDFORM_FREQUENCY_SOURCES`. When you replace a corpus, update its entry in the
   same change as the rebuilt assets.
-- `data/dictionary/`: the word review queues (`*-conv-review.tsv`, `*-query-review.tsv`) and
+- `data/dictionary/`: the word review queues (`*-conv-review.tsv`, `*-query-review.tsv`), the
+  evidence and review tables (`tatar-wordform-review.tsv`: per-paradigm-cell corpus attestation
+  and admission decisions for the audited Tatar paradigms; `tatar-language-eval-review.tsv`:
+  native-review evaluation cases for conversational text, autocorrect safety, proper names,
+  casing, hyphens and apostrophes), and
   `dict-accept/`, which holds the accepted and rejected words (`accepted-*.tsv`,
   `rejected-*.tsv`, written by `dict_accept.py select`), the conversational frequencies
   (`conv-freq-*.tsv`) and the extra-corpus bonus frequencies (`bonus-freq-tt.tsv`, written by
   `research/corpus/tt_merge_sim.py bonus-tsv`; `dict_accept.py pack` adds them to the merged
   frequency of composition words without changing the composition).
+- `data/provenance.d/`: one JSON shard per generated asset and evaluation file. Each shard pins
+  an immutable revision, byte size, SHA-256, license, source role, split rule, generation
+  command and repository-relative path; `python3 scripts/provenance.py` fails on a missing,
+  duplicate, malformed or stale shard, and the python suite runs it against the live tree.
+- `data/evaluation/splits-tt.json`: the train/development/final split declarations checked by
+  `scripts/evaluation_splits.py` (see the held-out evaluation sets above). The python suite runs
+  the committed declaration against the live tree, so the shipped development and final sets and
+  the word tables are covered, not only a fixture.
+- `data/corpus-sources/`: the licensed-corpus comparison for Tatar (TatSC under CC BY 4.0 and
+  Common Voice under CC0, alongside the current OpenSubtitles/Tatoeba input):
+  `ATTRIBUTION.txt` with the license and upstream of each candidate, `source-pins.json` with
+  the fetched revisions, and the comparison and recommendation reports
+  (`comparison.json`, `integration-recommendation.json`) written by
+  `research/corpus-sources/compare_sources.py` after `research/corpus-sources/fetch_sources.py`.
+  The fetch step verifies the pinned immutable dataset revision against upstream, every TatSC
+  rows request carries that revision, and the page cache under `build/corpus-sources/pages/` is
+  bound to it and to the SHA-256 of the exact response bytes and of the normalized page content:
+  an edited or unverifiable cached page is refetched instead of trusted, and only byte-verified
+  pages feed the comparison.
+  The current recommendation is to defer integration (keep the shipped pipeline): no candidate
+  combination was a drop-in improvement on every fixed domain. Rerun the comparison for new
+  numbers; the recommendation record is the authority, not figures copied into documents.
 - `scripts/wordform_exceptions_tat.tsv`: exception rules for the Tatar word-form generator
   (`scripts/wordform_gen.py`). Its SHA-256 is pinned in `tests/wordform_gen/`.
 - `scripts/bigram_extra_heads_tat.txt`: extra Tatar bigram heads (imperatives ranked below the
   head cutoff). The rule that produced the list is in the file header; do not add words by hand.
 - `scripts/emoji_suggest_data.tsv`, `scripts/emoji_search_tt_extra.txt` and
-  `scripts/emoji_search_tt_names.txt`: curated emoji data.
+  `scripts/emoji_search_tt_names.txt`: curated emoji data. The Tatar names file carries the
+  reviewed spoken Tatar name of an emoji; a name is added only through native review, and the
+  emoji whose primary alias would be ambiguous stays unnamed instead of getting an invented
+  label (the python emoji tests pin the unnamed set).
 
 ## `accept_wordset.py`
 
@@ -95,14 +135,22 @@ A candidate word set (a new review pool in `data/dictionary/*-conv-review.tsv`) 
 evidence, not on the rule alone. `scripts/accept_wordset.py` runs the evidence steps in order,
 each as a subprocess of the existing script; the runner measures nothing itself:
 
-1. `dict_accept.py select --baseline <dir>`: the acceptance rule over the pool, rewriting
-   `data/dictionary/dict-accept/accepted-*.tsv` and `rejected-*.tsv`.
+1. `dict_accept.py select --baseline <dir>`: the admission rule over the pool, rewriting
+   `data/dictionary/dict-accept/accepted-*.tsv` and `rejected-*.tsv`. A word is admitted
+   automatically only on independent evidence (seen in both OpenSubtitles and Tatoeba, already
+   shipped, or — Russian only — a Tatoeba-attested form of a shipped stem) with capitalization
+   evidence below the conservative ceiling; subtitle-only candidates never pass automatically.
+   Every other admission is an explicit operator-widened review: the queue row needs
+   `approved=yes`, `reviewer`, `review_date` (ISO date) and `note`; rows with `approved=no` are
+   rejected as reviewed, and rows without the full metadata are rejected as review-required.
 2. `research/corpus/measure_accept.py <tag> <baseline> <corpora>`: the held-out coverage delta
    of the accepted set against the shipped baseline; also rewrites `conv-freq-*.tsv`.
 3. `research/corpus/tt_gate_check.py` or `ru_gate_check.py`: the candidate dictionary and
    bigram table (both built outside the asset tree) against the committed assets on the pinned
-   eval set — the coverage gate and the paired bootstrap CI95 of the chain top-3 delta. A
-   rejected gate stops the run before the query audit: the candidate is not accepted.
+   eval set — the coverage gate and the paired bootstrap CI95 of the chain's visible top-3
+   delta (the strip shows three cells; the engine's fourth candidate is diagnostic only and
+   never reported as top-3). A rejected gate stops the run before the query audit: the
+   candidate is not accepted.
 4. `dictionary_pack.py query-audit --asset <candidate> --queries <manual query list>`: the
    candidate's rows, saved for the review into `data/dictionary/*-query-review.tsv`.
 
@@ -116,6 +164,24 @@ Each step's report is saved under the work dir (default
 failed, 2 bad arguments or a missing input, 3 the gate rejected the candidate. When every step
 passes, the runner prints the re-pin checklist with the file names; the list under "A rebuild
 leaves the following to you" below stays the authority for what it prints.
+
+## Measurement contracts
+
+These hold for every quality comparison in the repository (the gate checks, the corpus sims,
+the corpus-source comparison, the glide benchmark):
+
+- Visible top-3 is the user-facing metric: the strip shows three cells by default. The engine
+  composes four candidates, and the fourth is diagnostic only — it must never be reported as a
+  visible top-3 hit. `scripts/evaluation_metrics.py` owns the accounting: `paired-ci
+  INPUT.json` compares per-record hit and denominator arrays of two arms, `check-report
+  REPORT.json` validates a gate report's top-k roles, denominators and pairing metadata, and
+  recomputes every `pct` and the delta from hits and denominators, so a stale or hand-edited
+  rate fails; unequal series lengths and hits above a denominator are rejected.
+- Two arms are compared on the same records: the paired bootstrap CI95 draws the same record
+  indices for both arms, and every reported rate carries its denominator. A quality decrease is
+  never accepted by moving pins.
+- Evaluations run on the split that matches their role (development or final; see the split
+  declarations above), never on training inputs and never tuned on the final set.
 
 ## `rebuild_assets.py`
 

@@ -26,9 +26,8 @@ data class ValidatedBigramTable(
  * inflate with digest, then validate the decompressed structure, and the same two tiers: the
  * full [validateRaw] walks every varint stream over one in-memory copy of the raw file (bounded
  * by [TatBigrFormat.MAX_RAW_SIZE], because the streams are easier to walk over a byte array),
- * while [verifyPinnedContent] checks the header, the dictionary link, the section arithmetic,
- * the embedded checksum and a streaming SHA-256 against the pinned raw SHA-256 through one
- * fixed-size buffer.
+ * while [verifyPinnedContent] checks the header, the dictionary link, the section arithmetic and
+ * the pinned raw SHA-256 through one fixed-size buffer. A raw match implies the embedded checksum.
  *
  * It cannot check that an index is below the vocabulary size: the vocabulary is the linked
  * dictionary. It checks that the header names the dictionary pinned by
@@ -118,9 +117,9 @@ class TatBigrValidator {
     }
 
     /**
-     * [verifyPinnedContent]'s phase: the same bounds, header, dictionary-link, section-
-     * arithmetic, checksum and raw SHA-256 checks as [verifyHeaderAndPinnedRawSha], but streamed
-     * through one fixed-size buffer instead of an in-memory copy of the file.
+     * [verifyPinnedContent]'s phase: the same bounds, header, dictionary link, section arithmetic
+     * and pinned raw SHA-256 checks as [verifyHeaderAndPinnedRawSha], but streamed through one
+     * fixed-size buffer instead of an in-memory copy of the file.
      */
     private fun verifyHeaderStreaming(
         file: File,
@@ -144,24 +143,19 @@ class TatBigrValidator {
 
             val rawDigest = MessageDigest.getInstance("SHA-256")
             rawDigest.update(header)
-            val checksumDigest = MessageDigest.getInstance("SHA-256")
-            checksumDigest.update(header, 0, TatBigrFormat.CHECKSUM_OFFSET)
-            checksumDigest.update(ByteArray(TatBigrFormat.CHECKSUM_SIZE))
             var remaining = length - TatBigrFormat.HEADER_SIZE
             val buffer = ByteArray(VERIFY_BUFFER_SIZE)
             while (remaining > 0) {
                 val count = minOf(VERIFY_BUFFER_SIZE.toLong(), remaining).toInt()
                 readExact(stream, buffer, count)
                 rawDigest.update(buffer, 0, count)
-                checksumDigest.update(buffer, 0, count)
                 remaining -= count
             }
             if (stream.read() != -1) {
                 throw BigramValidationException("raw table changed while reading")
             }
-            if (!MessageDigest.isEqual(decoded.storedChecksum, checksumDigest.digest())) {
-                throw BigramValidationException("SHA-256 checksum mismatch")
-            }
+            // A pinned raw match also authenticates the stored checksum. Publication and a hash
+            // mismatch still verify that checksum independently during the full walk.
             if (!constantTimeHexEquals(rawDigest.digest().toHex(), spec.expectedRawSha256)) {
                 throw BigramValidationException("unexpected raw SHA-256")
             }

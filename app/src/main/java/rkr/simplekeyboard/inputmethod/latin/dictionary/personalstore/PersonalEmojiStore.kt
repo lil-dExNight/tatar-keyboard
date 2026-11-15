@@ -159,21 +159,24 @@ internal class PersonalEmojiStore(
         if (!open()) return false
         if (alphabet == null) return false
         val normalizedWord = PersonalBigramWordFilter.normalize(rawWord)
-        // The pending hash goes with the entry, so it is not learned again.
-        salt?.let { existing ->
-            val key = PendingCounters.keyOf(existing, pendingKey(normalizedWord, rawEmoji))
-            if (pending.countOf(key) > 0) {
-                pending = pending.without(key)
-                pendingDirty = true
-            }
-        }
         val candidate = entries.remove(normalizedWord, rawEmoji)
         if (candidate === entries) {
             // Not saved, so already gone; the quarantine purge still runs.
-            purgeFromQuarantine(normalizedWord, rawEmoji)
+            if (!purgeFromQuarantine(normalizedWord, rawEmoji)) return false
+            dropPending(normalizedWord, rawEmoji)
             return true
         }
+        val previousEntries = entries
         val previousSnapshot = snapshot
+        val activeFile = File(
+            runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false,
+            TpersemFormat.personalEmojiFileName(subtypeId),
+        )
+        val previousActiveBytes = try {
+            if (activeFile.isFile) activeFile.readBytes() else null
+        } catch (_: Exception) {
+            return false
+        }
         snapshot =
             if (candidate.isEmpty) PersonalEmojiDictionary.EMPTY else candidate.toSnapshot(subtypeId)
         lastWriteInstalled = false
@@ -187,9 +190,7 @@ internal class PersonalEmojiStore(
         } catch (_: Exception) {
             false
         }
-        if (removed) {
-            entries = candidate
-        } else {
+        if (!removed) {
             if (lastWriteInstalled) {
                 entries = candidate
             } else {
@@ -197,8 +198,43 @@ internal class PersonalEmojiStore(
             }
             return false
         }
-        purgeFromQuarantine(normalizedWord, rawEmoji)
+        entries = candidate
+        if (!purgeFromQuarantine(normalizedWord, rawEmoji)) {
+            // Only a successful rollback puts memory back: when the active file could not be
+            // restored, memory must keep the deletion the disk still shows; the answer is false
+            // either way. See PersonalDictionaryStore.removeOnWorker.
+            if (restoreActiveFile(activeFile, previousActiveBytes)) {
+                entries = previousEntries
+                snapshot = previousSnapshot
+            }
+            return false
+        }
+        dropPending(normalizedWord, rawEmoji)
         return true
+    }
+
+    /** The pending hash goes with a confirmed entry, so it is not learned again from scratch. */
+    private fun dropPending(normalizedWord: String, rawEmoji: String) {
+        salt?.let { existing ->
+            val key = PendingCounters.keyOf(existing, pendingKey(normalizedWord, rawEmoji))
+            if (pending.countOf(key) > 0) {
+                pending = pending.without(key)
+                pendingDirty = true
+            }
+        }
+    }
+
+    /** Puts the active file back after a failed multi-file deletion. */
+    private fun restoreActiveFile(activeFile: File, bytes: ByteArray?): Boolean = try {
+        val directory = directoryProvider.personalDirectory()
+        if (bytes == null) {
+            deleteFile(directory, activeFile)
+        } else {
+            writeBytesDurably(directory, activeFile, bytes)
+        }
+        true
+    } catch (_: Exception) {
+        false
     }
 
     /** Erases this subtype's learned emoji. See [PersonalDictionaryStore.clearAll]. */
@@ -338,32 +374,63 @@ internal class PersonalEmojiStore(
     }
 
     /** The quarantine half of [forget]. See `PersonalDictionaryStore.purgeFromQuarantine`. */
-    private fun purgeFromQuarantine(normalizedWord: String, emoji: String) {
-        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return
+    private fun purgeFromQuarantine(normalizedWord: String, emoji: String): Boolean {
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false
         val copy = File(directory, quarantineFileName())
-        if (!copy.isFile) return
+        if (!copy.isFile) return true
+        // A failed fsync on a previous operation may have left a stale temp behind; removing it
+        // keeps any following createExclusiveTemp from stepping on it.
+        cleanupTemps(directory)
         val salvage = try {
             PersonalEmojiQuarantineSalvage.read(copy, subtypeId)
         } catch (_: Exception) {
             null
-        } ?: return
+        } ?: return false
+        val salvageWhole = salvage.readToEnd
         val kept = (0 until salvage.entryCount).filter { index ->
             salvage.words[index] != normalizedWord || salvage.emojiClusters[index] != emoji
         }
-        if (kept.size == salvage.entryCount) return // the entry was not in the copy: nothing to purge
-        try {
-            var candidate = PersonalEmojiEntries.empty(maxEntries)
-            for (index in kept) {
-                candidate = candidate.upsert(salvage.words[index], salvage.emojiClusters[index], 1)
-            }
-            if (candidate.isEmpty) {
-                deleteFile(directory, copy)
-            } else {
-                writeBytesDurably(directory, copy, candidate.serialize(subtypeId))
-            }
-        } catch (_: Exception) {
-            // Keep the original copy so the other recoverable entries are not lost.
+        if (kept.size == salvage.entryCount && salvageWhole) return true // provably not in the copy
+        if (!salvageWhole) return false // part of the copy is unread; the entry may be in it
+        var candidate = PersonalEmojiEntries.empty(maxEntries)
+        for (index in kept) {
+            candidate = candidate.upsert(salvage.words[index], salvage.emojiClusters[index], 1)
         }
+        if (candidate.isEmpty) {
+            return try {
+                if (!fileOps.delete(copy) || copy.exists()) return false
+                fileOps.syncDirectory(directory)
+                // The fsync landed; the empty slot above proves the delete.
+                true
+            } catch (_: Exception) {
+                // A failed step may still have unlinked the copy; the reader's answer for a
+                // missing slot is the only proof the delete is not rolled back.
+                quarantineSlotIsEmpty(copy)
+            }
+        }
+        val expected = candidate.serialize(subtypeId)
+        return try {
+            writeBytesDurably(directory, copy, expected)
+            true
+        } catch (_: Exception) {
+            // The temp, the open or the write may have failed before the replace and left the
+            // original copy intact; only the expected bytes prove the purge.
+            quarantineSlotHas(copy, expected)
+        }
+    }
+
+    /** Whether the slot holds exactly [expected]; see `PersonalDictionaryStore.quarantineSlotHas`. */
+    private fun quarantineSlotHas(copy: File, expected: ByteArray): Boolean = try {
+        copy.isFile && copy.length() == expected.size.toLong() && copy.readBytes().contentEquals(expected)
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Whether nothing can be read out of the slot; see `PersonalDictionaryStore.quarantineSlotIsEmpty`. */
+    private fun quarantineSlotIsEmpty(copy: File): Boolean = try {
+        !copy.isFile || PersonalEmojiQuarantineSalvage.read(copy, subtypeId) == null
+    } catch (_: Exception) {
+        false
     }
 
     /** Reads the quarantined file behind the unlock gate; `null` when there is none to read. */

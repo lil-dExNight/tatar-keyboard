@@ -549,7 +549,8 @@ def read_layout_geometric_map(layout_dir: Path) -> dict[int, tuple[int, ...]]:
 # --------------------------------------------------------------------------------------
 # The typeable alphabet (edit class #4), read from the layout. Exactly the
 # KeyNeighborTable.nodes set: every letter key of the rowkeys_tatar*.xml files plus every
-# letter appearing in their latin:moreKeys (ё and ъ are more-key-only letters).
+# letter appearing in their latin:moreKeys (ё and ъ have their own keys AND remain more-keys
+# of е and ь, so both sources name them).
 # --------------------------------------------------------------------------------------
 def read_layout_alphabet(layout_dir: Path) -> tuple[int, ...]:
     """The layout's typeable letters as a sorted tuple of code points (== KeyNeighborTable.nodes)."""

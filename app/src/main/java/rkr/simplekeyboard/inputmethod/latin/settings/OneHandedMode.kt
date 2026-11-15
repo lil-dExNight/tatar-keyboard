@@ -46,8 +46,8 @@ object OneHandedMode {
      */
     const val WIDTH_SCALE = 0.85f
 
-    /** The fifth Tatar row's key pitch as a fraction of the grid: six keys at 16.667%p. */
-    const val FIFTH_ROW_KEY_FRACTION = 0.16667f
+    /** The fifth Tatar row's key pitch as a fraction of the grid: eight keys at 12.5%p. */
+    const val FIFTH_ROW_KEY_FRACTION = 0.125f
 
     /**
      * Floor for the fifth-row key pitch under the scale: the pitch of the narrowest key the

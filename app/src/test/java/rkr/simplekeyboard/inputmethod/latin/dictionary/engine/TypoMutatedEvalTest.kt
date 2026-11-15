@@ -248,8 +248,8 @@ class TypoMutatedEvalTest {
         // The literal below is the layout-derived relation pasted by hand; it is pinned
         // transitively by the set SHA-256, and the Python test asserts the same relation from
         // the layout resources. These assertions catch a paste error locally: symmetric,
-        // sorted-ascending neighbor lists, 32 undirected pairs over 37 letters.
-        assertEquals(37, GEOMETRIC_NEIGHBORS.size)
+        // sorted-ascending neighbor lists, 32 undirected pairs over 39 letters.
+        assertEquals(39, GEOMETRIC_NEIGHBORS.size)
         var edges = 0
         for ((node, neighbors) in GEOMETRIC_NEIGHBORS) {
             assertTrue(neighbors.contentEquals(neighbors.sortedArray()))
@@ -586,17 +586,17 @@ class TypoMutatedEvalTest {
             0x0430 to intArrayOf(0x043A, 0x0441), // "а" -> "кс"
             0x0431 to intArrayOf(0x0434), // "б" -> "д"
             0x0432 to intArrayOf(0x0443, 0x0447), // "в" -> "уч"
-            0x0433 to intArrayOf(0x043E, 0x0497), // "г" -> "оҗ"
+            0x0433 to intArrayOf(0x043E, 0x04A3), // "г" -> "оң"
             0x0434 to intArrayOf(0x0431, 0x0449), // "д" -> "бщ"
-            0x0435 to intArrayOf(0x043F, 0x04AF), // "е" -> "пү"
+            0x0435 to intArrayOf(0x043F, 0x0497), // "е" -> "пҗ"
             0x0436 to intArrayOf(0x0437, 0x044E), // "ж" -> "зю"
-            0x0437 to intArrayOf(0x0436, 0x04BB), // "з" -> "жһ"
+            0x0437 to intArrayOf(0x0436, 0x0451), // "з" -> "жё"
             0x0438 to intArrayOf(0x0440), // "и" -> "р"
             0x0439 to intArrayOf(0x0444, 0x04D9), // "й" -> "фә"
-            0x043A to intArrayOf(0x0430, 0x04E9), // "к" -> "аө"
+            0x043A to intArrayOf(0x0430, 0x04AF), // "к" -> "аү"
             0x043B to intArrayOf(0x0448, 0x044C), // "л" -> "шь"
             0x043C to intArrayOf(0x043F), // "м" -> "п"
-            0x043D to intArrayOf(0x0440, 0x0497, 0x04AF), // "н" -> "рҗү"
+            0x043D to intArrayOf(0x0440, 0x0497, 0x04A3), // "н" -> "рҗң"
             0x043E to intArrayOf(0x0433, 0x0442), // "о" -> "гт"
             0x043F to intArrayOf(0x0435, 0x043C), // "п" -> "ем"
             0x0440 to intArrayOf(0x0438, 0x043D), // "р" -> "ин"
@@ -604,22 +604,24 @@ class TypoMutatedEvalTest {
             0x0442 to intArrayOf(0x043E), // "т" -> "о"
             0x0443 to intArrayOf(0x0432, 0x04E9), // "у" -> "вө"
             0x0444 to intArrayOf(0x0439), // "ф" -> "й"
-            0x0445 to intArrayOf(0x044D, 0x04BB), // "х" -> "эһ"
-            0x0446 to intArrayOf(0x044B, 0x04D9), // "ц" -> "ыә"
+            0x0445 to intArrayOf(0x044A, 0x044D), // "х" -> "ъэ"
+            0x0446 to intArrayOf(0x044B, 0x04E9), // "ц" -> "ыө"
             0x0447 to intArrayOf(0x0432), // "ч" -> "в"
-            0x0448 to intArrayOf(0x043B, 0x04A3), // "ш" -> "лң"
-            0x0449 to intArrayOf(0x0434, 0x04A3), // "щ" -> "дң"
+            0x0448 to intArrayOf(0x043B, 0x04BB), // "ш" -> "лһ"
+            0x0449 to intArrayOf(0x0434, 0x0451), // "щ" -> "дё"
+            0x044A to intArrayOf(0x0445), // "ъ" -> "х"
             0x044B to intArrayOf(0x0446, 0x044F), // "ы" -> "ця"
             0x044C to intArrayOf(0x043B), // "ь" -> "л"
             0x044D to intArrayOf(0x0445), // "э" -> "х"
             0x044E to intArrayOf(0x0436), // "ю" -> "ж"
             0x044F to intArrayOf(0x044B), // "я" -> "ы"
-            0x0497 to intArrayOf(0x0433, 0x043D), // "җ" -> "гн"
-            0x04A3 to intArrayOf(0x0448, 0x0449), // "ң" -> "шщ"
-            0x04AF to intArrayOf(0x0435, 0x043D), // "ү" -> "ен"
-            0x04BB to intArrayOf(0x0437, 0x0445), // "һ" -> "зх"
-            0x04D9 to intArrayOf(0x0439, 0x0446), // "ә" -> "йц"
-            0x04E9 to intArrayOf(0x043A, 0x0443), // "ө" -> "ку"
+            0x0451 to intArrayOf(0x0437, 0x0449), // "ё" -> "зщ"
+            0x0497 to intArrayOf(0x0435, 0x043D), // "җ" -> "ен"
+            0x04A3 to intArrayOf(0x0433, 0x043D), // "ң" -> "гн"
+            0x04AF to intArrayOf(0x043A), // "ү" -> "к"
+            0x04BB to intArrayOf(0x0448), // "һ" -> "ш"
+            0x04D9 to intArrayOf(0x0439), // "ә" -> "й"
+            0x04E9 to intArrayOf(0x0443, 0x0446), // "ө" -> "уц"
         )
 
         // Pins over the committed dictionary, eval set and layout; re-pin when an input changes.
@@ -627,7 +629,7 @@ class TypoMutatedEvalTest {
         private const val PIN_SET_ROWS = 9_524
         private const val PIN_SET_BYTES = 310_834
         private const val PIN_SET_SHA256 =
-            "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8"
+            "ee64e2699257d1daa9ad11d4a32c987240e783165b7c44a11777f37b3183b8c3"
 
         // Quality floors beside the exact pins: per-class recovery must stay within 5% of its
         // pinned count, so a dictionary rebuild cannot be re-pinned through a silent quality
@@ -637,14 +639,14 @@ class TypoMutatedEvalTest {
         // Measured baseline recovery counts. The un-suffixed pins hold the bonus-off arm (the
         // pre-bonus ranking); the _GEO pins hold the production arm (the TATAR policy with the
         // geometry-neighbor bonus armed); then the exact-only control.
-        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_186
+        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_187
         private const val PIN_DEL_ENGINE_TOP4_HITS = 1_831
         private const val PIN_INS_ENGINE_TOP4_HITS = 2_332
         private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_161
-        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_197
-        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_826
+        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_198
+        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_827
         private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_331
-        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_157
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_156
         private const val PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY = 0
         // The exact-only control: only a last-position deletion can be a prefix hit.
         private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 326
@@ -653,12 +655,12 @@ class TypoMutatedEvalTest {
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0
 
         private const val PIN_VALID_OOV_ROWS = 220
-        private const val PIN_VALID_OOV_SET_BYTES = 7_814
+        private const val PIN_VALID_OOV_SET_BYTES = 7_924
         private const val PIN_VALID_OOV_SET_SHA256 =
-            "fc539f876541dce34c3706cefc00c0c2b05b60e8b559aa606a1693539a8b4dd2"
+            "d8835f1051e6405949d7ee85ffa2d1528342fbf35030880a2af3e53eb4afa954"
         private const val PIN_VALID_OOV_SEEN_FORM_WORDS = 6
-        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 87
-        private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 127
+        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 98
+        private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 116
         private const val PIN_VALID_OOV_SEEN_FORM_FALSE_REPLACEMENTS = 0
         private const val PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS = 1
         private const val PIN_VALID_OOV_UNSEEN_STEM_FALSE_REPLACEMENTS = 3

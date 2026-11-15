@@ -1,0 +1,11 @@
+{
+  "id": "asset-emoji-skin-v1",
+  "revision": "emoji-skin/15.1/v1",
+  "size_bytes": 1456,
+  "sha256": "818336362439a73abbd17663f9eceab13a8beea603395ef700a1c87e34e28ea2",
+  "license": "Unicode-DFS-2016",
+  "source_role": "generated_emoji_skin_table",
+  "split_rule": "not-applicable",
+  "generation_command": "python3 scripts/emoji_skin_pack.py build --input <local-emoji-test-15.1.txt> --panel-asset app/src/main/assets/emoji/emoji_set_v1.txt --output app/src/main/assets/emoji/emoji_skin_v1.txt",
+  "path": "app/src/main/assets/emoji/emoji_skin_v1.txt"
+}

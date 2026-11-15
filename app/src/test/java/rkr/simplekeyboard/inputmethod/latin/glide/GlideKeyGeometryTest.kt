@@ -90,19 +90,22 @@ class GlideKeyGeometryTest {
 
     @Test
     fun longPressLettersWithoutAKeyResolveToTheirBaseKey() {
-        val geometry = GlideTestFixtures.tatarGeometry()
-        assertEquals(37, geometry.keyCount)
-        assertEquals(geometry.keyIndexOfLetter('ь'.code), geometry.keyIndexOfLetter('ъ'.code))
-        assertEquals(geometry.keyIndexOfLetter('е'.code), geometry.keyIndexOfLetter('ё'.code))
-        // The fifth row gives the Tatar letters keys of their own, so on the Tatar layout they
-        // are never aliased; ъ and ё are the only aliases.
-        assertTrue(geometry.keyIndexOfLetter('ә'.code) != geometry.keyIndexOfLetter('а'.code))
-        assertTrue(geometry.keyIndexOfLetter('һ'.code) != geometry.keyIndexOfLetter('х'.code))
-        assertTrue(geometry.keyIndexOfLetter('ү'.code) != geometry.keyIndexOfLetter('у'.code))
-        assertEquals(2, geometry.aliasCount)
-        assertEquals('ъ'.code, geometry.aliasLetterAt(0))
-        assertEquals('ё'.code, geometry.aliasLetterAt(1))
-        assertEquals(geometry.keyIndexOfLetter('ь'.code), geometry.aliasKeyAt(0))
+        // The shipped Tatar layout no longer has an alias-only letter, so the rule is exercised
+        // on a synthetic layout: a long-press partner without a key of its own resolves to the
+        // base key that carries it, and stays an alias rather than becoming a new key.
+        val geometry = GlideKeyGeometry.build(
+            listOf(raw('а', 0, 0, 100, 100, "ә"), raw('б', 200, 0, 300, 100)),
+        )
+        assertEquals(2, geometry.keyCount)
+        assertEquals(geometry.keyIndexOfLetter('а'.code), geometry.keyIndexOfLetter('ә'.code))
+        assertEquals(1, geometry.aliasCount)
+        assertEquals('ә'.code, geometry.aliasLetterAt(0))
+        assertEquals(geometry.keyIndexOfLetter('а'.code), geometry.aliasKeyAt(0))
+        // The Russian layout still aliases the Tatar letters, which have no keys of their own
+        // there: һ resolves through х, and ъ through ь.
+        val russian = GlideTestFixtures.russianGeometry()
+        assertEquals(russian.keyIndexOfLetter('х'.code), russian.keyIndexOfLetter('һ'.code))
+        assertEquals(russian.keyIndexOfLetter('ь'.code), russian.keyIndexOfLetter('ъ'.code))
     }
 
     @Test
@@ -168,14 +171,39 @@ class GlideKeyGeometryTest {
     }
 
     @Test
-    fun tatarFixtureGeometryCoversTheThirtySevenLetterKeys() {
+    fun tatarFixtureGeometryCoversTheThirtyNineLetterKeys() {
         val geometry = GlideTestFixtures.tatarGeometry()
-        assertEquals(37, geometry.keyCount)
+        assertEquals(39, geometry.keyCount)
         assertEquals(GlideTestFixtures.tatarKeyRadius().toFloat(), geometry.keyRadius, 0.0001f)
         // Row 0 sits above row 1.
         assertTrue(
             geometry.centerY(geometry.keyIndexOfLetter('ә'.code)) <
                 geometry.centerY(geometry.keyIndexOfLetter('й'.code)),
         )
+    }
+
+    @Test
+    fun everyTatarAlphabetLetterHasItsOwnKey() {
+        // All 39 Tatar alphabet letters resolve to a key directly — ё and ъ included — so a
+        // glide path never depends on an alias for a letter of the language.
+        val geometry = GlideTestFixtures.tatarGeometry()
+        for (letter in "абвгдежзийклмнопрстуфхцчшщъыьэюяәөүҗңһё") {
+            assertTrue("$letter has no key", geometry.keyIndexOfLetter(letter.code) >= 0)
+        }
+    }
+
+    @Test
+    fun theTatarFixtureKeepsNoAliases() {
+        // Every long-press partner of the Tatar layout (ү ң һ ә ө җ ё ъ) also has its own key,
+        // so the fixture carries an empty alias table; the alternatives stay long-press reach.
+        val geometry = GlideTestFixtures.tatarGeometry()
+        assertEquals(0, geometry.aliasCount)
+        // The base keys keep their long-press partners: е gives ё, ь gives ъ.
+        val rawKeys = GlideTestFixtures.tatarRawKeys()
+        for (base in listOf('е', 'ь')) {
+            val key = rawKeys.first { it.codePoint == base.code }
+            assertTrue("е/ь must keep their long-press partner",
+                key.moreKeyCodePoints.isNotEmpty())
+        }
     }
 }

@@ -31,11 +31,12 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Real-gesture diagnostic over the project's own gesture collector (private recordings: the
- * JSONL never enters git). Inert unless TT_GESTURE_FILE points at an exported session file of
- * research/glide-collector/index.html:
+ * Real-gesture diagnostic over the project's own gesture collector (later private recordings
+ * stay out of git; the frozen development session is tracked at
+ * research/glide-evaluation/datasets/session-1.jsonl). Inert unless TT_GESTURE_FILE points at
+ * an exported session file of research/glide-collector/index.html:
  *
- *   TT_GESTURE_FILE=build/gesture-records/session-1.jsonl \
+ *   TT_GESTURE_FILE="$PWD/research/glide-evaluation/datasets/session-1.jsonl" \
  *     ./gradlew :app:testDebugUnitTest --tests '*CollectorRealGestureDiagnosticTest*'
  *
  * The record's path_x/path_y are normalized by the collector's key radius, whose grid matches

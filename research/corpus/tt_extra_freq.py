@@ -21,16 +21,19 @@ point order) and a JSON report with per-reason drop counts.
 
 ``filter`` removes Russian bleed from an extracted list, per word:
 
-1. a word with a Tatar-specific letter stays (``tatar_letter``);
-2. a word with a Russian-specific letter (``ё``, ``ъ``) is dropped (``russian_letter``);
-3. a word attested in the Tatar reference layer stays (``tatar_attested``);
-4. a word attested in the Russian reference layer but not the Tatar one is dropped
+1. a word attested in the non-dictionary Tatar references stays (``tatar_attested``);
+2. a word with a Tatar-specific letter stays (``tatar_letter``);
+3. a word with a Russian-marker letter (``ё``, ``ъ``) is dropped (``russian_letter``);
+4. a word attested in the Russian reference layer but not independently in Tatar is dropped
    (``russian_only``);
-5. anything else stays (``unattested``; reported separately).
+5. a word in the shipped Tatar dictionary stays (``tatar_attested``);
+6. anything else stays (``unattested``; reported separately).
 
-The Tatar reference layer is the two Leipzig tt word lists, the conversational frequency
-file and the shipped Tatar dictionary. The Russian reference layer is the three Leipzig ru
-word lists. Rule 3 before rule 4 keeps genuine Russian loanwords that Tatar text uses.
+The independent Tatar references are the two Leipzig tt word lists and the conversational
+frequency file. The Russian reference layer is the three Leipzig ru word lists. Independent
+attestation precedes marker rejection because Tatar uses ``ъ`` in words such as ``игътибар``
+and also has established loans with ``ё``. At least one non-dictionary Tatar reference is
+required, and the shipped dictionary cannot rescue a Russian-attested form by itself.
 """
 from __future__ import annotations
 
@@ -217,22 +220,41 @@ def read_dictionary_words(asset: Path) -> frozenset[str]:
     return frozenset(parsed.words)
 
 
-def bleed_class(word: str, tatar_refs: frozenset[str], russian_refs: frozenset[str]) -> str:
+def bleed_class(
+    word: str,
+    tatar_refs: frozenset[str],
+    russian_refs: frozenset[str],
+    independent_tatar_refs: frozenset[str] | None = None,
+) -> str:
+    """Classify a token; only independent Tatar evidence overrides Russian reference evidence.
+
+    When the independent layer is omitted, every supplied Tatar reference is treated as
+    independent; production callers pass the layer separately so shipped words cannot count.
+    """
+    if independent_tatar_refs is None:
+        independent_tatar_refs = tatar_refs
+    if word in independent_tatar_refs:
+        return "tatar_attested"
     if any(letter in word for letter in TATAR_SPECIFIC):
         return "tatar_letter"
     if any(letter in word for letter in RUSSIAN_SPECIFIC):
         return "russian_letter"
-    if word in tatar_refs:
-        return "tatar_attested"
     if word in russian_refs:
         return "russian_only"
+    if word in tatar_refs:
+        return "tatar_attested"
     return "unattested"
 
 
 def filter_source(args) -> int:
+    if not args.tatar_refs:
+        raise SystemExit("filter requires at least one --tatar-refs file besides the dictionary")
     tatar_refs: set[str] = set()
     for path in args.tatar_refs:
         tatar_refs |= read_word_set(path, coverage.TATAR.alphabet)
+    if not tatar_refs:
+        raise SystemExit("non-dictionary Tatar reference layer is empty")
+    independent_tatar_refs = frozenset(tatar_refs)
     if args.tatar_dict_asset is not None:
         tatar_refs |= read_dictionary_words(args.tatar_dict_asset)
     russian_refs: set[str] = set()
@@ -251,7 +273,12 @@ def filter_source(args) -> int:
                 continue
             word, freq_text = line.rstrip("\n").split("\t")
             rows += 1
-            klass = bleed_class(word, tatar_refs_frozen, russian_refs_frozen)
+            klass = bleed_class(
+                word,
+                tatar_refs_frozen,
+                russian_refs_frozen,
+                independent_tatar_refs=independent_tatar_refs,
+            )
             class_words[klass] += 1
             class_tokens[klass] += int(freq_text)
             if klass not in ("russian_letter", "russian_only"):
@@ -259,6 +286,7 @@ def filter_source(args) -> int:
     stats: dict[str, object] = {
         "input": str(args.input),
         "tatar_ref_words": len(tatar_refs_frozen),
+        "tatar_independent_ref_words": len(independent_tatar_refs),
         "russian_ref_words": len(russian_refs_frozen),
         "rows_read": rows,
         "by_class": {

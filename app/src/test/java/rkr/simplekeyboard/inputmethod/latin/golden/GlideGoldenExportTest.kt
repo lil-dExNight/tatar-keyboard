@@ -134,8 +134,8 @@ class GlideGoldenExportTest {
             // The generator mirror must reproduce the pinned calibration set byte for byte;
             // the asset rebuild rewrites the pins (scripts/rebuild_assets.py).
             assertEquals(5110, words.size)
-            assertEquals(14000219, bytes.size)
-            assertEquals("2218ef5143e88eb78a1583fb269ffc78cacdaec0c9a9ebb0acf8241d185132d0", sha)
+            assertEquals(14006869, bytes.size)
+            assertEquals("ad22bb0fb8a75bfb14a8d07b97dddc4da5baefef66c47fe72f9a4e5df7f0df76", sha)
         }
         w.write("{\"kind\":\"set\",\"id\":${json(geo.id)},\"words\":${words.size},\"rows\":${paths.size}," +
             "\"bytes\":${bytes.size},\"sha256\":${json(sha)}}\n")

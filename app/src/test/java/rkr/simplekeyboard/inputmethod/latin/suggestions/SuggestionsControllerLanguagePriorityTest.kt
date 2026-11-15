@@ -451,6 +451,8 @@ class SuggestionsControllerLanguagePriorityTest {
     @Test
     fun aColdOtherLanguageProtectsItsListedWordsThroughTheList() {
         val h = Harness()
+        // The bundled lists serve only the autocorrect guard, so their load needs the gate on.
+        h.controller.setAutocorrectGate { true }
         h.controller.onStartInput(eligible = true, subtypeId = tatar)
 
         // The Russian list load finishes with "мама" but not "мыла": both are valid Russian
@@ -475,6 +477,7 @@ class SuggestionsControllerLanguagePriorityTest {
     @Test
     fun aListArrivingAfterPublicationProtectsAtOnce() {
         val h = Harness()
+        h.controller.setAutocorrectGate { true }
         h.controller.onStartInput(eligible = true, subtypeId = tatar)
 
         val tatarLexicon = requireNotNull(h.engine(tatar).receivedLexicon)
@@ -493,6 +496,7 @@ class SuggestionsControllerLanguagePriorityTest {
     @Test
     fun aReleasedOtherLanguageStillProtectsItsListedWords() {
         val h = Harness()
+        h.controller.setAutocorrectGate { true }
         // Glide off, so turning suggestions off schedules every engine's release.
         h.controller.onStartInput(eligible = true, subtypeId = tatar, glideEligible = false)
         h.controller.onSubtypeChanged(eligible = true, subtypeId = russian, glideEligible = false)

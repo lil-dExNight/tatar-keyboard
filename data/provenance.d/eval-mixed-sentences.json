@@ -1,0 +1,11 @@
+{
+  "id": "eval-mixed-sentences-development",
+  "revision": "tt-ru-mix/v1",
+  "size_bytes": 15661,
+  "sha256": "2664e2893295cf58604a2152573571719110cc2d1232db093fabda4200ced31e",
+  "license": "Apache-2.0",
+  "source_role": "development_regression_evaluation",
+  "split_rule": "hand-authored development/regression data; never final",
+  "generation_command": "hand-authored normalized sentences; checked by JVM suggestion tests",
+  "path": "app/src/test/resources/tt_ru_mix_sentences.txt"
+}

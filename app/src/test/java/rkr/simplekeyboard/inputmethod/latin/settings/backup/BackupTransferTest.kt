@@ -229,30 +229,74 @@ class BackupTransferTest {
     }
 
     @Test
-    fun importReportsPersonalDictionaryAndPauseLearningChanges() {
-        for (key in listOf("pref_personal_dictionary", "pref_incognito_mode")) {
-            val source = StoreBackedTarget(temporaryFolder.newFolder("source-$key"))
-            source.preferences[key] = true
-            val archive = BackupTransfer.export(source)!!
-            val destination = StoreBackedTarget(temporaryFolder.newFolder("destination-$key"))
-            destination.preferences[key] = false
+    fun importNeverEnablesLearningForADestinationThatHadItOff() {
+        // Personal dictionary = current && imported: the archive says ON, the device says OFF, so
+        // the restore must leave learning OFF. Turning it on would silently start saving words.
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["pref_personal_dictionary"] = true
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences["pref_personal_dictionary"] = false
 
-            assertEquals(key, BackupImportResult.IMPORTED_PRIVACY_CHANGED,
-                BackupTransfer.import(destination, archive))
-            assertEquals(key, true, destination.preferences[key])
-        }
+        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
+        assertEquals(false, destination.preferences["pref_personal_dictionary"])
     }
 
     @Test
-    fun importReportsResettingAPrivacySwitchToItsDefault() {
+    fun importNeverUnpausesLearningForADestinationThatHadItPaused() {
+        // Pause learning (incognito) = current || imported: the archive says not-paused, the
+        // device says paused, so the restore must keep the device paused.
         val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["pref_incognito_mode"] = false
         val archive = BackupTransfer.export(source)!!
         val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
         destination.preferences["pref_incognito_mode"] = true
 
+        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
+        assertEquals(true, destination.preferences["pref_incognito_mode"])
+    }
+
+    @Test
+    fun importReportsTurningLearningOffWhenTheArchiveDisablesIt() {
+        // Learning was ON and the archive turns it OFF: effective = ON && OFF = OFF. That is a
+        // safe, privacy-preserving change and is surfaced to the user.
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["pref_personal_dictionary"] = false
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences["pref_personal_dictionary"] = true
+
         assertEquals(BackupImportResult.IMPORTED_PRIVACY_CHANGED,
             BackupTransfer.import(destination, archive))
-        assertFalse(destination.preferences.containsKey("pref_incognito_mode"))
+        assertEquals(false, destination.preferences["pref_personal_dictionary"])
+    }
+
+    @Test
+    fun importKeepsLearningOnOnlyWhenBothSidesAllowIt() {
+        // Both sides ON: learning stays ON (no effective change, nothing to warn about).
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["pref_personal_dictionary"] = true
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences["pref_personal_dictionary"] = true
+
+        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
+        assertEquals(true, destination.preferences["pref_personal_dictionary"])
+    }
+
+    @Test
+    fun importKeepsAnArchivePauseEvenWhenTheDeviceWasNotPaused() {
+        // Archive paused (true), device not paused (false): effective = true || false = paused.
+        // The archive's privacy choice is honored and surfaced.
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["pref_incognito_mode"] = true
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences["pref_incognito_mode"] = false
+
+        assertEquals(BackupImportResult.IMPORTED_PRIVACY_CHANGED,
+            BackupTransfer.import(destination, archive))
+        assertEquals(true, destination.preferences["pref_incognito_mode"])
     }
 
     // ---- fail closed ------------------------------------------------------------------------------
@@ -398,17 +442,112 @@ class BackupTransferTest {
     }
 
     @Test
-    fun aJournalThatFailsValidationIsDiscardedAndDoesNotBlockTheNextImport() {
+    fun aJournalThatFailsValidationFailsClosedAndKeepsItsExactBytes() {
         val source = StoreBackedTarget(temporaryFolder.newFolder("corrupt-journal-source"))
         BackupTestStores.wordStore(source.directory, "tt_RU").addManually("абыйлар")
         val archive = BackupTransfer.export(source)!!
         val destination = StoreBackedTarget(temporaryFolder.newFolder("corrupt-journal"))
-        assertTrue(destination.writeImportJournal(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
+        val damaged = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+        assertTrue(destination.writeImportJournal(damaged))
 
-        assertTrue(BackupTransfer.recoverPending(destination))
-        assertFalse(destination.hasJournal())
-        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
-        assertTrue(BackupTransfer.export(destination) != null)
+        assertFalse("a journal that can never be applied still names possible damage",
+            BackupTransfer.recoverPending(destination))
+        assertArrayEquals("the damaged journal is the exact evidence",
+            damaged, journalPath(destination).readBytes())
+        assertEquals("a damaged journal blocks the next import explicitly",
+            BackupImportResult.WRITE_FAILED, BackupTransfer.import(destination, archive))
+        assertNull("a damaged journal blocks export too", BackupTransfer.export(destination))
+        assertArrayEquals(damaged, journalPath(destination).readBytes())
+    }
+
+    @Test
+    fun aDeletionThenDirectoryFsyncFailureCommitsTheWholeImport() {
+        val fixture = newTransactionFixture("commit-deletion-fsync")
+        // The commit record is durable before the journal is swept; the failing fsync only
+        // postpones the sweep, so the import is a success, not a lost rollback.
+        fixture.target.journalOps = FailingJournalSync(failAtSyncCall = 3)
+
+        assertEquals(BackupImportResult.IMPORTED,
+            BackupTransfer.import(fixture.target, fixture.archive))
+        val importedFiles = directorySnapshot(fixture.target.directory)
+        val importedPreferences = HashMap(fixture.target.preferences)
+
+        val recovering = StoreBackedTarget(fixture.target.directory)
+        recovering.preferences.putAll(fixture.target.preferences)
+        assertTrue("the durable commit record settles the unfinished sweep",
+            BackupTransfer.recoverPending(recovering))
+        assertEquals(importedPreferences, recovering.preferences)
+        assertDirectoryState("a committed import is never silently rolled back",
+            importedFiles, recovering.directory)
+        assertFalse("recovery sweeps the committed journal", recovering.hasJournal())
+        assertNotNull(BackupTransfer.export(recovering))
+    }
+
+    @Test
+    fun aCommitRecordFsyncFailureRestoresTheExactPreviousState() {
+        val fixture = newTransactionFixture("commit-record-fsync")
+        val beforeFiles = directorySnapshot(fixture.target.directory)
+        val beforePreferences = HashMap(fixture.target.preferences)
+        // The commit record never becomes durable, so the reported failure cannot leave the
+        // imported state standing: the transaction rolls back before the result is returned.
+        fixture.target.journalOps = FailingJournalSync(failAtSyncCall = 2)
+
+        assertEquals(BackupImportResult.WRITE_FAILED,
+            BackupTransfer.import(fixture.target, fixture.archive))
+        assertEquals("the failure cannot stand on imported preferences",
+            beforePreferences, fixture.target.preferences)
+        assertDirectoryState("the failure cannot stand on imported files",
+            beforeFiles, fixture.target.directory)
+
+        val recovering = StoreBackedTarget(fixture.target.directory)
+        recovering.preferences.putAll(fixture.target.preferences)
+        assertTrue(BackupTransfer.recoverPending(recovering))
+        assertEquals(beforePreferences, recovering.preferences)
+        assertDirectoryState("recovery leaves the exact previous state",
+            beforeFiles, recovering.directory)
+    }
+
+    @Test
+    fun aDamagedJournalAfterOneStoreReplacementFailsClosedAndKeepsTheEvidence() {
+        val fixture = newTransactionFixture("damaged-journal")
+        fixture.target.crashAfterMutation = 1
+        try {
+            BackupTransfer.import(fixture.target, fixture.archive)
+            throw AssertionError("the import did not inject process death after one replacement")
+        } catch (_: SimulatedProcessDeath) {
+        }
+        assertTrue(fixture.target.hasJournal())
+        val journalFile = journalPath(fixture.target)
+        val damaged = journalFile.readBytes()
+        // Corrupt the first entry's payload of the before archive, after the frame header and
+        // the fixed part of the zip local header.
+        val payloadOffset = 9 + 30 + BackupFormat.MANIFEST_PATH.length
+        for (index in payloadOffset until payloadOffset + 4) {
+            damaged[index] = (damaged[index].toInt() xor 0xff).toByte()
+        }
+        journalFile.writeBytes(damaged)
+        val appliedPreferences = HashMap(fixture.target.preferences)
+        val appliedFiles = directorySnapshot(fixture.target.directory)
+
+        val recovering = StoreBackedTarget(fixture.target.directory)
+        recovering.preferences.putAll(fixture.target.preferences)
+        assertFalse("a damaged journal after a partial apply is never silently accepted",
+            BackupTransfer.recoverPending(recovering))
+        assertArrayEquals("the damaged journal stays exactly as evidence",
+            damaged, journalFile.readBytes())
+        assertEquals("no half state was silently replayed",
+            appliedPreferences, recovering.preferences)
+        assertDirectoryState("no half state was silently replayed", appliedFiles, recovering.directory)
+        assertEquals("the next import fails explicitly",
+            BackupImportResult.WRITE_FAILED, BackupTransfer.import(recovering, fixture.archive))
+        assertNull("export fails explicitly while recovery is unresolved",
+            BackupTransfer.export(recovering))
+        assertArrayEquals(damaged, journalFile.readBytes())
+
+        // Only the explicit erase resolves a damaged journal.
+        assertTrue(BackupTransfer.discardPending(recovering))
+        assertFalse(recovering.hasJournal())
+        assertTrue(BackupTransfer.recoverPending(recovering))
     }
 
     @Test
@@ -499,6 +638,10 @@ class BackupTransferTest {
         return TransactionFixture(archive, destination, operationCount)
     }
 
+    private fun journalPath(target: StoreBackedTarget): File =
+        File(File(target.directory.parentFile, "${target.directory.name}.journal"),
+            BackupImportJournalFiles.JOURNAL_FILE_NAME)
+
     private fun directorySnapshot(directory: File): Map<String, ByteArray> =
         directory.listFiles().orEmpty().filter { it.isFile }
             .associate { it.name to it.readBytes() }
@@ -535,7 +678,14 @@ class BackupTransferTest {
         var failAfterMutation: Int? = null
         var crashAfterMutation: Int? = null
         private var mutationCount = 0
-        private val journalFile = File(directory.parentFile, "${directory.name}.journal")
+        private val journalDirectory = File(directory.parentFile, "${directory.name}.journal")
+
+        /** File operations of the journal's own directory; a test injects fsync failures here. */
+        var journalOps: DurableFileOps = BackupTestStores.realOps
+
+        private val journalFiles by lazy {
+            BackupImportJournalFiles(journalDirectory, journalOps)
+        }
 
         override fun readPreferences(): Map<String, Any?> = HashMap(preferences)
 
@@ -610,18 +760,17 @@ class BackupTransferTest {
 
         override fun readImportJournal(): ByteArray? {
             if (failJournalReads) throw IOException("journal read refused")
-            return if (journalFile.isFile) journalFile.readBytes() else null
+            return journalFiles.read()
         }
 
-        override fun writeImportJournal(bytes: ByteArray): Boolean {
-            journalFile.writeBytes(bytes)
-            return true
-        }
+        override fun writeImportJournal(bytes: ByteArray): Boolean = journalFiles.write(bytes)
 
-        override fun clearImportJournal(): Boolean =
-            !journalFile.exists() || journalFile.delete()
+        override fun commitImportJournal(): Boolean = journalFiles.commit()
 
-        fun hasJournal(): Boolean = journalFile.exists()
+        override fun clearImportJournal(): Boolean = journalFiles.clear()
+
+        fun hasJournal(): Boolean =
+            File(journalDirectory, BackupImportJournalFiles.JOURNAL_FILE_NAME).exists()
 
         private fun mutationCommitted() {
             mutationCount++
@@ -646,6 +795,23 @@ class BackupTransferTest {
         override fun atomicReplace(source: File, destination: File) {
             if (destination.name.endsWith(".quarantine")) throw IOException("injected move failure")
             BackupTestStores.realOps.atomicReplace(source, destination)
+        }
+    }
+
+    /**
+     * Real file operations, except that one chosen directory fsync fails. The journal's own
+     * sequence is: the journal write (1), the commit record (2), the sweep's journal removal (3)
+     * and the sweep's record removal (4).
+     */
+    private class FailingJournalSync(
+        private val failAtSyncCall: Int,
+    ) : DurableFileOps by BackupTestStores.realOps {
+        private var syncCalls = 0
+
+        override fun syncDirectory(directory: File) {
+            syncCalls++
+            if (syncCalls == failAtSyncCall) throw IOException("injected directory fsync failure")
+            BackupTestStores.realOps.syncDirectory(directory)
         }
     }
 

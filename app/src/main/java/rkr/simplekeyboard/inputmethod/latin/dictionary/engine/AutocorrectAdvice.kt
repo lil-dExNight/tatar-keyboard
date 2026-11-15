@@ -52,6 +52,15 @@ fun interface CompanionLexicon {
 }
 
 /**
+ * Worker-side switch for the autocorrect pass. The engine applies it before every PREFIX lookup
+ * and through a separate worker task on every actual transition; the computer clears its verdict
+ * only when the setting changes. Typo recovery and the exact-pass verdicts are untouched.
+ */
+internal interface AutocorrectAdviceControl {
+    fun setAutocorrectAdviceEnabled(enabled: Boolean)
+}
+
+/**
  * The autocorrect thresholds, in one place, read by both sides of the decision: the index
  * (which prunes work with them) and the controller (which re-checks them before it edits text).
  * The word length is shared; the candidate frequency floor is per language, derived from each

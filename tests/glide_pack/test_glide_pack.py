@@ -112,13 +112,14 @@ class GeometryParityTest(unittest.TestCase):
     def test_x_edges_match_typo_pack_geometry(self) -> None:
         rects = pack.read_glide_geometry(LAYOUT_DIR)
         base = typo_pack.read_layout_geometry(LAYOUT_DIR)
-        self.assertEqual(len(rects), 37)
+        self.assertEqual(len(rects), 39)
         self.assertEqual(len(rects), len(base))
         for rect, geo in zip(rects, base):
             self.assertEqual(rect.code_point, geo.code_point)
             self.assertEqual(rect.left, geo.left)
             self.assertEqual(rect.right, geo.right)
-        # Four letter rows, strictly increasing down the keyboard, full-height rectangles.
+        # Four letter rows (the extra row plus the three qwerty rows), strictly increasing down
+        # the keyboard, full-height rectangles.
         rows = sorted({rect.top for rect in rects})
         self.assertEqual(len(rows), 4)
         for rect in rects:
@@ -421,15 +422,18 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values; the
         # asset rebuild rewrites both. Loop and eligible dwell rows make rows outnumber words.
         self.assertEqual(len(selected), 5110)
-        self.assertEqual(len(data), 14000219)
-        self.assertEqual(sha256_bytes(data), "2218ef5143e88eb78a1583fb269ffc78cacdaec0c9a9ebb0acf8241d185132d0")
+        self.assertEqual(len(data), 14006869)
+        self.assertEqual(sha256_bytes(data), "ad22bb0fb8a75bfb14a8d07b97dddc4da5baefef66c47fe72f9a4e5df7f0df76")
         self.assertEqual({2, 3, 4}, {len(word) for word in selected if len(word) < 5})
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")
-    def test_tatar_layout_aliases_are_the_hard_sign_and_yo(self) -> None:
+    def test_tatar_layout_has_no_aliases(self) -> None:
+        # ё and ъ are direct keys of the 8-letter extra row, so no Tatar letter is an alias:
+        # every long-press letter has a key of its own (the alias rule is covered by the
+        # synthetic-layout tests below).
         rects = pack.read_glide_geometry(LAYOUT_DIR)
         aliases = pack.read_layout_aliases(LAYOUT_DIR, rects)
-        self.assertEqual(aliases, {ord("ъ"): ord("ь"), ord("ё"): ord("е")})
+        self.assertEqual(aliases, {})
 
 
 class CliTest(unittest.TestCase):

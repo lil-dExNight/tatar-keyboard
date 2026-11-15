@@ -360,7 +360,13 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
     public boolean isImeSuppressedByHardwareKeyboard(
             final SettingsValues settingsValues,
             final KeyboardSwitchState toggleState) {
-        return settingsValues.mHasHardwareKeyboard && toggleState == KeyboardSwitchState.HIDDEN;
+        // SettingsValues stay null until the first field start builds them (onCreate defers the
+        // build), and the framework can ask about suppression before that — e.g. from
+        // onShowInputRequested on the first field tap. With the hardware keyboard unknown the IME
+        // counts as not suppressed, matching the other pre-settings readers (the framework's
+        // onEvaluateInputViewShown answer stands until values load).
+        return settingsValues != null && settingsValues.mHasHardwareKeyboard
+                && toggleState == KeyboardSwitchState.HIDDEN;
     }
 
     private void setMainKeyboardFrame(

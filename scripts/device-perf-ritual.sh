@@ -148,7 +148,10 @@
 #   --enable-suggestions-ui  turn suggestions on through the settings screen
 #                     instead of the run-as pref write
 #   --strict          every budgeted line with over_budget=true becomes FAIL;
+#                     every SKIP and every skipped sample also becomes FAIL;
 #                     the default is advisory (INFO with over_budget=true)
+#   --verify-report <result.txt>  validate an existing strict report on the host;
+#                     no adb connection or device is needed
 #
 # Exit code: 0 with no FAIL line, 1 otherwise. The script is idempotent: the
 # pre-run state (default IME, enabled IMEs, stay-on-while-plugged, screen
@@ -171,6 +174,7 @@ BATTERY_SECONDS=150
 BATTERY_SCREENOFF_SECONDS=120
 BATTERY_DEALLOC_SECONDS=12
 ADB="${ADB:-$HOME/Android/Sdk/platform-tools/adb}"
+VERIFY_REPORT=""
 
 SUGGESTIONS_UI=0
 STRICT=0
@@ -191,10 +195,15 @@ while [ $# -gt 0 ]; do
         --battery-screenoff-seconds) BATTERY_SCREENOFF_SECONDS="$2"; shift 2 ;;
         --enable-suggestions-ui) SUGGESTIONS_UI=1; shift ;;
         --strict) STRICT=1; shift ;;
+        --verify-report) VERIFY_REPORT="$2"; shift 2 ;;
         --battery-dealloc-seconds) BATTERY_DEALLOC_SECONDS="$2"; shift 2 ;;
         *) echo "unknown flag: $1" >&2; exit 2 ;;
     esac
 done
+if [ -n "$VERIFY_REPORT" ]; then
+    python3 "$(dirname "$0")/release_perf_report.py" --legs "$LEGS" "$VERIFY_REPORT"
+    exit $?
+fi
 case "$COLD_TRIGGER" in ''|tap|switch) : ;; *) echo "bad --cold-trigger: $COLD_TRIGGER" >&2; exit 2 ;; esac
 case "$BATTERY_SECONDS" in ''|*[!0-9]*) echo "bad --battery-seconds: $BATTERY_SECONDS" >&2; exit 2 ;; esac
 case "$BATTERY_SCREENOFF_SECONDS" in ''|*[!0-9]*) echo "bad --battery-screenoff-seconds: $BATTERY_SCREENOFF_SECONDS" >&2; exit 2 ;; esac
@@ -230,6 +239,8 @@ mkdir -p "$OUTDIR"
 RESULTS="$OUTDIR/result.txt"
 : > "$RESULTS"
 FAILURES=0
+SKIPS=0
+SAMPLE_SKIPS=0
 
 # Neutral IME to switch to before a force-stop (checked in the preflight).
 NEUTRAL_IME="com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
@@ -249,6 +260,16 @@ SHOT() { A exec-out screencap -p > "$OUTDIR/$1" 2>/dev/null; }
 
 result() { # result PASS|FAIL|SKIP|INFO <check> <detail>
     local status="$1"
+    # Strict reports are release evidence: an unobserved leg or an individual
+    # skipped sample is a failure, not an INFO line that looks complete.
+    if [ "$1" = SKIP ]; then
+        SKIPS=$((SKIPS + 1))
+        if [ "$STRICT" = 1 ]; then status=FAIL; fi
+    fi
+    if [[ "$3" =~ (^|[^A-Za-z0-9_])skips=([1-9][0-9]*)([[:space:]]|$) ]]; then
+        SAMPLE_SKIPS=$((SAMPLE_SKIPS + 1))
+        if [ "$STRICT" = 1 ]; then status=FAIL; fi
+    fi
     # --strict: an advisory budget breach (INFO with over_budget=true) is a
     # FAIL. Only budgeted lines carry over_budget, so measurement-only INFO
     # lines (the PSS smaps split and the battery no-section row) stay INFO in
@@ -547,7 +568,7 @@ print((m[0] + m[2]) // 2, (m[1] + m[3]) // 2 if m[3] - m[1] >= 80 else -1)")"
 }
 
 # probe_layout: with the keyboard up over the try-it field, tap the top-left key
-# (x=60, y=1110: "ә" on tt, "й" on ru, "q" on en), hide the keyboard, read the
+# (x=45, y=1110: "ә" on tt, "й" on ru, "q" on en), hide the keyboard, read the
 # field back, show the keyboard again and delete the probe letter. Prints
 # tt|ru|en|unknown. Showing the keyboard by a tap on the field moves the cursor
 # to the tap point, so Ctrl+End puts it back at the end before each edit.
@@ -555,7 +576,7 @@ cursor_to_end() { SHELL input keycombination KEYCODE_CTRL_LEFT KEYCODE_MOVE_END 
 probe_layout() {
     local after last lay
     cursor_to_end
-    SHELL input tap 60 1110 </dev/null >/dev/null 2>&1
+    SHELL input tap 45 1110 </dev/null >/dev/null 2>&1
     sleep 0.8
     SHELL input keyevent KEYCODE_BACK </dev/null >/dev/null 2>&1
     sleep 1.2
@@ -580,8 +601,8 @@ script_points() { # script_points tt|ru "word1 word2 ..."
 import sys
 layout, text = sys.argv[1], sys.argv[2]
 TT = {
-    "ә": (60, 1110), "ө": (180, 1110), "ү": (300, 1110), "җ": (420, 1110),
-    "ң": (540, 1110), "һ": (660, 1110),
+    "ә": (45, 1110), "ө": (135, 1110), "ү": (225, 1110), "җ": (315, 1110),
+    "ң": (405, 1110), "һ": (495, 1110), "ё": (585, 1110), "ъ": (675, 1110),
     "й": (33, 1206), "ц": (98, 1206), "у": (164, 1206), "к": (229, 1206),
     "е": (295, 1206), "н": (360, 1206), "г": (425, 1206), "ш": (491, 1206),
     "щ": (556, 1206), "з": (622, 1206), "х": (687, 1206),
@@ -593,8 +614,9 @@ TT = {
     "ю": (611, 1396), " ": (396, 1490),
 }
 RU = {k: (x, {1110: 1153, 1206: 1153, 1301: 1258, 1396: 1363, 1490: 1490}[y])
-      for k, (x, y) in TT.items()}
+      for k, (x, y) in TT.items() if k not in "ёъ"}
 # The ru extra row does not exist; the tt extra row maps onto ru row 1 letters.
+# ё and ъ are tt-only taps: on ru they stay long-press duplicates of е and ь.
 RU.update({"й": (33, 1153), "ц": (98, 1153), "у": (164, 1153), "к": (229, 1153),
            "е": (295, 1153), "н": (360, 1153), "г": (425, 1153), "ш": (491, 1153),
            "щ": (556, 1153), "з": (622, 1153), "х": (687, 1153),
@@ -1587,4 +1609,12 @@ if leg_on fontscale; then
 fi
 
 log "done; failures: $FAILURES"
+SIGNOFF=blocked
+if [ "$STRICT" = 1 ] && [ "$FAILURES" = 0 ] && [ "$SKIPS" = 0 ] \
+        && [ "$SAMPLE_SKIPS" = 0 ]; then
+    SIGNOFF=ready
+fi
+printf 'RESULT|SUMMARY|strict=%s fail=%s skip=%s sample_skips=%s legs=%s p0_signoff=%s|outdir=%s\n' \
+    "$STRICT" "$FAILURES" "$SKIPS" "$SAMPLE_SKIPS" "$LEGS" "$SIGNOFF" "$OUTDIR" \
+    | tee -a "$RESULTS"
 [ "$FAILURES" = 0 ]

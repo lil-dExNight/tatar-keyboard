@@ -1,0 +1,134 @@
+{
+  "analysis_origin": "Automated corpus analysis using the repository tokenization and packers. No native-speaker or human register review is claimed.",
+  "candidate": "current_plus_tatsc_plus_common_voice",
+  "candidate_measurements": {
+    "common_voice_test": {
+      "candidate_minus_shipped_pp": -0.529529,
+      "candidate_top3_pct": 10.833272,
+      "denominator_bigram_events": 13597,
+      "denominator_dictionary_tokens": 27191,
+      "dictionary_merged_minus_shipped_pp": -0.323636,
+      "dictionary_paired_normal_95ci_pp": [
+        -0.391147,
+        -0.256126
+      ],
+      "paired_normal_95ci_pp": [
+        -0.930466,
+        -0.128591
+      ],
+      "shipped_top3_pct": 11.362801
+    },
+    "current_native_held": {
+      "candidate_minus_shipped_pp": 0.402846,
+      "candidate_top3_pct": 15.140735,
+      "denominator_bigram_events": 38228,
+      "denominator_dictionary_tokens": 84619,
+      "dictionary_merged_minus_shipped_pp": -0.716151,
+      "dictionary_paired_normal_95ci_pp": [
+        -0.772966,
+        -0.659336
+      ],
+      "paired_normal_95ci_pp": [
+        0.200251,
+        0.605441
+      ],
+      "shipped_top3_pct": 14.737888
+    },
+    "tatsc_test": {
+      "candidate_minus_shipped_pp": 0.050095,
+      "candidate_top3_pct": 12.838587,
+      "denominator_bigram_events": 27947,
+      "denominator_dictionary_tokens": 40434,
+      "dictionary_merged_minus_shipped_pp": -0.237424,
+      "dictionary_paired_normal_95ci_pp": [
+        -0.284862,
+        -0.189986
+      ],
+      "paired_normal_95ci_pp": [
+        -0.245129,
+        0.345319
+      ],
+      "shipped_top3_pct": 12.788493
+    }
+  },
+  "candidate_packed_bigram": {
+    "compressed_bytes": 182462,
+    "compressed_limit_bytes": 250000,
+    "distinct_pairs": 388101,
+    "heads": 12506,
+    "pair_instances": 748342,
+    "pairs": 80611,
+    "raw_bytes": 241217,
+    "raw_limit_bytes": 1048576
+  },
+  "candidate_scope": "Bigram table only, with the shipped dictionary and production head request unchanged. Current Tatoeba/OpenSubtitles training remains included.",
+  "decision": "defer",
+  "decision_rule": "A bigram-only integration is ready only when its visible top-3 point estimate is no worse on every fixed domain and both packed-size limits pass. Confidence intervals and exact denominators must accompany the decision. No weight tuning on a final test split is allowed.",
+  "defer_reasons": [
+    "The combined bigram candidate has a negative visible top-3 point estimate on Common Voice test. Its interval is reported, but uncertainty is not treated as permission to accept a regression.",
+    "The comparison's candidate tables do not include the Leipzig inputs and production weighting used by rebuild_assets.py. The integration owner must rerun the full production recipe and repeat the same comparisons before changing a pin.",
+    "The TatSC mirror exposes fewer rows than its upstream card declares. The retrieved subset is measured exactly, but a full-corpus claim requires reconciliation with the official archive."
+  ],
+  "dictionary_decision": "do_not_integrate",
+  "dictionary_reason": "The measured merged dictionary loses token coverage on every fixed domain. Keep dictionary contents, frequencies, and admissions unchanged.",
+  "documentation_updates_for_integrator": [
+    "docs/ASSET-PIPELINE.md: document any accepted source addition, split exclusion, attribution, and reproduction command.",
+    "docs/ARCHITECTURE.md: update the corpus provenance summary only if the shipped model changes."
+  ],
+  "evidence": {
+    "common_voice_provenance": "data/provenance.d/corpus-common-voice.json",
+    "comparison": "data/corpus-sources/comparison.json",
+    "comparison_command": "python3 research/corpus-sources/compare_sources.py",
+    "legacy_tooling_note": "The existing hitrate.py and measure_bigrams.py entry points reject the shipped schema-3 bigram asset. compare_sources.py validates schema 3 with its linked dictionary instead; no legacy research file was modified.",
+    "native_common_voice_filtered": "data/corpus-sources/native-split/common-voice-filtered.json",
+    "tatsc_provenance": "data/provenance.d/corpus-tatsc.json"
+  },
+  "later_integration_instructions": [
+    "Regenerate and verify the text inputs with fetch_sources.py --sources common_voice, the pinned DuckDB Parquet extractor, and write_provenance.py. Require the bundle SHA-256 values in data/provenance.d to match.",
+    "Keep Common Voice test and TatSC test out of training and tuning. Use train for training and dev only for development. Keep the current native id % 10 == 1 held-out slice excluded.",
+    "For the next bigram experiment, retain current Tatoeba/OpenSubtitles train input and add only TatSC train plus Common Voice train after exact deduplication and normalized collision exclusion. Do not add audio, file paths, speaker/client IDs, demographics, durations, invalidated rows, or voice input.",
+    "Run the complete rebuild_assets.py production recipe, including its Leipzig inputs and existing weights. Keep the shipped dictionary unchanged for this bigram-only experiment, retain the production head request and stored-successor count, and measure visible top-3 on the same records.",
+    "Do not change a pin unless the full production candidate is no worse by point estimate on every fixed domain, paired intervals and denominators are recorded, memory and size checks pass, and a separate final evaluation remains untouched by tuning.",
+    "Carry data/corpus-sources/ATTRIBUTION.txt and both corpus provenance shards into the source/asset documentation when an integration lands."
+  ],
+  "opensubtitles_decision": "retain",
+  "opensubtitles_reason": "Neither TatSC nor Common Voice, alone or together, is a drop-in replacement across the current native register. The quality-first decision does not remove OpenSubtitles for licensing alone.",
+  "register_findings": {
+    "caveat": "Register fields are surface proxies, not native-speaker judgments.",
+    "common_voice_train_rows_before_collision_exclusion": 9315,
+    "opensubtitles_selected_pronouns_per_1000_tokens": 78.2925,
+    "tatsc_exact_duplicate_physical_line_pct": 65.6479,
+    "tatsc_selected_pronouns_per_1000_tokens": 21.2318
+  },
+  "schema": 1,
+  "shipped_packed_bigram_bytes": 212223,
+  "single_source_replacement_top3_delta_pp": {
+    "common_voice": {
+      "common_voice_test": -2.206369,
+      "current_native_held": -7.675003,
+      "tatsc_test": -6.956024
+    },
+    "tatsc": {
+      "common_voice_test": -0.897257,
+      "current_native_held": -5.085278,
+      "tatsc_test": 0.905285
+    },
+    "tatsc_plus_common_voice": {
+      "common_voice_test": 0.183864,
+      "current_native_held": -4.72167,
+      "tatsc_test": 0.944645
+    }
+  },
+  "source_split_findings": {
+    "common_voice": {
+      "dev__test": 0,
+      "dev__train": 1,
+      "test__train": 4
+    },
+    "tatsc": {
+      "dev__test": 499,
+      "dev__train": 1921,
+      "test__train": 1776
+    }
+  }
+}

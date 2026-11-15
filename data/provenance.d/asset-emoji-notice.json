@@ -1,0 +1,11 @@
+{
+  "id": "asset-emoji-notice",
+  "revision": "emoji-notice/v1",
+  "size_bytes": 6185,
+  "sha256": "e7809e50774178dbb1c665c80eda74ae45e14248e23e3efe80a2e07eee7f0e24",
+  "license": "Apache-2.0",
+  "source_role": "license_attribution",
+  "split_rule": "not-applicable",
+  "generation_command": "hand-maintained and validated by python3 scripts/provenance.py --root .",
+  "path": "app/src/main/assets/emoji/NOTICE.txt"
+}

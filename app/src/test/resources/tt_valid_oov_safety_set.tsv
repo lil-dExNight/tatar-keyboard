@@ -44,7 +44,7 @@
 егеткәем	new_form_of_seen_stem
 зиннәтлелек	new_form_of_seen_stem
 знаком	unseen_stem
-идеяме	unseen_stem
+идеяме	new_form_of_seen_stem
 идеяң	new_form_of_seen_stem
 идиотка	new_form_of_seen_stem
 инан	new_form_of_seen_stem
@@ -79,7 +79,7 @@
 куенындагы	unseen_stem
 кукилар	unseen_stem
 кулъязмасы	new_form_of_seen_stem
-кунакханәдәме	unseen_stem
+кунакханәдәме	new_form_of_seen_stem
 кургашны	new_form_of_seen_stem
 кызылтәнлеләр	unseen_stem
 кыйгач	new_form_of_seen_stem
@@ -114,7 +114,7 @@
 ондрий	unseen_stem
 онытмасам	new_form_of_seen_stem
 онытылгач	unseen_stem
-охшаганмынмы	unseen_stem
+охшаганмынмы	new_form_of_seen_stem
 пальтоңны	unseen_stem
 платформадан	new_form_of_seen_stem
 полигамиягә	unseen_stem
@@ -138,7 +138,7 @@
 сыртыңа	unseen_stem
 сүнгәнлегенә	unseen_stem
 сүндердеңме	seen_form
-сөйләрсезме	unseen_stem
+сөйләрсезме	new_form_of_seen_stem
 сөмбелләр	new_form_of_seen_stem
 табынганлыгы	unseen_stem
 тазарды	unseen_stem
@@ -148,7 +148,7 @@
 тарыганын	unseen_stem
 татоэба	unseen_stem
 телевизия	unseen_stem
-теләмимме	unseen_stem
+теләмимме	new_form_of_seen_stem
 температураңны	unseen_stem
 тешемә	new_form_of_seen_stem
 тешләтмә	unseen_stem
@@ -162,7 +162,7 @@
 тотуыгызны	new_form_of_seen_stem
 туктадыгыз	new_form_of_seen_stem
 туфлиләрен	unseen_stem
-тылсымчымы	unseen_stem
+тылсымчымы	new_form_of_seen_stem
 тыңламадыгыз	new_form_of_seen_stem
 тәвәккәлләмәскә	unseen_stem
 тәмамлыкка	new_form_of_seen_stem
@@ -172,10 +172,10 @@
 төшегездә	new_form_of_seen_stem
 төяген	unseen_stem
 уенчыгыңны	unseen_stem
-уйнадыңмы	unseen_stem
+уйнадыңмы	new_form_of_seen_stem
 уйчы	new_form_of_seen_stem
 укымадыңмы	unseen_stem
-усалмы	unseen_stem
+усалмы	new_form_of_seen_stem
 фадил	seen_form
 фунтларны	unseen_stem
 фәварис	unseen_stem
@@ -193,9 +193,9 @@
 шаярсак	unseen_stem
 шимпанзеларның	unseen_stem
 шовинистларга	new_form_of_seen_stem
-шулмы	unseen_stem
+шулмы	new_form_of_seen_stem
 шуышмыйча	unseen_stem
-шәрабымы	unseen_stem
+шәрабымы	new_form_of_seen_stem
 эзләгәнсең	new_form_of_seen_stem
 юашланды	unseen_stem
 ябасың	new_form_of_seen_stem
@@ -203,7 +203,7 @@
 язмавым	unseen_stem
 язмаларыңа	new_form_of_seen_stem
 ялганчылык	new_form_of_seen_stem
-яныңдамы	unseen_stem
+яныңдамы	new_form_of_seen_stem
 яраланганмын	unseen_stem
 яраландымы	new_form_of_seen_stem
 яшеренмәк	unseen_stem

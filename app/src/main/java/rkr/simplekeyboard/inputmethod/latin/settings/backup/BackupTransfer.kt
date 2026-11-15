@@ -60,7 +60,14 @@ internal interface BackupTarget {
     /** Durably replaces the journal before the first import mutation. */
     fun writeImportJournal(bytes: ByteArray): Boolean
 
-    /** Durably removes the journal after a complete apply or rollback. */
+    /**
+     * Durably commits the completed import. Once this returns true the journal no longer rolls
+     * anything back and its cleanup may finish later. A false answer leaves the exact pending
+     * journal in place, so a reported failure never stands on a swept rollback.
+     */
+    fun commitImportJournal(): Boolean = clearImportJournal()
+
+    /** Durably removes the journal after a complete rollback or an explicit erase. */
     fun clearImportJournal(): Boolean
 }
 
@@ -96,8 +103,8 @@ internal object BackupTransfer {
 
     /**
      * Restores [archiveBytes] as one transaction. The journal holds both complete states before
-     * the first mutation; a failed apply rolls back, and deleting the journal commits the import.
-     * A store that stays not loaded refuses the import before the journal is written.
+     * the first mutation; a failed apply rolls back, and a durable commit record commits the
+     * import. A store that stays not loaded refuses the import before the journal is written.
      */
     @Synchronized
     fun import(target: BackupTarget, archiveBytes: ByteArray): BackupImportResult {
@@ -126,8 +133,16 @@ internal object BackupTransfer {
         }
         if (!journaled) return BackupImportResult.WRITE_FAILED
 
+        // Privacy switches are combined, never copied: a restore must not silently enable
+        // learning or un-pause it. Personal dictionary = current AND imported (learning only if
+        // it was already on); pause learning (incognito) = current OR imported (paused if either
+        // side paused). Every other preference is taken from the archive verbatim.
+        val effective = VerifiedBackup(
+            combinePrivacySwitches(before.preferences, verified.preferences),
+            verified.personalFiles,
+        )
         val applied = try {
-            applyState(target, names, verified)
+            applyState(target, names, effective)
         } catch (_: Exception) {
             false
         }
@@ -136,11 +151,16 @@ internal object BackupTransfer {
             return BackupImportResult.WRITE_FAILED
         }
         val committed = try {
-            target.clearImportJournal()
+            target.commitImportJournal()
         } catch (_: Exception) {
             false
         }
-        if (!committed) return BackupImportResult.WRITE_FAILED
+        if (!committed) {
+            // The commit never became durable: the journal still names the exact previous state,
+            // and a reported failure cannot leave the imported state standing.
+            rollback(target, names, before)
+            return BackupImportResult.WRITE_FAILED
+        }
 
         val currentPreferences = try {
             target.readPreferences()
@@ -155,9 +175,10 @@ internal object BackupTransfer {
     }
 
     /**
-     * Rolls back an interrupted import. A read or apply failure returns false and keeps the
-     * journal for another attempt; a journal that fails validation can never be applied, so it
-     * is deleted instead of blocking every later export and import.
+     * Rolls back an interrupted import. A read, validation or apply failure returns false and
+     * keeps the journal untouched: it is the exact rollback evidence of an import that may be
+     * half applied, so recovery fails closed instead of discarding it and silently accepting a
+     * mixed state. Only an explicit erase everything reaches [discardPending].
      */
     @Synchronized
     fun recoverPending(target: BackupTarget): Boolean {
@@ -168,8 +189,6 @@ internal object BackupTransfer {
         } ?: return true
         val journal = try {
             BackupImportJournal.read(bytes)
-        } catch (_: BackupValidationException) {
-            return discardPending(target)
         } catch (_: Exception) {
             return false
         }
@@ -265,6 +284,43 @@ internal object BackupTransfer {
                 // The next recovery repeats the complete rollback.
             }
         }
+    }
+
+    /**
+     * Folds the two privacy switches of [imported] over [current], leaving every other key as the
+     * archive carries it. Both switches fail toward privacy:
+     * - personal dictionary (learning) = current && imported, so a restore cannot switch learning
+     *   on for a user who had it off;
+     * - pause learning (incognito) = current || imported, so a restore cannot resume learning for
+     *   a user who had it paused.
+     * A key is forced into the result only when at least one side carries it: when neither side
+     * sets it the archive's omission stands (absent means the default), so a plain restore does
+     * not plant explicit false values.
+     */
+    private fun combinePrivacySwitches(
+        current: Map<String, Any>,
+        imported: Map<String, Any>,
+    ): Map<String, Any> {
+        val out = LinkedHashMap<String, Any>(imported.size + 2)
+        out.putAll(imported)
+        // Personal dictionary: learning only when it was already on AND the archive keeps it on.
+        combineSwitch(out, current, imported, Settings.PREF_PERSONAL_DICTIONARY) { a, b -> a && b }
+        // Pause learning: paused when either side paused.
+        combineSwitch(out, current, imported, Settings.PREF_INCOGNITO_MODE) { a, b -> a || b }
+        return out
+    }
+
+    private fun combineSwitch(
+        out: LinkedHashMap<String, Any>,
+        current: Map<String, Any>,
+        imported: Map<String, Any>,
+        key: String,
+        fold: (Boolean, Boolean) -> Boolean,
+    ) {
+        val currentValue = current[key] as? Boolean
+        val importedValue = imported[key] as? Boolean
+        if (currentValue == null && importedValue == null) return
+        out[key] = fold(currentValue ?: false, importedValue ?: false)
     }
 
     private fun privacySwitchesChanged(

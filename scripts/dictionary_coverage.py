@@ -31,11 +31,10 @@ MAX_WORD_LENGTH = 64
 class Language:
     """One packable language: its tag, its accepted alphabet and its marker letters.
 
-    ``alphabet`` is the only thing that decides which corpus rows survive filtering, and it is
-    the same set the Kotlin validator enforces on the packed asset. ``specific`` is reporting
-    only: the letters whose presence marks a word as characteristic of this language rather
-    than of the shared Cyrillic core (Tatar's six extra letters; Russian's «ё» and «ъ», which no
-    Tatar word carries in the same role).
+    ``alphabet`` is the only thing that decides which corpus rows survive normalization, and it
+    is the same set the Kotlin validator enforces on the packed asset. ``specific`` supplies
+    reporting and filtering markers: Tatar's six extra letters and Russian's frequent «ё»/«ъ».
+    Russian markers are not rejection proof because attested Tatar words and loans use them too.
     """
 
     tag: str

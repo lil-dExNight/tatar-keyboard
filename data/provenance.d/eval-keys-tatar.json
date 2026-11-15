@@ -1,0 +1,11 @@
+{
+  "id": "eval-keys-tatar-regression",
+  "revision": "keys-tt/v2-39key",
+  "size_bytes": 1144,
+  "sha256": "d27cc672484f3e46f601e741bfb1446123dae13e133f5907fc5d7b3479411a5d",
+  "license": "Apache-2.0",
+  "source_role": "regression_geometry",
+  "split_rule": "not-applicable",
+  "generation_command": "derive with KeyGeometryTsv.kt and check with ./gradlew :app:test --tests '*KeyGeometryTsvTest'",
+  "path": "app/src/test/resources/golden/keys-tt.tsv"
+}

@@ -648,7 +648,10 @@ class GlideRecoveryCalibrationTest {
         }
 
         // Plain and alias classes keep their recovery floors. No-dwell twins retain their pinned
-        // ceiling; dwell must recover ambiguous doubles without changing the dwell-elsewhere control.
+        // ceiling; dwell must recover ambiguous doubles without changing the dwell-elsewhere
+        // control. The alias class is empty on the Tatar bench since the 8-letter extra row made
+        // ё and ъ direct keys (no Tatar letter is alias-folded); its floors hold wherever the
+        // class is seeded — the Russian bench below.
         assertTrue(
             "plain top-1 regressed past the 1.0 pp tolerance",
             classTop1[0] >= PLAIN_TOP1_PIN - 1.0,
@@ -671,16 +674,18 @@ class GlideRecoveryCalibrationTest {
             "dwell elsewhere increased false doubles",
             dwellTwinElsewhere <= classTop1[3] + 0.0001,
         )
-        assertTrue("alias top-1 regressed past 1 pp", classTop1[4] >= ALIAS_TOP1_PIN - 1.0)
-        assertTrue("alias top-3 regressed past 1 pp", classTop3[4] >= ALIAS_TOP3_PIN - 1.0)
+        if (classHeldCount[4] > 0) {
+            assertTrue("alias top-1 regressed past 1 pp", classTop1[4] >= ALIAS_TOP1_PIN - 1.0)
+            assertTrue("alias top-3 regressed past 1 pp", classTop3[4] >= ALIAS_TOP3_PIN - 1.0)
+        }
         // A twinless doubled word also scores against its loop-free path, which no other word owns.
         assertTrue(
-            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 85.0515)",
-            classTop1[2] >= 85.0515 - 1.0,
+            "twinless no-jog top-1 regressed past the 1.0 pp tolerance (pinned 87.3684)",
+            classTop1[2] >= 87.3684 - 1.0,
         )
         assertTrue(
-            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (pinned 92.2680)",
-            classTop3[2] >= 92.2680 - 1.0,
+            "twinless no-jog top-3 regressed past the 1.0 pp tolerance (pinned 95.2632)",
+            classTop3[2] >= 95.2632 - 1.0,
         )
     }
 
@@ -1229,7 +1234,9 @@ class GlideRecoveryCalibrationTest {
             val baseline = if (bench.name == "tt") TT_PRUNING_BASELINE else RU_PRUNING_BASELINE
             for (clazz in 0 until CLASS_COUNT) {
                 val count = measurement.counts[clazz]
-                assertTrue("${bench.name} ${CLASS_NAMES[clazz]} has no held-out rows", count > 0)
+                // An unseeded class is skipped rather than failed: on the Tatar bench the alias
+                // class is empty since the 8-letter extra row made ё and ъ direct keys.
+                if (count == 0) continue
                 val bucketRecall = measurement.bucketHits[clazz] * 100.0 / count
                 val pruningRecall = measurement.pruningHits[clazz] * 100.0 / count
                 assertTrue(
@@ -2054,9 +2061,9 @@ class GlideRecoveryCalibrationTest {
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts; the
         // asset rebuild rewrites both). Loop and eligible dwell rows make rows outnumber words.
         private const val SET_SIZE = 5110
-        private const val SET_BYTES = 14000219
+        private const val SET_BYTES = 14006869
         private const val SET_SHA256 =
-            "2218ef5143e88eb78a1583fb269ffc78cacdaec0c9a9ebb0acf8241d185132d0"
+            "ad22bb0fb8a75bfb14a8d07b97dddc4da5baefef66c47fe72f9a4e5df7f0df76"
 
         // The per-class split of gatesRecoveryAndLatencyOnTheRealDictionary.
         private const val CLASS_COUNT = 7
@@ -2064,10 +2071,12 @@ class GlideRecoveryCalibrationTest {
             "plain", "doubled_jog", "doubled_nodwell_twinless", "doubled_nodwell_twin", "alias",
             "doubled_dwell_at_double", "doubled_dwell_elsewhere",
         )
+        // The alias class carries zeros: the 8-letter extra row made ё and ъ direct keys, so no
+        // Tatar word is alias-folded anymore (the class is seeded on the Russian bench).
         private val TT_PRUNING_BASELINE = PruningBaseline(
-            counts = intArrayOf(2383, 225, 189, 36, 19, 226, 226),
-            bucketHits = intArrayOf(2307, 214, 181, 34, 19, 216, 216),
-            pruningHits = intArrayOf(2303, 214, 181, 34, 19, 216, 216),
+            counts = intArrayOf(2400, 226, 190, 36, 0, 226, 226),
+            bucketHits = intArrayOf(2321, 215, 182, 34, 0, 216, 216),
+            pruningHits = intArrayOf(2318, 215, 182, 34, 0, 216, 216),
         )
         private val RU_PRUNING_BASELINE = PruningBaseline(
             counts = intArrayOf(1109, 99, 97, 2, 35, 100, 100),
@@ -2080,16 +2089,18 @@ class GlideRecoveryCalibrationTest {
         private const val RECOVERY_TOP1_MIN = 35.0
         private const val HOST_P95_MS = 2.0
         private const val NO_DWELL_TWIN_TOP1_PIN = 8.3333
-        private const val PLAIN_TOP1_PIN = 88.1420
-        private const val PLAIN_TOP3_PIN = 93.4447
+        private const val PLAIN_TOP1_PIN = 88.2917
+        private const val PLAIN_TOP3_PIN = 95.7917
+        // The alias floors are inert on the Tatar bench (the 8-letter extra row leaves no Tatar
+        // alias letter); they apply wherever the alias class is seeded.
         private const val ALIAS_TOP1_PIN = 89.4737
         private const val ALIAS_TOP3_PIN = 100.0
 
         // The short-word class guard (2-4 cp held-out, per-language constants): floors at the
         // per-language column of gatesPerLanguageConstants' 2-4cp printout minus a 1 pp drift
         // tolerance (the printout carries the slice sizes).
-        private const val TT_SHORT_TOP1_PIN = 83.6154
-        private const val TT_SHORT_TOP3_PIN = 93.9833
+        private const val TT_SHORT_TOP1_PIN = 85.0140
+        private const val TT_SHORT_TOP3_PIN = 93.7552
         private const val RU_SHORT_TOP1_PIN = 88.2308
         private const val RU_SHORT_TOP3_PIN = 94.3846
 

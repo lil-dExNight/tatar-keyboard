@@ -173,6 +173,33 @@ class TdictPrefixIndexAutocorrectTest {
     }
 
     @Test
+    fun disabledAdviceSkipsOnlyItsOwnComputation() {
+        val index = EngineTestFixtures.index(
+            listOf("китап" to 5_000L), fuzzyEditPolicy = FuzzyEditPolicy.TATAR,
+        )
+        index.updateKeyNeighbors(table)
+        val query = ImmutableUtf8Prefix.copyOf("китәп".toByteArray(Charsets.UTF_8))
+
+        val enabledResults = index.lookup(query)
+        val enabledExactCount = index.lastExactCount
+        val enabledFuzzyVariants = index.lastFuzzyVariantCount
+        assertTrue(index.lastAutocorrectProbeCount > 0)
+        assertEquals("китап", index.lastAutocorrectAdvice?.replacement)
+
+        index.setAutocorrectAdviceEnabled(false)
+        assertNull(index.lastAutocorrectAdvice)
+        assertEquals(enabledResults, index.lookup(query))
+        assertEquals(enabledExactCount, index.lastExactCount)
+        assertEquals(enabledFuzzyVariants, index.lastFuzzyVariantCount)
+        assertEquals(0, index.lastAutocorrectProbeCount)
+        assertNull(index.lastAutocorrectAdvice)
+
+        index.setAutocorrectAdviceEnabled(true)
+        assertEquals(enabledResults, index.lookup(query))
+        assertEquals("китап", index.lastAutocorrectAdvice?.replacement)
+    }
+
+    @Test
     fun aWordOfThePersonalDictionaryIsNeverAutocorrected() {
         // The pair the contract names: a personal record that the shipped asset happens to have an
         // opinion about. The verdict exists at the index level and is vetoed by the composite,

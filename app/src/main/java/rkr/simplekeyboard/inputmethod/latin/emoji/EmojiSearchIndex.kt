@@ -32,11 +32,11 @@ import java.io.InputStream
  * field 1 comes from the panel asset, the index can only ever name emoji the panel is able to
  * draw; entries the running device has no glyph for are dropped on top of that by [filterTo].
  *
- * Matching is word-prefix: a query matches an entry when some word of its name or of its keywords
- * starts with the query. Results are ordered by how directly they matched — the name itself first,
- * then a word of the name, then a keyword — and within a rank by the set's own order. There is no
- * regular expression and no per-query allocation after the first search: the three rank buckets are
- * reused [IntArray]s.
+ * Matching is word-prefix: a query matches an entry when some word of its Russian or Tatar name or
+ * of its keywords (including Tatar aliases) starts with the query. Results are ordered by how
+ * directly they matched — a name itself first, then a word of a name, then a keyword — and within a
+ * rank by the set's own order. There is no regular expression and no per-query allocation after the
+ * first search: the three rank buckets are reused [IntArray]s.
  */
 class EmojiSearchIndex private constructor(
     private val sequences: Array<String>,
@@ -74,9 +74,12 @@ class EmojiSearchIndex private constructor(
         var index = 0
         while (index < sequences.size) {
             val name = names[index]
+            val tatarName = tatarNames[index]
             when {
-                name.startsWith(normalized) -> if (exactCount < MAX_RESULTS) exactRank[exactCount++] = index
-                startsWordWith(name, normalized) -> if (nameCount < MAX_RESULTS) nameRank[nameCount++] = index
+                name.startsWith(normalized) || tatarName.startsWith(normalized) ->
+                    if (exactCount < MAX_RESULTS) exactRank[exactCount++] = index
+                startsWordWith(name, normalized) || startsWordWith(tatarName, normalized) ->
+                    if (nameCount < MAX_RESULTS) nameRank[nameCount++] = index
                 startsWordWith(keywords[index], normalized) ->
                     if (keywordCount < MAX_RESULTS) keywordRank[keywordCount++] = index
             }

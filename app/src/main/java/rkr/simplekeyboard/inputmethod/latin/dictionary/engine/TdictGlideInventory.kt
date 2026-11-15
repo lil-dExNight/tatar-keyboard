@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordInventory
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordVisitor
+import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordUtf8Visitor
 
 /**
  * A bundled dictionary's prefix index as a [GlideWordInventory]. Words and frequencies come from
@@ -35,6 +36,12 @@ internal class TdictGlideInventory(
     override fun forEachWord(visitor: GlideWordVisitor) {
         index.forEachWordCold(
             ColdWordVisitor { word, frequency -> visitor.visit(word, frequency) },
+        )
+    }
+
+    override fun forEachWordUtf8(visitor: GlideWordUtf8Visitor) {
+        index.forEachWordBytesCold(
+            ColdWordBytesVisitor { bytes, length, frequency -> visitor.visit(bytes, length, frequency) },
         )
     }
 }

@@ -52,13 +52,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import bigram_pack  # noqa: E402
+import evaluation_metrics as metrics  # noqa: E402
 import suggest_chain  # noqa: E402
 import suggest_eval  # noqa: E402
 import wordform_gen  # noqa: E402
 from bigset import Counter64  # noqa: E402
 
-# The shipped Tatar table's per-head successor count: the strip shows three, the table keeps
-# four.
+# The engine composes four candidates; the default strip displays the first three.
 SUCCESSES_PER_HEAD = 4
 CELL_COUNT = suggest_chain.CELL_COUNT
 
@@ -76,8 +76,8 @@ DEFAULT_CORPORA = (
 class StemBackoffChain(suggest_chain.ChainMirror):
     """The chain mirror with the simulated stem-keyed backoff stage added.
 
-    Between the form-keyed bigram pass and the fallback: when the bigram pass fills fewer
-    cells than the strip has, the successors of the head's stem are expanded to
+    Between the form-keyed bigram pass and the fallback: when the bigram pass supplies fewer
+    than the engine's four candidates, the successors of the head's stem are expanded to
     their clusters' most frequent attested forms and appended, skipping the head itself and
     anything already shown, until the strip is full or the successors run out.
     """
@@ -352,8 +352,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     table_seconds = time.monotonic() - stage
 
     stage = time.monotonic()
-    sentence_hits_baseline: list[int] = []
-    sentence_hits_stem: list[int] = []
+    sentence_visible_baseline: list[int] = []
+    sentence_visible_stem: list[int] = []
+    sentence_engine_baseline: list[int] = []
+    sentence_engine_stem: list[int] = []
     sentence_pairs: list[int] = []
     diagnostics = {
         "pairs": 0,
@@ -366,13 +368,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     for line in lines:
         line_words = line.split(" ")
-        hits_baseline = 0
-        hits_stem = 0
+        visible_baseline = 0
+        visible_stem = 0
+        engine_baseline = 0
+        engine_stem = 0
         for head, successor in zip(line_words, line_words[1:]):
-            hit_baseline = successor in baseline.predict_top3(head)
-            hit_stem = successor in stem_chain.predict_top3(head)
-            hits_baseline += hit_baseline
-            hits_stem += hit_stem
+            baseline_candidates = baseline.predict_top3(head)
+            stem_candidates = stem_chain.predict_top3(head)
+            hit_baseline = successor in metrics.visible_top3(baseline_candidates)
+            hit_stem = successor in metrics.visible_top3(stem_candidates)
+            visible_baseline += hit_baseline
+            visible_stem += hit_stem
+            engine_baseline += successor in metrics.engine_top4(baseline_candidates)
+            engine_stem += successor in metrics.engine_top4(stem_candidates)
             diagnostics["pairs"] += 1
             diagnostics["hits_gained"] += hit_stem and not hit_baseline
             diagnostics["hits_lost"] += hit_baseline and not hit_stem
@@ -389,16 +397,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                     diagnostics["stem_hits"] += 1
             if successor in stem_chain.stem_additions(head):
                 diagnostics["expansion_hits"] += 1
-        sentence_hits_baseline.append(hits_baseline)
-        sentence_hits_stem.append(hits_stem)
+        sentence_visible_baseline.append(visible_baseline)
+        sentence_visible_stem.append(visible_stem)
+        sentence_engine_baseline.append(engine_baseline)
+        sentence_engine_stem.append(engine_stem)
         sentence_pairs.append(len(line_words) - 1)
 
     total_pairs = diagnostics["pairs"]
     engaged = diagnostics["engaged_pairs"]
-    baseline_pct = suggest_eval.percent(sum(sentence_hits_baseline), total_pairs)
-    stem_pct = suggest_eval.percent(sum(sentence_hits_stem), total_pairs)
-    intervals = paired_bootstrap(sentence_hits_baseline, sentence_hits_stem, sentence_pairs)
-    delta_pp = stem_pct - baseline_pct
+    visible = metrics.paired_metric_report(
+        sentence_visible_baseline,
+        sentence_pairs,
+        sentence_visible_stem,
+        sentence_pairs,
+        k=metrics.VISIBLE_TOP_K,
+        role="user",
+    )
+    engine = metrics.paired_metric_report(
+        sentence_engine_baseline,
+        sentence_pairs,
+        sentence_engine_stem,
+        sentence_pairs,
+        k=metrics.ENGINE_TOP_K,
+        role="diagnostic",
+    )
+    delta_pp = visible["delta"]["pp"]
     eval_seconds = time.monotonic() - stage
 
     stem_hits = diagnostics["stem_hits"]
@@ -442,19 +465,42 @@ def main(argv: Sequence[str] | None = None) -> int:
             "hits_gained": diagnostics["hits_gained"],
             "hits_lost": diagnostics["hits_lost"],
         },
-        "chain_top3": {
-            "baseline_pct": round(baseline_pct, 4),
-            "baseline_ci95": [round(bound, 4) for bound in intervals["baseline_ci95"]],
-            "stem_pct": round(stem_pct, 4),
-            "stem_ci95": [round(bound, 4) for bound in intervals["stem_ci95"]],
+        "chain_visible_top3": {
+            "baseline_hits": visible["baseline"]["hits"],
+            "baseline_denominator": total_pairs,
+            "baseline_pct": round(visible["baseline"]["pct"], 4),
+            "baseline_ci95": [round(bound, 4) for bound in visible["baseline"]["ci95"]],
+            "stem_hits": visible["candidate"]["hits"],
+            "stem_denominator": total_pairs,
+            "stem_pct": round(visible["candidate"]["pct"], 4),
+            "stem_ci95": [round(bound, 4) for bound in visible["candidate"]["ci95"]],
             "delta_pp": round(delta_pp, 4),
-            "delta_ci95": [round(bound, 4) for bound in intervals["delta_ci95"]],
+            "delta_ci95": [round(bound, 4) for bound in visible["delta"]["ci95"]],
+        },
+        "chain_engine_top4": {
+            "baseline_hits": engine["baseline"]["hits"],
+            "baseline_denominator": total_pairs,
+            "baseline_pct": round(engine["baseline"]["pct"], 4),
+            "stem_hits": engine["candidate"]["hits"],
+            "stem_denominator": total_pairs,
+            "stem_pct": round(engine["candidate"]["pct"], 4),
+            "delta_pp": round(engine["delta"]["pp"], 4),
+            "delta_ci95": [round(bound, 4) for bound in engine["delta"]["ci95"]],
         },
         "gate": {
+            "metric": "visible_top3",
             "delta_threshold_pp": GATE_DELTA_PP,
             "ci_lower_must_exceed": 0.0,
-            "passed": bool(delta_pp >= GATE_DELTA_PP and intervals["delta_ci95"][0] > 0.0),
+            "passed": bool(
+                delta_pp >= GATE_DELTA_PP and visible["delta"]["ci95"][0] > 0.0
+            ),
         },
+        "measurement": metrics.measurement_report(
+            units=len(lines),
+            denominator_name="adjacent next-word pairs",
+            visible_top3_report=visible,
+            engine_top4_report=engine,
+        ),
         "runtime_seconds": {
             "grouping": round(grouping_seconds, 3),
             "counting": round(counting_seconds, 3),

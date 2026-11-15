@@ -32,6 +32,34 @@
 #     the field (it appears as &#...; in the XML dump);
 #   - keyboard up is dumpsys input_method mInputShown=true (see keyboard_shown).
 #
+# Typing, space and layout-probe actions are confirmed, not slept:
+#   - every typed word's intended tail is polled for a bounded time (typed_checks),
+#     and every space tap is retried only while the field is byte-identical to its
+#     pre-tap text (confirm_space / space_and_confirm), so a late commit is waited
+#     for and a wrong commit is never tapped over;
+#   - the release layout probe's KEYCODE_DEL cleanup reports the layout only when
+#     the field is byte-identical to the pre-probe text, and re-sends the DEL only
+#     while the field still shows exactly the post-probe text: a re-sent DEL that
+#     overtakes a first DEL still in the input queue deletes the committed tail
+#     (the API 28 'минпри' artefacts). A cleanup that still fails after the
+#     bounded retry restores the field to a known byte-empty state with
+#     clear_tryit instead of leaving the residue as the next probe's baseline;
+#   - clear_tryit deterministically empties the try-it field (refocus, caret to
+#     the end, bounded KEYCODE_DELs until two byte-empty reads; timeout = hard
+#     FAIL). It runs before the language-probe cycle and before every typed
+#     phase whose tail assertion is anchored on a standalone word, so a dropped
+#     probe DEL cannot resurface one leg later as 'мин әпри' or 'ййтатар';
+#   - NEXT_WORD probes wait for the band CONTENTS before tapping: the product
+#     paints a provisional global-fallback band before the pinned bigram row, and
+#     with uiautomator blind to the IME window the content check is pixel identity
+#     against scripts/emulator-smoke-refs/<sdk>/<probe>.png (see wait_band). A
+#     band that never matches inside the bounded wait fails the probe without
+#     tapping, instead of committing a fallback word;
+#   - a typed phase that must start from an empty field calls clear_tryit after
+#     the layout probes: it refocuses the field, moves the caret to the end and
+#     sends bounded KEYCODE_DELs until two byte-empty reads; a 15-second timeout
+#     is a FAIL, not a guessed prefix in the next typed check.
+#
 # Word suggestions are on by default. On a debuggable package the script still writes
 # the pref via run-as before the app starts, because a reused AVD keeps the value of an
 # earlier session; then the process is force-stopped, because a live process keeps the
@@ -184,10 +212,24 @@ fi
 
 A() { "$ADB" -s "$SERIAL" "$@"; }            # adb on the selected device
 SHELL() { A shell "$@"; }                    # adb shell
+# A prior interrupted rotation probe can leave a disposable AVD in landscape.
+# wm size still reports the natural portrait dimensions, so explicitly enter
+# portrait before using the calibrated coordinates; restore the found state at
+# the end just like the landscape leg restores its own changes.
+SMOKE_SAVED_ACC=$(SHELL settings get system accelerometer_rotation 2>/dev/null | tr -d '\r' || true)
+SMOKE_SAVED_ROT=$(SHELL settings get system user_rotation 2>/dev/null | tr -d '\r' || true)
+[ "$SMOKE_SAVED_ACC" = "null" ] && SMOKE_SAVED_ACC=1
+[ "$SMOKE_SAVED_ROT" = "null" ] && SMOKE_SAVED_ROT=0
+SHELL settings put system accelerometer_rotation 0 || true
+SHELL settings put system user_rotation 0 || true
+sleep 2
 SHOT() { A exec-out screencap -p > "$OUTDIR/$1" 2>/dev/null; }
-DUMP_UI() {                                  # uiautomator dump → stdout
-    SHELL uiautomator dump /data/local/tmp/smoke-ui.xml >/dev/null 2>&1
-    A exec-out cat /data/local/tmp/smoke-ui.xml 2>/dev/null | tr -d '\r'
+DUMP_UI() {                                  # uiautomator dump → stdout + last evidence
+    local dump
+    SHELL uiautomator dump /data/local/tmp/smoke-ui.xml >"$OUTDIR/uiautomator-dump.log" 2>&1
+    dump=$(A exec-out cat /data/local/tmp/smoke-ui.xml 2>/dev/null | tr -d '\r')
+    printf '%s\n' "$dump" >"$OUTDIR/last-ui.xml"
+    printf '%s\n' "$dump"
 }
 TAPF() {                                     # screen fractions: TAPF 0.42 0.85
     local x y
@@ -209,10 +251,36 @@ keyboard_shown() {
     SHELL dumpsys input_method 2>/dev/null | grep -q "mInputShown=true"
 }
 field_text() {                               # text of the SetupActivity try-it field
-    local dump
+    local dump root x1 y1 x2 y2 attempt ime_top action_bottom start_y end_y
     dump=$(DUMP_UI)
-    echo "$dump" | grep -q 'setup_test_field' || { echo "__NOFIELD__"; return; }
-    echo "$dump" | grep -oP '<node[^>]*setup_test_field[^>]*' \
+    for attempt in $(seq 1 12); do
+        grep -q 'setup_test_field' <<<"$dump" && break
+        # On edge-to-edge releases the root extends behind the IME. Start the
+        # swipe above the visible IME frame, not at a fraction that lands on
+        # the keyboard, and keep the end below the overlapping action bar.
+        root=$(grep -oP '<node[^>]*setup_root[^>]*bounds="\[\K[0-9,\]\[]+' <<<"$dump" | head -1 || true)
+        [ -n "$root" ] || break
+        read -r x1 y1 x2 y2 <<<"$(tr '[],' '    ' <<<"$root")"
+        start_y=$(( (2 * y1 + y2) / 3 ))
+        ime_top=$(SHELL dumpsys window 2>/dev/null | tr -d '\r' \
+            | grep 'type=ime frame=.*visible=true' \
+            | grep -oP 'type=ime frame=\[[0-9]+,\K[0-9]+' | head -1 || true)
+        if [[ "$ime_top" =~ ^[0-9]+$ ]] && [ "$start_y" -ge $((ime_top - 16)) ]; then
+            start_y=$((ime_top - 16))
+        fi
+        end_y=$(( y1 + (y2 - y1) / 10 ))
+        action_bottom=$(grep -oP '<node[^>]*android:id/action_bar"[^>]*bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,\K[0-9]+' <<<"$dump" | head -1 || true)
+        if [[ "$action_bottom" =~ ^[0-9]+$ ]] && [ "$end_y" -lt $((action_bottom + 8)) ]; then
+            end_y=$((action_bottom + 8))
+        fi
+        [ "$start_y" -gt "$y1" ] && [ "$end_y" -lt "$start_y" ] || break
+        SHELL input swipe $(( (x1 + x2) / 2 )) "$start_y" \
+            $(( (x1 + x2) / 2 )) "$end_y" 400
+        sleep 1
+        dump=$(DUMP_UI)
+    done
+    grep -q 'setup_test_field' <<<"$dump" || { echo "__NOFIELD__"; return; }
+    grep -oP '<node[^>]*setup_test_field[^>]*' <<<"$dump" \
         | grep -oP 'text="\K[^"]*' | head -1 || true
 }
 type_word() {                                # type_word "0.42,0.85 0.51,0.85 ..."
@@ -221,6 +289,45 @@ type_word() {                                # type_word "0.42,0.85 0.51,0.85 ..
         TAPF "${xy%,*}" "${xy#*,}"
         sleep 0.4
     done
+}
+
+# Every typed word and every space tap is confirmed against the try-it field with
+# bounded polls: on API 28 the commit can lag the tap by seconds, and a check that
+# reads once after a fixed sleep races it. LAST_FIELD_TEXT carries the last read so
+# callers report the actual text. field_tail_later returns 0 only on a real match;
+# a wrong text is never retried away, it is returned to the caller to fail on.
+LAST_FIELD_TEXT=""
+field_tail_later() {
+    # args: <tail-regex> <attempts> <interval-s>
+    local expect="$1" attempts="$2" interval="$3" attempt
+    for attempt in $(seq 1 "$attempts"); do
+        LAST_FIELD_TEXT=$(field_text)
+        echo "$LAST_FIELD_TEXT" | grep -qE "$expect" && return 0
+        [ "$attempt" -lt "$attempts" ] && sleep "$interval"
+    done
+    return 1
+}
+
+# Tap SPACE and confirm the expected committed tail (a word + trailing space). A
+# dropped tap is retried only while the field is byte-identical to the pre-tap
+# text: once anything else was committed the retry stops, so a lost tap is
+# tolerated and a wrong commit is never tapped over. SPACE is defined below; this
+# function is called only after it is set.
+confirm_space() {
+    # args: <committed-tail-regex>; returns 0 once the tail is confirmed
+    local expect="$1" pre attempt poll
+    pre=$(field_text)
+    LAST_FIELD_TEXT="$pre"
+    for attempt in 1 2 3; do
+        TAPF ${SPACE%,*} ${SPACE#*,}
+        for poll in 1 2 3 4 5; do
+            sleep 1
+            LAST_FIELD_TEXT=$(field_text)
+            echo "$LAST_FIELD_TEXT" | grep -qE "$expect" && return 0
+            [ "$LAST_FIELD_TEXT" = "$pre" ] || return 1
+        done
+    done
+    return 1
 }
 
 # Pixel delta of the suggestion strip (union of both keyboard heights: the 5-row tt
@@ -237,6 +344,59 @@ strip_diff() {                               # strip_diff before.png after.png �
         <(convert "$2" -crop "$STRIP_CROP" +repage png:-) null: 2>&1 || true)
     echo "$out" | grep -oP '\d+' | head -1 || echo 0
 }
+
+# NEXT_WORD band content is verified against reference crops: the product paints a
+# provisional global-fallback band (һәм белән дә…) first and replaces it with the
+# pinned bigram successors (теле телен дәүләт) when the asynchronous answer
+# arrives, so a tap timed on "the band stopped changing" can commit the fallback
+# word (the API 28 nextword-tt-татар failures). uiautomator does not see the IME
+# window, so the content check is pixel identity: the strip of one image+APK
+# renders byte-identically across runs (measured AE=0 over 8 API 28 runs), and
+# the two bands differ by thousands of pixels, far above BAND_DIFF_MAX.
+# References live per API level under scripts/emulator-smoke-refs/<sdk>/<name>.png
+# and are the BAND_CROP crop of a known-good smoke screenshot; regenerate them
+# when the APK's strip rendering changes. An image without a reference falls back
+# to the bounded tap retry alone.
+BAND_CROP="1080x121+0+1297"
+BAND_DIFF_MAX=200
+BAND_REFS="$ROOT/scripts/emulator-smoke-refs"
+band_ref() {
+    # args: <name>; stdout: the reference path, or empty when absent
+    local api path
+    api=$(SHELL getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)
+    path="$BAND_REFS/${api:-unknown}/$1.png"
+    [ -f "$path" ] && echo "$path" || true
+}
+band_diff() {
+    # args: <live.png> <ref.png>; stdout: the AE pixel delta
+    local out
+    out=$(compare -metric AE \
+        <(convert "$1" -crop "$BAND_CROP" +repage png:-) \
+        "$2" null: 2>&1 || true)
+    echo "$out" | grep -oP '\d+' | head -1 || echo 999999
+}
+# wait_band <ref-name> <shot-prefix>: poll the strip until it matches the
+# reference on two consecutive shots (a band repainting into another layout must
+# not be tapped mid-frame). Returns 0 on the match, 1 on the bounded timeout and
+# 2 when there is no reference for this image (the caller keeps the tap retry).
+wait_band() {
+    local ref="$1" prefix="$2" poll live matches=0
+    ref=$(band_ref "$ref")
+    [ -n "$ref" ] || return 2
+    [ "$HAVE_MAGICK" = 1 ] || return 2
+    for poll in $(seq 1 12); do
+        SHOT "$prefix-$poll.png"
+        live=$(band_diff "$OUTDIR/$prefix-$poll.png" "$ref")
+        if [ "$live" -le "$BAND_DIFF_MAX" ]; then
+            matches=$((matches + 1))
+            [ "$matches" -ge 2 ] && return 0
+        else
+            matches=0
+        fi
+        [ "$poll" -lt 12 ] && sleep 1
+    done
+    return 1
+}
 HAVE_MAGICK=0
 if command -v compare >/dev/null 2>&1 && command -v convert >/dev/null 2>&1; then
     HAVE_MAGICK=1
@@ -244,9 +404,66 @@ fi
 
 # ── install and select the IME ──────────────────────────────────────────────────
 
-A install -r "$APK" >"$OUTDIR/install.log" 2>&1 \
-    && result PASS install "$(basename "$APK") pkg=$PKG" \
-    || { result FAIL install "$(tail -1 "$OUTDIR/install.log")"; exit 1; }
+# The package service registers before PackageManager is usable, and the API 37
+# image drops it under an install stream ("Broken pipe"): wait for a real query
+# and use the streamed path, exactly like emulator-release-validation.sh.
+pm_ready=0
+for _ in $(seq 1 60); do
+    if SHELL service check package 2>/dev/null | grep -q found \
+            && SHELL pm path android 2>/dev/null | grep -q '^package:'; then
+        pm_ready=1
+        break
+    fi
+    sleep 2
+done
+if [ "$pm_ready" != 1 ]; then
+    result FAIL install "package manager not ready after 120 seconds"
+    exit 1
+fi
+install_ok=0
+for install_attempt in 1 2 3; do
+    if A install --no-incremental -r "$APK" >"$OUTDIR/install.log" 2>&1; then
+        install_ok=1
+        break
+    fi
+    # The API 37 image can restart system_server during an install stream; the
+    # guest recovers, so wait for the package manager and try again instead of
+    # ending the run on a transient "Broken pipe".
+    if [ "$install_attempt" = 3 ]; then
+        break
+    fi
+    A reconnect >/dev/null 2>&1 || true
+    for _ in $(seq 1 60); do
+        if SHELL service check package 2>/dev/null | grep -q found \
+                && SHELL pm path android 2>/dev/null | grep -q '^package:'; then
+            break
+        fi
+        sleep 2
+    done
+    sleep 3
+done
+if [ "$install_ok" = 1 ]; then
+    # A system_server restart mid-install can leave the package half-registered
+    # (install reports Success but "Activity class ... does not exist" on am
+    # start). Re-check the resolved activity and re-install once if it is gone.
+    resolve_attempts=0
+    while [ "$resolve_attempts" -lt 4 ]; do
+        resolved=$(SHELL cmd package resolve-activity --brief "$PKG/$SETUP_ACTIVITY" 2>/dev/null | tr -d '\r')
+        [[ "$resolved" == *"$SETUP_ACTIVITY"* ]] && break
+        resolve_attempts=$((resolve_attempts + 1))
+        [ "$resolve_attempts" = 4 ] && A install --no-incremental -r "$APK" >>"$OUTDIR/install.log" 2>&1 || true
+        sleep 3
+    done
+    if [[ "$resolved" == *"$SETUP_ACTIVITY"* ]]; then
+        result PASS install "$(basename "$APK") pkg=$PKG"
+    else
+        result FAIL install "package half-registered after PM restart: $resolved"
+        exit 1
+    fi
+else
+    result FAIL install "$(tail -1 "$OUTDIR/install.log")"
+    exit 1
+fi
 
 # On slow or old images (API 30) the IME does not appear in the list right after
 # install, so poll for up to 30 s. `ime list -a -s`, not `-s`: on API 30 the list
@@ -355,11 +572,22 @@ current_focus() {
 SHELL logcat -b crash -c 2>/dev/null || true   # clear the crash buffer up front
 
 # SetupActivity must get focus; otherwise the whole scenario types into another
-# app's field.
+# app's field. API 35 edge-to-edge insets can leave the try-it field below the
+# fold, so scroll the setup root when the first dump does not contain it.
+# The API 37 image restarts system_server under the first minutes of load and
+# `am start` then dies with "Failure calling service activity: Broken pipe":
+# wait for the service and never let one failed start abort the run (set -e) —
+# the focus check below is the verdict.
+for _ in $(seq 1 30); do
+    if SHELL service check activity 2>/dev/null | grep -q found; then
+        break
+    fi
+    sleep 2
+done
 focus=""
 for _ in 1 2 3; do
     SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" \
-        >"$OUTDIR/am-start.log" 2>&1
+        >"$OUTDIR/am-start.log" 2>&1 || true
     for _ in $(seq 1 10); do
         sleep 1
         focus=$(current_focus)
@@ -377,8 +605,22 @@ fi
 # Tap the center of the try-it field using fresh bounds from the dump. Do not press
 # BACK to reach a "clean state": if the IME window has not hidden yet (race after a
 # rebind), BACK goes to the activity and closes it. The field is visible in both
-# states (adjustResize), so fresh bounds are enough.
+# states (adjustResize), so fresh bounds and the scroll above are enough.
 bounds=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+if [ -z "$bounds" ]; then
+    local_root=""
+    root_x1=0; root_y1=0; root_x2=0; root_y2=0
+    for scroll_attempt in 1 2 3 4; do
+        [ -n "$bounds" ] && break
+        local_root=$(DUMP_UI | grep -oP '<node[^>]*setup_root[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        [ -n "$local_root" ] || break
+        read -r root_x1 root_y1 root_x2 root_y2 <<<"$(tr '[],' '    ' <<<"$local_root")"
+        SHELL input swipe $(( (root_x1 + root_x2) / 2 )) $(( (2 * root_y1 + root_y2) / 3 )) \
+            $(( (root_x1 + root_x2) / 2 )) $(( root_y1 + (root_y2 - root_y1) / 10 )) 400
+        sleep 1
+        bounds=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+    done
+fi
 if [ -n "$bounds" ]; then
     read -r x1 y1 x2 y2 <<<"$(echo "$bounds" | tr '[],' '    ')"
     SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
@@ -414,12 +656,15 @@ fi
 # $4 regex for the expected end of the field, $5 "nosuggest" for a layout without a dictionary.
 typed_checks() {
     local tag="$1" word="$2" coords="$3" expect="$4" nosuggest="${5:-}"
+    local text
     SHOT "smoke-${tag}-before.png"
     type_word "$coords"
-    sleep 1.5
+    # Wait for the intended tail instead of reading once after a fixed sleep:
+    # on API 28 the commit lags the key taps by seconds. The verdict below is
+    # on the last read, so a wrong or missing tail is still a hard FAIL.
+    if field_tail_later "$expect" 6 1; then :; fi
+    text="$LAST_FIELD_TEXT"
     SHOT "smoke-${tag}-after.png"
-    local text
-    text=$(field_text)
     if [ "$text" = "__NOFIELD__" ]; then
         result FAIL "type-${tag}-${word}" "try-it поле не найдено в дампе"
     elif echo "$text" | grep -qE "$expect"; then
@@ -446,6 +691,19 @@ typed_checks() {
 # (otherwise suggestions would be computed for the concatenation "минпри").
 SPACE="0.55,0.9075"
 
+# Confirm a committed space and report it as its own check. A FAIL here is the
+# precise diagnosis of the injected-space timing race on API 28: without the
+# confirmation the following layout types onto the word still being composed and the
+# failure only surfaces one leg later as a wrong typed_checks tail.
+space_and_confirm() {
+    # args: <tag> <committed-tail-regex>
+    if confirm_space "$2"; then
+        result PASS "space-$1" "в поле: '$LAST_FIELD_TEXT'"
+    else
+        result FAIL "space-$1" "пробел не подтверждён: '$LAST_FIELD_TEXT' (ждали хвост /$2/)"
+    fi
+}
+
 # Key coordinates (screen fractions, tt_suggest_a14 1080x2280).
 # tt, 5 rows: row 1 ("йцукен") y~0.7206, row 2 ("фыва") y~0.7851, row 3 ("ячсм") y~0.8474.
 TT_MIN="0.4231,0.8474 0.5138,0.8474 0.5000,0.7206"          # м и н
@@ -456,14 +714,14 @@ GLOBE="0.30,0.9075"
 COMMA="0.2009,0.9075"
 
 # Full letter map of the tt layout (screen fractions, calibrated for 1080×2280),
-# derived from rows_tatar.xml: extra row 6×16.667% at y≈0.665 (matches PROBE_KEY),
+# derived from rows_tatar.xml: extra row 8×12.5% at y≈0.665 (matches PROBE_KEY),
 # rows 1–2 11×9.091% at y≈0.7206/0.7851, row 3 = shift 10.8% + 9×8.711% + delete
 # at y≈0.8474 (м/и/н land on the same keys as TT_MIN above).
 tt_word_coords() {                       # tt_word_coords "татар" → "x,y x,y ..."
     python3 - "$1" <<'PYEOF'
 import sys
 
-ROWS = ("әөүҗңһ", 0.6650), ("йцукенгшщзх", 0.7206), ("фывапролджэ", 0.7851)
+ROWS = ("әөүҗңһёъ", 0.6650), ("йцукенгшщзх", 0.7206), ("фывапролджэ", 0.7851)
 ROW3 = "ячсмитьбю"  # 10.8% shift key, then 9 keys of 8.711%
 
 coords = {}
@@ -502,27 +760,153 @@ except ValueError:
 PYEOF
 }
 
-# type_tt_and_tap_cell2 <word> <tag> [cell]: type <word> + space on the tt layout,
-# screenshot the strip, tap the given suggestion cell (default the last cell), read the
-# field again. Stdout: field-after-space <TAB> field-after-tap.
+# Reopen SetupActivity, scroll the try-it field into view, tap it, wait for the keyboard,
+# settle 2 s. Shared by clear_tryit, panel-back-reopen, the learned-emoji-tt rounds, the
+# UX legs and the landscape leg. A round restarts the activity because BACK hides the
+# WHOLE IME window by platform design, and a further BACK lands on SetupActivity and
+# closes it.
+refocus_tryit() {
+    # See the setup-activity leg: one failed start is not a round verdict, it
+    # is the API 37 service restarting; the keyboard/focus checks decide.
+    SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" >/dev/null 2>&1 || true
+    sleep 3
+    local b x1 y1 x2 y2 sb sx1 sy1 sx2 sy2 attempt
+    # The field can be below the fold, and on API 35 the root extends behind
+    # the IME. Swipe only in the upper third of the visible app area and retry
+    # until the field enters the accessibility hierarchy.
+    for attempt in 1 2 3 4; do
+        b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        [ -n "$b" ] && break
+        sb=$(DUMP_UI | grep -oP '<node[^>]*setup_root[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        [ -n "$sb" ] || break
+        read -r sx1 sy1 sx2 sy2 <<<"$(echo "$sb" | tr '[],' '    ')"
+        SHELL input swipe $(( (sx1 + sx2) / 2 )) $(( (2 * sy1 + sy2) / 3 )) \
+            $(( (sx1 + sx2) / 2 )) $(( sy1 + (sy2 - sy1) / 10 )) 400
+        sleep 1
+    done
+    if [ -n "$b" ]; then
+        read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
+        SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+    else
+        TAPF 0.5 0.81
+    fi
+    local i focus_attempt
+    for focus_attempt in 1 2 3; do
+        for i in $(seq 1 5); do
+            keyboard_shown && break 2
+            sleep 1
+        done
+        # A tap that raced the IME window's show animation is dropped; re-read
+        # the bounds and tap again instead of failing the round (the API 28
+        # panel-back-reopen leg lost exactly one such tap).
+        b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        [ -n "$b" ] || break
+        read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
+        SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+    done
+    keyboard_shown || return 1
+    # The keyboard reports shown before its first frame accepts touches; without this
+    # settle the first tap of a round is lost.
+    sleep 2
+    return 0
+}
+
+# clear_tryit <phase>: make the try-it field byte-empty before a phase whose typed
+# tail or NEXT_WORD band assumes an empty prefix — the language-probe cycle (so the
+# probes restore the field to a KNOWN clean text, not to the damage an earlier probe
+# left) and every standalone typed word. The release layout probe erases its probe
+# character with DEL, but on API 28 a dropped DEL can leave ә/й in the field past the
+# probe's own bounded retry; probe_layout then reports no layout, the next probe's
+# raw_before silently includes the residue, and the damage surfaces one leg later as a
+# wrong typed tail ('мин әпри', 'ййтатар'). uiautomator reports an empty EditText's
+# hint as its text, so the three setup hints count as empty. A clear is confirmed by
+# two consecutive empty reads; a field that never empties inside the bounded drain is
+# a hard FAIL of the whole run, never a guessed prefix for the next check.
+clear_tryit() {
+    local phase="$1" text empty_reads=0 attempt
+    if ! refocus_tryit; then
+        result FAIL clear-tryit "$phase: keyboard did not come up for the field refocus"
+        exit 1
+    fi
+    SHELL input keyevent KEYCODE_MOVE_END
+    for attempt in $(seq 1 30); do
+        text=$(field_text)
+        if [ "$text" = "__NOFIELD__" ]; then
+            result FAIL clear-tryit "$phase: try-it field not in the dump"
+            exit 1
+        elif [ -z "$text" ] || [[ "$text" == "Try it:"* || "$text" == "Сынап карагыз:"* || "$text" == "Попробуйте:"* ]]; then
+            empty_reads=$((empty_reads + 1))
+            if [ "$empty_reads" -ge 2 ]; then
+                result PASS clear-tryit "$phase: try-it field byte-empty"
+                return 0
+            fi
+        else
+            empty_reads=0
+            SHELL input keyevent KEYCODE_DEL
+        fi
+        sleep 0.5
+    done
+    text=$(field_text)
+    result FAIL clear-tryit "$phase: try-it field did not empty within 15 seconds; field: '$text'"
+    exit 1
+}
+
+# type_tt_and_tap_cell2 <word> <tag> [cell] [band-ref]: type <word> + space on the
+# tt layout, wait for the expected NEXT_WORD band (see wait_band), tap the given
+# suggestion cell (default the last cell), read the field again.
+# Stdout: field-after-space <TAB> field-after-tap <TAB> band state, where the band
+# state is "matched" (the reference band was shown before the tap), "unverified"
+# (no reference for this image: the bounded tap retry below is the only safety
+# net) or "timeout" (the reference band never appeared and nothing was tapped).
 type_tt_and_tap_cell2() {
-    local word="$1" tag="$2" cell="${3:-$STRIP_CELL2}" coords mid after
+    local word="$1" tag="$2" cell="${3:-$STRIP_CELL2}"
+    local band_ref_name="${4:-nextword-$tag}"
+    local coords mid after poll tap_attempt band_state
     coords=$(tt_word_coords "$word")
     type_word "$coords"
-    TAPF ${SPACE%,*} ${SPACE#*,}
-    sleep 2                              # the NEXT_WORD answer is asynchronous
-    mid=$(field_text)
-    SHOT "smoke-wordform-${tag}.png"
-    TAPF ${cell%,*} ${cell#*,}
-    sleep 1
-    after=$(field_text)
-    printf '%s\t%s\n' "$mid" "$after"
+    # The commit of the word + space is asynchronous; confirm it before asking
+    # for NEXT_WORD evidence. A space that never commits is the caller's FAIL.
+    if ! confirm_space "$word "'$'; then
+        printf '%s\t%s\t%s\n' "$LAST_FIELD_TEXT" "$LAST_FIELD_TEXT" "band=space"
+        return
+    fi
+    mid="$LAST_FIELD_TEXT"
+    # Wait for the expected band contents before tapping, not for a stable-looking
+    # band: the provisional global fallback (һәм белән дә…) is also stable while
+    # the pinned bigram successors are still being computed, and a tap on it
+    # commits the wrong word. With no reference for this image the old bounded
+    # tap retry is the only net (band=unverified).
+    if wait_band "$band_ref_name" "smoke-band-${tag}"; then
+        band_state=matched
+    elif [ $? -eq 1 ]; then
+        band_state=timeout
+        printf '%s\t%s\t%s\n' "$mid" "$mid" "band=$band_state"
+        return
+    else
+        band_state=unverified
+    fi
+    after="$mid"
+    # Retry only a tap that committed nothing, and poll the field after every
+    # tap so a late commit is never mistaken for a dead band and tapped again.
+    # Any committed word goes back to the exact caller assertion immediately; a
+    # wrong word is never retried away.
+    for tap_attempt in 1 2 3; do
+        [ "$tap_attempt" -gt 1 ] && sleep 2
+        SHOT "smoke-wordform-${tag}.png"
+        TAPF ${cell%,*} ${cell#*,}
+        for poll in $(seq 1 4); do
+            sleep 1
+            after=$(field_text)
+            [ "$after" != "$mid" ] && break
+        done
+        [ "$after" != "$mid" ] && break
+    done
+    printf '%s\t%s\t%s\n' "$mid" "$after" "band=$band_state"
 }
 
 # ── tt: «мин» ──
 typed_checks tt "мин" "$TT_MIN" '^мин$'
-TAPF ${SPACE%,*} ${SPACE#*,}
-sleep 1
+space_and_confirm tt-мин '^мин $'
 
 # ── languages via the globe key: tt -> ru -> en -> tt ──
 # The globe key cycles the language list, and the list order is rebuilt
@@ -533,13 +917,15 @@ sleep 1
 
 # Functional probe of the current layout (for a release APK, where run-as is not
 # available). The point (0.045, 0.665) is inside "ә" in the top Tatar row of the tt
-# layout (6 keys of 16.667%: "ә" covers x 0-0.167); on the 4-row ru/en layouts the same
+# layout (8 keys of 12.5%: "ә" covers x 0-0.125); on the 4-row ru/en layouts the same
 # pixel is the first key of the first row: "й" (ru, 11 keys of 9.091%) and "q" (en,
 # 10 keys of 10%). The probed character is erased with KEYCODE_DEL.
 PROBE_KEY="0.045,0.665"
-probe_layout() {                           # -> tatar|russian|qwerty|""
-    local before after
+# probe_layout -> tatar|russian|qwerty|""
+probe_layout() {
+    local before raw_before after cleaned layout cleanup_attempt
     before=$(field_text)
+    raw_before="$before"
     [ "$before" = "__NOFIELD__" ] && { echo ""; return; }
     [[ "$before" == "Try it:"* ]] && before=""   # an empty field reports the hint as text
     TAPF ${PROBE_KEY%,*} ${PROBE_KEY#*,}
@@ -549,13 +935,61 @@ probe_layout() {                           # -> tatar|russian|qwerty|""
         echo ""                            # the tap missed the key
         return
     fi
-    SHELL input keyevent KEYCODE_DEL       # erase the probed character
-    sleep 0.4
-    if   [[ "$after" == *"ә" || "$after" == *"Ә" ]]; then echo tatar
-    elif [[ "$after" == *"й" || "$after" == *"Й" ]]; then echo russian
-    elif [[ "$after" == *"q" || "$after" == *"Q" ]]; then echo qwerty
-    else echo ""
+    if   [[ "$after" == *"ә" || "$after" == *"Ә" ]]; then layout=tatar
+    elif [[ "$after" == *"й" || "$after" == *"Й" ]]; then layout=russian
+    elif [[ "$after" == *"q" || "$after" == *"Q" ]]; then layout=qwerty
+    else echo ""; return
     fi
+    # KEYCODE_DEL is asynchronous on the legacy images. Confirm the field is
+    # byte-identical to the pre-probe text before reporting the layout; otherwise
+    # a burst of layout polls leaves q/й/ә in the try-it field and changes the
+    # very suggestion context the following legs are meant to verify. The DEL is
+    # re-sent ONLY while the field still shows exactly the post-probe text: a
+    # re-sent DEL that overtakes a first DEL still travelling through the input
+    # queue deletes the committed tail as well (the API 28 'минпри' artefacts
+    # were the probe's second DEL eating the space after мин). Any other field
+    # state — shorter (over-deleted) or different — makes the probe unusable:
+    # report no layout. Either way the damage is not left as the next probe's
+    # raw_before (which would silently bake the residue into every later probe
+    # and surface one leg later as a wrong typed tail, e.g. 'мин әпри'): restore
+    # the field to a known byte-empty state with clear_tryit before returning.
+    local pre_delete="$after"
+    SHELL input keyevent KEYCODE_DEL
+    for cleanup_attempt in $(seq 1 12); do
+        sleep 0.5
+        cleaned=$(field_text)
+        [ "$cleaned" = "$raw_before" ] && { echo "$layout"; return; }
+        [ "$cleaned" = "$pre_delete" ] || break
+        [ $((cleanup_attempt % 4)) -eq 0 ] && SHELL input keyevent KEYCODE_DEL
+    done
+    clear_tryit "probe-$layout-restore"
+    echo ""
+}
+
+# On API 28 the subtype can change before the replacement keyboard surface is
+# ready for input. A single functional probe can therefore still report the
+# outgoing layout, and issuing another globe pair on that evidence switches away
+# from the subtype that is just arriving. Poll until the wanted layout answers
+# twice in a row, or return the last different observation after a bounded wait.
+# wait_for_layout tatar|russian|qwerty
+wait_for_layout() {
+    local want="$1" cur="" matches=0 attempt
+    for attempt in $(seq 1 6); do
+        cur=$(probe_layout)
+        if [ "$cur" = "$want" ]; then
+            matches=$((matches + 1))
+            [ "$matches" -eq 2 ] && break
+        else
+            matches=0
+        fi
+        [ "$attempt" -lt 6 ] && sleep 0.8
+    done
+    # One wanted answer on the last poll is not confirmation; do not turn that
+    # unstable sample into a PASS merely because the retry budget ran out.
+    if [ "$matches" -lt 2 ] && [ "$cur" = "$want" ]; then
+        cur=""
+    fi
+    echo "$cur"
 }
 
 switch_and_check() {                         # $1 tag, $2 expected layout
@@ -584,14 +1018,19 @@ switch_and_check() {                         # $1 tag, $2 expected layout
     # A DOUBLE tap with no typing in between goes from [cur, prev, X] to X; three
     # probes in a row cover all three layouts.
     cur=$(probe_layout)
-    for tap in 1 2 3; do
-        [ "$cur" = "$want" ] && break
-        TAPF ${GLOBE%,*} ${GLOBE#*,}
-        sleep 0.8
-        TAPF ${GLOBE%,*} ${GLOBE#*,}
-        sleep 1.2
-        cur=$(probe_layout)
-    done
+    if [ "$cur" = "$want" ]; then
+        # An already-active target still gets the same two-sample confirmation.
+        cur=$(wait_for_layout "$want")
+    else
+        for tap in 1 2 3; do
+            TAPF ${GLOBE%,*} ${GLOBE#*,}
+            sleep 0.8
+            TAPF ${GLOBE%,*} ${GLOBE#*,}
+            sleep 1.2
+            cur=$(wait_for_layout "$want")
+            [ "$cur" = "$want" ] && break
+        done
+    fi
     if [ "$cur" = "$want" ]; then
         result PASS "subtype-$tag" "функциональный зонд: раскладка $want"
     else
@@ -599,19 +1038,26 @@ switch_and_check() {                         # $1 tag, $2 expected layout
     fi
 }
 
+# The probe cycle starts from a byte-empty field: the probes then restore that
+# known text, and a probe whose DEL was dropped cannot bake residue into the
+# next probe's baseline (see probe_layout). Each following typed phase clears
+# again, because its tail assertion is anchored on a standalone word.
+clear_tryit "language-cycle"
+
 switch_and_check ru russian
+clear_tryit "ru-typed"
 SHOT smoke-ru-layout.png
-typed_checks ru "при" "$RU_PRI" 'мин при$'
-TAPF ${SPACE%,*} ${SPACE#*,}
-sleep 1
+typed_checks ru "при" "$RU_PRI" '^при$'
+space_and_confirm ru-при '^при $'
 
 switch_and_check en qwerty
+clear_tryit "en-typed"
 SHOT smoke-en-layout.png
 typed_checks en "hi" "$EN_HI" 'hi$' nosuggest
-TAPF ${SPACE%,*} ${SPACE#*,}
-sleep 1
+space_and_confirm en-hi 'hi $'
 
 switch_and_check tt tatar
+clear_tryit "nextword-татар"
 SHOT smoke-tt-back.png
 
 # ── next-word continuations after a committed tt word + space ──
@@ -625,34 +1071,43 @@ SHOT smoke-tt-back.png
 #     Any other word fails.
 #  2. сәләм is not a head, so the global top words fill the strip: cell 1
 #     (index 0) must commit һәм.
-wf=$(type_tt_and_tap_cell2 "татар" tatar "$STRIP_CELL1")
-wf_mid="${wf%$'\t'*}"
-wf_after="${wf#*$'\t'}"
+wf=$(type_tt_and_tap_cell2 "татар" tatar "$STRIP_CELL1" nextword-tatar)
+wf_mid="${wf%%$'\t'*}"
+wf_rest="${wf#*$'\t'}"
+wf_after="${wf_rest%%$'\t'*}"
+wf_band="${wf_rest#*$'\t'}"
 w2=$(second_word_after "$wf_after" "татар")
 if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
     result FAIL nextword-tt-татар "try-it field not in the dump"
 elif ! echo "$wf_mid" | grep -qE 'татар $'; then
     result FAIL nextword-tt-татар "татар did not commit; field: '$wf_mid'"
+elif [ "$wf_band" = "band=timeout" ]; then
+    result FAIL nextword-tt-татар "the pinned band (теле телен дәүләт) never matched the reference in the bounded wait; nothing tapped; field: '$wf_after'"
 elif [ "$wf_after" = "$wf_mid" ]; then
     result FAIL nextword-tt-татар "cell-2 tap committed nothing; field: '$wf_after'"
 elif [ "$w2" = "телен" ]; then
-    result PASS nextword-tt-татар "cell 2 = телен: the successors fill the whole strip (pinned)"
+    result PASS nextword-tt-татар "cell 2 = телен: the successors fill the whole strip (pinned, $wf_band)"
 else
     result FAIL nextword-tt-татар "cell 2 committed '$w2' (expected телен from the pinned successor row); field: '$wf_after'"
 fi
 
-wf=$(type_tt_and_tap_cell2 "сәләм" syalam "$STRIP_CELL0")
-wf_mid="${wf%$'\t'*}"
-wf_after="${wf#*$'\t'}"
+clear_tryit "nextword-сәләм"
+wf=$(type_tt_and_tap_cell2 "сәләм" syalam "$STRIP_CELL0" nextword-syalam)
+wf_mid="${wf%%$'\t'*}"
+wf_rest="${wf#*$'\t'}"
+wf_after="${wf_rest%%$'\t'*}"
+wf_band="${wf_rest#*$'\t'}"
 w2=$(second_word_after "$wf_after" "сәләм")
 if [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "__NOFIELD__" ]; then
     result FAIL nextword-tt-сәләм "try-it field not in the dump"
 elif ! echo "$wf_mid" | grep -qE 'сәләм $'; then
     result FAIL nextword-tt-сәләм "сәләм did not commit; field: '$wf_mid'"
+elif [ "$wf_band" = "band=timeout" ]; then
+    result FAIL nextword-tt-сәләм "the fallback band (һәм белән дә…) never matched the reference in the bounded wait; nothing tapped; field: '$wf_after'"
 elif [ "$wf_after" = "$wf_mid" ]; then
     result FAIL nextword-tt-сәләм "cell-1 tap committed nothing; field: '$wf_after'"
 elif [ "$w2" = "һәм" ]; then
-    result PASS nextword-tt-сәләм "cell 1 = һәм: the global fallback leads a headless answer (pinned)"
+    result PASS nextword-tt-сәләм "cell 1 = һәм: the global fallback leads a headless answer (pinned, $wf_band)"
 else
     result FAIL nextword-tt-сәләм "cell 1 committed '$w2' (expected һәм); field: '$wf_after'"
 fi
@@ -664,19 +1119,35 @@ fi
 if [ "$wf_after" = "__NOFIELD__" ] || [ "$wf_mid" = "__NOFIELD__" ] || [ "$wf_after" = "$wf_mid" ]; then
     result SKIP tap-followup-tt-сәләм "the сәләм probe above already failed; nothing to follow up on"
 else
-    sleep 2                          # the follow-up NEXT_WORD answer is asynchronous
-    TAPF ${STRIP_CELL0%,*} ${STRIP_CELL0#*,}
-    sleep 1
-    wf_again=$(field_text)
-    w3=$(second_word_after "$wf_again" "$w2")
-    if [ "$wf_again" = "__NOFIELD__" ]; then
-        result FAIL tap-followup-tt-сәләм "try-it field not in the dump"
-    elif [ "$wf_again" = "$wf_after" ]; then
-        result FAIL tap-followup-tt-сәләм "strip stayed empty after the accepted suggestion; field: '$wf_again'"
-    elif [ "$w3" = "башка" ]; then
-        result PASS tap-followup-tt-сәләм "cell 1 of the follow-up band = башка: predictions for the accepted word without a keystroke"
-    else
-        result FAIL tap-followup-tt-сәләм "follow-up cell 1 committed '$w3' (expected башка from the successors); field: '$wf_again'"
+    # The API 28 image can answer this NEXT_WORD lookup after the first probe:
+    # a tap on the still-empty band commits nothing, and the answer arrives a
+    # moment later (the emoji-panel evidence then contains башка). Retry only
+    # an unchanged field; a wrong committed word remains a product failure.
+    followup_done=0
+    for followup_attempt in 1 2 3; do
+        sleep 2                      # the follow-up NEXT_WORD answer is asynchronous
+        TAPF ${STRIP_CELL0%,*} ${STRIP_CELL0#*,}
+        sleep 1
+        wf_again=$(field_text)
+        w3=$(second_word_after "$wf_again" "$w2")
+        if [ "$wf_again" = "__NOFIELD__" ]; then
+            result FAIL tap-followup-tt-сәләм "try-it field not in the dump"
+            followup_done=1
+            break
+        elif [ "$wf_again" = "$wf_after" ]; then
+            continue
+        elif [ "$w3" = "башка" ]; then
+            result PASS tap-followup-tt-сәләм "cell 1 of the follow-up band = башка: predictions for the accepted word without a keystroke"
+            followup_done=1
+            break
+        else
+            result FAIL tap-followup-tt-сәләм "follow-up cell 1 committed '$w3' (expected башка from the successors); field: '$wf_again'"
+            followup_done=1
+            break
+        fi
+    done
+    if [ "$followup_done" != 1 ]; then
+        result FAIL tap-followup-tt-сәләм "strip stayed empty after $followup_attempt attempts; field: '$wf_again'"
     fi
 fi
 
@@ -699,50 +1170,6 @@ else
     result FAIL emoji-panel "поле до/после: '$before_emoji' → '$after_emoji'"
 fi
 SHOT smoke-final.png
-
-# Reopen SetupActivity, scroll the try-it field into view, tap it, wait for the keyboard,
-# settle 2 s. Shared by panel-back-reopen, the learned-emoji-tt rounds and the landscape
-# leg. Each round restarts the activity because BACK hides the WHOLE IME window by
-# platform design, and a further BACK lands on SetupActivity and closes it.
-refocus_tryit() {
-    SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" >/dev/null 2>&1
-    sleep 3
-    local b x1 y1 x2 y2
-    b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
-    if [ -z "$b" ]; then
-        # In landscape the field is below the fold: uiautomator reports only the visible
-        # children of the setup ScrollView, so the field is absent from the dump. Scroll
-        # the ScrollView toward the bottom (the swipe crosses the gestures card, a plain
-        # text card with no tap targets), then re-dump: one scroll step is enough because
-        # the done block is not taller than the visible window, so the field lands inside
-        # it before the ScrollView stops.
-        local sb sx1 sy1 sx2 sy2
-        sb=$(DUMP_UI | grep -oP '<node[^>]*setup_root[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
-        if [ -n "$sb" ]; then
-            read -r sx1 sy1 sx2 sy2 <<<"$(echo "$sb" | tr '[],' '    ')"
-            SHELL input swipe $(( (sx1 + sx2) / 2 )) $(( (sy1 + 3 * sy2) / 4 )) \
-                $(( (sx1 + sx2) / 2 )) $(( sy1 + (sy2 - sy1) / 8 )) 400
-            sleep 1
-            b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
-        fi
-    fi
-    if [ -n "$b" ]; then
-        read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
-        SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
-    else
-        TAPF 0.5 0.81
-    fi
-    local i
-    for i in $(seq 1 15); do
-        keyboard_shown && break
-        sleep 1
-    done
-    keyboard_shown || return 1
-    # The keyboard reports shown before its first frame accepts touches; without this
-    # settle the first tap of a round is lost.
-    sleep 2
-    return 0
-}
 
 # ── panel-back-reopen ──
 # BACK out of the open panel hides the WHOLE IME window by design (framework
@@ -776,19 +1203,47 @@ if [ -z "$pbr_detail" ]; then
     sleep 1
     # Evidence only: mInputShown=false here is the platform-normal hidden state.
     pbr_shown=$(SHELL dumpsys input_method 2>/dev/null | grep -oP 'mInputShown=\K\w+' | head -1 || true)
-    b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
-    if [ -n "$b" ]; then
-        read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
-        SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+    # BACK hides the whole IME window; the field re-tap must wait for it to come
+    # back before the м probe tap, exactly like refocus_tryit's focus loop. On
+    # API 28 the re-show is asynchronous: a м tap that lands before the first
+    # keyboard frame commits nothing (the API 28 '&#128512;' artefact), and a
+    # re-tap that raced the show animation is dropped, so re-read the bounds and
+    # retry the field tap a bounded number of times.
+    pbr_revived=0
+    for pbr_attempt in 1 2 3; do
+        b=$(DUMP_UI | grep -oP '<node[^>]*setup_test_field[^>]*bounds="\[\K[0-9,\]\[]+' | head -1 || true)
+        if [ -n "$b" ]; then
+            read -r x1 y1 x2 y2 <<<"$(echo "$b" | tr '[],' '    ')"
+            SHELL input tap $(( (x1 + x2) / 2 )) $(( (y1 + y2) / 2 ))
+        else
+            TAPF 0.5 0.81
+        fi
+        for pbr_poll in $(seq 1 5); do
+            keyboard_shown && { pbr_revived=1; break; }
+            sleep 1
+        done
+        [ "$pbr_revived" = 1 ] && break
+    done
+    if [ "$pbr_revived" != 1 ]; then
+        pbr_detail="the IME window did not come back after the panel BACK within the bounded field re-tap wait"
     else
-        TAPF 0.5 0.81
+        # The keyboard reports shown before its first frame accepts touches.
+        sleep 2
+        pbr_pre=$(field_text)
+        TAPF 0.4231 0.8474      # м on the tt layout (same key as TT_MIN)
+        # The м commit is asynchronous on API 28: poll until the field changes.
+        # An unchanged field after the bounded wait is a lost tap; a changed
+        # field without the м tail is a wrong commit and fails at once.
+        for pbr_poll in $(seq 1 6); do
+            sleep 1
+            pbr_field=$(field_text)
+            [ "$pbr_field" != "$pbr_pre" ] && break
+        done
+        if echo "$pbr_field" | grep -qE 'м$'; then
+            SHELL input keyevent KEYCODE_DEL    # probe cleanup: the м (the next probe's activity
+            sleep 0.4                           # restart clears the emoji the panel check committed)
+        fi
     fi
-    sleep 2
-    TAPF 0.4231 0.8474      # м on the tt layout (same key as TT_MIN)
-    sleep 0.6
-    pbr_field=$(field_text)
-    SHELL input keyevent KEYCODE_DEL    # probe cleanup: the м (the next probe's activity
-    sleep 0.4                           # restart clears the emoji the panel check committed)
 fi
 if [ -n "$pbr_detail" ]; then
     result FAIL panel-back-reopen "$pbr_detail"
@@ -797,7 +1252,7 @@ elif [ "$pbr_field" = "__NOFIELD__" ]; then
 elif echo "$pbr_field" | grep -qE 'м$'; then
     result PASS panel-back-reopen "BACK hid the window (mInputShown=$pbr_shown), field re-tap revived it; field: '$pbr_field'"
 else
-    result FAIL panel-back-reopen "post-BACK field re-tap did not revive the keyboard; field: '$pbr_field' (expected a м tail)"
+    result FAIL panel-back-reopen "the м probe tap committed no м tail after the keyboard came back; field: '$pbr_field' (expected a м tail)"
 fi
 
 # ── learned-emoji-tt: a learned word -> emoji pair takes the last strip cell ──
@@ -886,10 +1341,9 @@ PYEOF
     for round in 1 2; do
         refocus_tryit || { detail="keyboard did not come up before round $round"; break; }
         type_word "$(tt_word_coords "хәйерле")"
-        TAPF ${SPACE%,*} ${SPACE#*,}
+        confirm_space '^хәйерле $' || true
         type_word "$(tt_word_coords "иртә")"
-        TAPF ${SPACE%,*} ${SPACE#*,}
-        sleep 1.5
+        confirm_space '^хәйерле иртә $' || true
         f=$(field_text)
         echo "$f" | grep -qE '^хәйерле иртә $' \
             || { detail="round $round: phrase did not commit; field: '$f'"; break; }
@@ -917,9 +1371,9 @@ PYEOF
     fi
     if [ -z "$detail" ]; then
         type_word "$(tt_word_coords "хәйерле")"
-        TAPF ${SPACE%,*} ${SPACE#*,}
+        confirm_space '^хәйерле $' || true
         type_word "$(tt_word_coords "иртә")"
-        TAPF ${SPACE%,*} ${SPACE#*,}
+        confirm_space '^хәйерле иртә $' || true
         sleep 2                  # the NEXT_WORD answer (and the learned emoji) is asynchronous
         SHOT smoke-learned-emoji-band.png
         TAPF ${STRIP_CELL2%,*} ${STRIP_CELL2#*,}
@@ -1110,20 +1564,102 @@ crop_diff() {                                # crop_diff <crop> before.png after
 if [ "$HAVE_MAGICK" != 1 ]; then
     result SKIP night-mode "нет ImageMagick для пиксельной дельты"
 else
-    nm_saved=$(SHELL cmd uimode night | tr -d '\r' | grep -oP '(yes|no|auto)' | head -1 || true)
-    nm_saved="${nm_saved:-no}"
+    # API 24-25 have no `cmd uimode` shell implementation. Call UiModeManager's
+    # stable binder transaction instead of measuring two unchanged screenshots
+    # and misreporting a product failure. Where `cmd` exists, try it as shell
+    # first: on API 30+ the write succeeds even with mNightModeLocked=true, so
+    # no root is needed there. Only when the write demonstrably does not change
+    # mNightMode (API 29 answers "Night mode: no" and keeps the old value) do we
+    # restart adbd as root and repeat the SAME `cmd uimode` call, which that
+    # image honors. Root changes no product code and adbd is unrooted after the
+    # saved mode is restored.
+    nm_saved=$(SHELL cmd uimode night 2>/dev/null | tr -d '\r' | grep -oP '(yes|no|auto)' | head -1 || true)
+    nm_legacy=0
+    nm_root=0
+    if [ -z "$nm_saved" ]; then
+        nm_legacy=1
+        # Unguarded this assignment aborts the whole smoke under set -e whenever
+        # the parcel is absent or its format changes (API 30+ prints another
+        # layout), which used to end result.txt at the previous leg with no
+        # night-mode evidence at all. The case below already defaults a missing
+        # value to MODE_NIGHT_NO.
+        nm_saved=$(SHELL service call uimode 5 2>/dev/null | tr -d '\r' | grep -oP 'Parcel\([0-9a-f]+\s+\K[0-9a-f]+' | head -1 || true)
+        case "$nm_saved" in 0|1|2|3) ;; *) nm_saved=1 ;; esac
+    fi
+    # yes|no|auto for `cmd`, or the legacy numeric mode, mapped to the value
+    # dumpsys uimode reports as mNightMode=<n>.
+    nm_value() {
+        case "$1" in
+            yes) echo 2 ;;
+            no) echo 1 ;;
+            auto) echo 0 ;;
+            *) echo "$1" ;;
+        esac
+    }
+    set_night_mode() {
+        if [ "$nm_legacy" = 1 ]; then
+            SHELL service call uimode 4 i32 "$1" >/dev/null 2>&1 || true
+            return
+        fi
+        SHELL cmd uimode night "$1" >/dev/null 2>&1 || true
+        sleep 1
+        if ! SHELL dumpsys uimode 2>/dev/null | tr -d '\r' | grep -q "mNightMode=$(nm_value "$1") "; then
+            A root >/dev/null 2>&1 || true
+            A wait-for-device
+            sleep 3
+            nm_root=1
+            SHELL cmd uimode night "$1" >/dev/null 2>&1 || true
+        fi
+    }
     nm_detail=""
-    refocus_tryit || nm_detail="keyboard did not come up for the day shot"
+    # Normalize the baseline to day before the reference shot. The mode is a
+    # disk-persisted system setting, so a reused AVD can boot already in night
+    # mode; both screenshots then show the same theme, the delta is 0 px, and a
+    # correct keyboard is reported as a failure. Enter day exactly like the
+    # night flip below (same root fallback) and restore the saved mode at the
+    # end, so a reused AVD still keeps the state the script found.
+    if [ "$nm_legacy" = 1 ]; then
+        set_night_mode 1
+    else
+        set_night_mode no
+    fi
+    sleep 2                         # the config change recreates the activity
+    SHELL dumpsys uimode >"$OUTDIR/uimode-day.txt" 2>/dev/null
+    if ! grep -q 'mNightMode=1 ' "$OUTDIR/uimode-day.txt"; then
+        nm_detail="image did not enter day mode (mNightMode unchanged); see uimode-day.txt"
+    fi
+    if [ -z "$nm_detail" ]; then
+        refocus_tryit || nm_detail="keyboard did not come up for the day shot"
+    fi
     if [ -z "$nm_detail" ]; then
         SHOT smoke-night-off.png
-        SHELL cmd uimode night yes || true
+        if [ "$nm_legacy" = 1 ]; then
+            set_night_mode 2
+        else
+            set_night_mode yes
+        fi
         sleep 2                         # the config change recreates the activity
+        # A flip the image refused is not a keyboard failure: record it as such,
+        # with the dumpsys evidence, instead of diffing two identical shots.
+        SHELL dumpsys uimode >"$OUTDIR/uimode-night.txt" 2>/dev/null
+        if ! grep -q 'mNightMode=2 ' "$OUTDIR/uimode-night.txt"; then
+            nm_detail="image did not enter night mode (mNightMode unchanged); see uimode-night.txt"
+        fi
         refocus_tryit || nm_detail="keyboard did not come up for the night shot"
     fi
     if [ -z "$nm_detail" ]; then
         SHOT smoke-night-on.png
     fi
-    SHELL cmd uimode night "$nm_saved" || true
+    if [ "$nm_legacy" = 1 ]; then
+        set_night_mode "$((16#$nm_saved))"
+    else
+        set_night_mode "$nm_saved"
+    fi
+    if [ "$nm_root" = 1 ]; then
+        A unroot >/dev/null 2>&1 || true
+        A wait-for-device
+        sleep 3
+    fi
     sleep 1
     if [ -n "$nm_detail" ]; then
         result FAIL night-mode "$nm_detail"
@@ -1148,6 +1684,10 @@ fi
 # rotation values are restored to what the script found.
 ls_saved_acc=$(SHELL settings get system accelerometer_rotation | tr -d '\r' || true)
 ls_saved_rot=$(SHELL settings get system user_rotation | tr -d '\r' || true)
+# An unset shell setting is the literal string "null"; putting "null" back would
+# fail the settings provider and leave the AVD locked in landscape.
+[ "$ls_saved_acc" = "null" ] && ls_saved_acc=1
+[ "$ls_saved_rot" = "null" ] && ls_saved_rot=0
 SHELL settings put system accelerometer_rotation 0 || true
 SHELL settings put system user_rotation 1 || true
 sleep 2
@@ -1155,19 +1695,60 @@ ls_detail=""
 ls_field=""
 refocus_tryit || ls_detail="keyboard did not come up in landscape"
 if [ -z "$ls_detail" ]; then
-    ls_frame=$(SHELL dumpsys window 2>/dev/null | tr -d '\r' | python3 -c '
+    ls_dump="$OUTDIR/dumpsys-window-landscape.txt"
+    SHELL dumpsys window > "$ls_dump" 2>&1
+    # API 30+ reports the IME insets frame. API 30-33 name the type
+    # ITYPE_IME, API 34+ uses ime; the id is absent on older images.
+    # Older images only have the classic InputMethod window block with
+    # mFrame. Keep the dump as evidence either way.
+    ls_frame=$(python3 - "$ls_dump" <<'PY'
 import re
 import sys
 
-text = sys.stdin.read()
+with open(sys.argv[1], encoding="utf-8", errors="replace") as source:
+    text = source.read().replace("\r", "")
 m = re.search(
-    r"InsetsSource id=\d+ type=ime frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]",
+    r"InsetsSource(?: id=\d+)? type=(?:ime|ITYPE_IME) "
+    r"frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]",
     text)
 if m:
     print(" ".join(m.groups()))
-')
+else:
+    found = False
+    for window in re.finditer(
+            r"Window[^\n]*InputMethod[^\n]*:\n((?:[ \t]+[^\n]*\n)+)",
+            text):
+        m = re.search(
+            r"mFrame=Rect\(\s*(\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)",
+            window.group(1))
+        if m:
+            print(" ".join(m.groups()))
+            found = True
+            break
+    if not found:
+        # Classic dumps make the InputMethod window fill the display. While the
+        # keyboard is shown, mCurrent (mCur on some branches) ends where the
+        # app stops and mDock covers the IME area, so their intersection is
+        # the actual keyboard viewport. The bracketing differs by release:
+        # API 24-27 print mCur=(0,66)-(2148,425), later images use
+        # mCurrent=[0,66][2148,425]; both name the same rectangles.
+        def legacy_rect(name):
+            match = re.search(name + r"=\[(\d+),(\d+)\]\[(\d+),(\d+)\]", text)
+            if match is None:
+                match = re.search(name + r"=\((\d+),(\d+)\)-\((\d+),(\d+)\)", text)
+            return match
+
+        dock = legacy_rect("mDock")
+        cur = legacy_rect(r"m(?:Cur|Current)")
+        if dock and cur:
+            dl, dt, dr, db = (int(value) for value in dock.groups())
+            _cl, _ct, _cr, cb = (int(value) for value in cur.groups())
+            if dt < cb < db:
+                print(dl, cb, dr, db)
+PY
+)
     if [ -z "$ls_frame" ]; then
-        ls_detail="IME frame not found in dumpsys window"
+        ls_detail="IME frame not found in dumpsys window; see dumpsys-window-landscape.txt"
     fi
 fi
 if [ -z "$ls_detail" ]; then
@@ -1178,9 +1759,17 @@ if [ -z "$ls_detail" ]; then
     ls_rowh=$(( (ls_b - ls_t - 121) / 5 ))
     ls_x=$(python3 -c "print(round($ls_l + ($ls_r - $ls_l) * 0.08333))")
     ls_y=$(( ls_t + 121 + ls_rowh / 2 ))
-    SHELL input tap "$ls_x" "$ls_y"
-    sleep 0.6
-    ls_field=$(field_text)
+    # On the slow legacy images the first tap right after the rotation lands
+    # before the freshly rotated IME surface accepts touches: it commits
+    # nothing even though mInputShown is already true. Poll the field and
+    # re-tap until the ә arrives; a working keyboard answers on the first
+    # round, a dead one fails after the window instead of flaking.
+    for _ in $(seq 1 10); do
+        SHELL input tap "$ls_x" "$ls_y"
+        sleep 0.6
+        ls_field=$(field_text)
+        echo "$ls_field" | grep -qE '[әӘ] *$' && break
+    done
     SHELL input keyevent KEYCODE_DEL
     sleep 0.4
 fi
@@ -1189,6 +1778,9 @@ fi
 # accelerometer_rotation to 0, so the reverse order loses the saved value.
 SHELL settings put system accelerometer_rotation "${ls_saved_acc:-1}" || true
 SHELL settings put system user_rotation "${ls_saved_rot:-0}" || true
+sleep 2
+SHELL settings put system accelerometer_rotation "${SMOKE_SAVED_ACC:-1}" || true
+SHELL settings put system user_rotation "${SMOKE_SAVED_ROT:-0}" || true
 sleep 2
 if [ -n "$ls_detail" ]; then
     result FAIL landscape-type "$ls_detail"
@@ -1201,10 +1793,15 @@ else
 fi
 
 # ── crash buffer ──
+# Only a crash of the package under test fails the leg. A bare 'AndroidRuntime'
+# or any-process rule misfires here: on API 24-27 images a zygote fork can end
+# in a native SIGSEGV whose backtrace prints an AndroidRuntime symbol, and other
+# preinstalled apps may crash on their own; neither is this release's evidence.
 if ! A logcat -b crash -d > "$OUTDIR/logcat-crash.txt" 2>&1; then
     result FAIL crash-log "не удалось прочитать crash-буфер: $(tail -1 "$OUTDIR/logcat-crash.txt")"
-elif grep -qE 'FATAL EXCEPTION|AndroidRuntime' "$OUTDIR/logcat-crash.txt"; then
-    result FAIL crash-log "$(grep -cE 'FATAL EXCEPTION' "$OUTDIR/logcat-crash.txt") FATAL в crash-буфере"
+elif { grep -A3 'FATAL EXCEPTION' "$OUTDIR/logcat-crash.txt" | grep -qF "Process: $PKG"; } \
+        || grep -qF ">>> $PKG <<<" "$OUTDIR/logcat-crash.txt"; then
+    result FAIL crash-log "crash of $PKG in the buffer; see logcat-crash.txt"
 else
     result PASS crash-log "crash-буфер пуст"
 fi

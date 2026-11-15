@@ -26,7 +26,7 @@ import org.junit.Test
  * That is deliberate, not an accident of copy-paste: the Russian layout carries the same Tatar
  * long-press duplicates (у→ү, н→ң, х→һ, а→ә, о→ө, ж→җ …) so a bilingual user gets the Tatar
  * letters without switching layouts. The only difference between the two layouts lives in
- * `rowkeys_tatar_extra.xml` — the visible fifth row of ә ө ү җ ң һ, which the Russian layout
+ * `rowkeys_tatar_extra.xml` — the visible fifth row of ә ө ү җ ң һ ё ъ, which the Russian layout
  * does not have.
  *
  * Because the three shared files are identical, editing one side without the other silently

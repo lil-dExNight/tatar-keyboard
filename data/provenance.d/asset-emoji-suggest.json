@@ -1,0 +1,11 @@
+{
+  "id": "asset-emoji-suggest-v1",
+  "revision": "emoji-suggest/v1",
+  "size_bytes": 89318,
+  "sha256": "54171e32bdf3be6883dc6ffcbcf603257753cb4e6eaa5d20b5b38cd0def42c99",
+  "license": "Apache-2.0",
+  "source_role": "generated_emoji_suggestion_table",
+  "split_rule": "not-applicable",
+  "generation_command": "python3 scripts/emoji_suggest_pack.py build --data scripts/emoji_suggest_data.tsv --panel-asset app/src/main/assets/emoji/emoji_set_v1.txt --output app/src/main/assets/emoji/emoji_suggest_v1.txt",
+  "path": "app/src/main/assets/emoji/emoji_suggest_v1.txt"
+}

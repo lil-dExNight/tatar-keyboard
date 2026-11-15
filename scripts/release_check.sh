@@ -4,7 +4,7 @@
 # machine-readable RESULT block, and any FAIL gives a non-zero exit code. Any
 # unexpected error (no aapt2, broken APK, missing contract) also exits non-zero.
 # Artifact checks: size, asset pins, bundled asset sets, dex layout, profile rules, permissions,
-# signature, tree/APK freshness, tt/ru eval parity, version, store changelog, delta to dist/.
+# signature, tree/APK freshness, tt/ru eval parity, version, tt/ru/en changelog, delta to dist/.
 #
 # Run from the repository root:
 #   bash scripts/release_check.sh [--quick|--full|--checks LIST] [path/to.apk]
@@ -1217,13 +1217,36 @@ else
     report FAIL artifact.version "aapt2 dump badging упал: $BADGE"
 fi
 
-# --- 7. store changelog metadata/en-US/changelogs/<versionCode>.txt ----------------------------
+# --- 7. localized store changelogs for the version in app/build.gradle -------------------------
 
-CHANGELOG="metadata/en-US/changelogs/${APK_VC:-$EXPECTED_VC}.txt"
-if [ -n "$APK_VC" ] && [ -f "$CHANGELOG" ]; then
-    report PASS artifact.changelog "$CHANGELOG на месте ($(wc -c <"$CHANGELOG") Б)"
+# Check the expected version, not only the APK's badge: a version mismatch must not move this
+# gate to a different set of files. Empty or whitespace-only files are not release notes.
+CHANGELOG_FAILURES=()
+CHANGELOG_DETAILS=()
+for locale in tt ru-RU en-US; do
+    CHANGELOG="metadata/$locale/changelogs/$EXPECTED_VC.txt"
+    if [ ! -f "$CHANGELOG" ] || [ ! -r "$CHANGELOG" ]; then
+        CHANGELOG_FAILURES+=("$locale:missing:$CHANGELOG")
+    elif ! python3 - "$CHANGELOG" <<'PYEOF'
+import sys
+from pathlib import Path
+
+try:
+    text = Path(sys.argv[1]).read_text(encoding="utf-8")
+except (OSError, UnicodeDecodeError):
+    sys.exit(1)
+sys.exit(0 if text.strip() else 1)
+PYEOF
+    then
+        CHANGELOG_FAILURES+=("$locale:empty-or-invalid:$CHANGELOG")
+    else
+        CHANGELOG_DETAILS+=("$locale=$(wc -c <"$CHANGELOG")B")
+    fi
+done
+if [ "${#CHANGELOG_FAILURES[@]}" -eq 0 ]; then
+    report PASS artifact.changelog "versionCode $EXPECTED_VC: ${CHANGELOG_DETAILS[*]}"
 else
-    report FAIL artifact.changelog "нет $CHANGELOG"
+    report FAIL artifact.changelog "versionCode $EXPECTED_VC: ${CHANGELOG_FAILURES[*]}"
 fi
 
 # --- 8. delta against the previous release in dist/ ---------------------------------------------

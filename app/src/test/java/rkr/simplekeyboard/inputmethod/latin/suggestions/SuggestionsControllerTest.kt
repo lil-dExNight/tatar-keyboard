@@ -319,7 +319,7 @@ class SuggestionsControllerTest {
     }
 
     @Test
-    fun glideIndexPrewarmsAtTheSessionsFirstTrackingDownWithoutStartingLookup() {
+    fun glideIndexPrewarmAtTrackingDownFinishesAfterTheFirstPrefixLookup() {
         val h = Harness()
         h.controller.setGlideGate(GlideGate { true })
         h.controller.onStartInput(eligible = true)
@@ -327,8 +327,19 @@ class SuggestionsControllerTest {
         assertEquals(0, h.engine.prewarmCount)
         h.controller.onGlideTrackingStarted()
 
-        assertEquals(1, h.engine.prewarmCount)
+        // Deferred: with suggestions live, the session's first prefix lookup finishes first on
+        // the engine worker; the full index build must not sit ahead of that first answer.
+        assertEquals(0, h.engine.prewarmCount)
         assertTrue(h.engine.requestedPrefixes.isEmpty())
+        assertTrue(h.engine.requestedContexts.isEmpty())
+
+        // The first prefix result releases the deferred build; the prewarm starts no lookup.
+        h.editor.word = "сүз"
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзгә"), LookupKind.PREFIX)
+
+        assertEquals(1, h.engine.prewarmCount)
+        assertEquals(1, h.engine.requestedPrefixes.size)
         assertTrue(h.engine.requestedContexts.isEmpty())
     }
 
@@ -359,12 +370,16 @@ class SuggestionsControllerTest {
 
     @Test
     fun glideTrackingStartPrewarmKeepsTheSingleLanguageResidency() {
-        // The session's first tracking down on a freshly active language drops the previous
-        // language's index before prewarming, exactly as an arming glide does.
+        // The deferred prewarm keeps the same residency rule: released by the first prefix
+        // result, it drops the previous language's index before building, exactly as an arming
+        // glide does.
         val h = Harness()
         h.controller.setGlideGate(GlideGate { true })
         h.controller.onStartInput(eligible = true)
         h.controller.onGlideTrackingStarted()
+        h.editor.word = "сүз"
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзгә"), LookupKind.PREFIX)
         assertEquals(1, h.engine.prewarmCount)
         assertEquals(0, h.engine.releaseCount)
 
@@ -372,6 +387,8 @@ class SuggestionsControllerTest {
         // The same fake serves every slot in this harness; ru publishes synchronously.
         h.controller.signalDictionaryReadyForTest()
         h.controller.onGlideTrackingStarted()
+        h.controller.onTextChanged()
+        h.capturedCallback!!.onResult(FakeEngine.TOKEN, listOf("сүзгә"), LookupKind.PREFIX)
         assertEquals(2, h.engine.prewarmCount)
         assertEquals("the left language's index is dropped", 1, h.engine.releaseCount)
     }

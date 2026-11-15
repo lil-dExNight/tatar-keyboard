@@ -1,0 +1,6 @@
+• The Tatar top row gained direct keys for ё and ъ: ә ө ү җ ң һ ё ъ — every Tatar alphabet letter has its own key
+• Emoji search understands Tatar words: «этэч» finds 🐓
+• Setup ends with a guide card: layout, long-press partners, gestures, personal dictionary
+• Privacy policy now exists in Tatar
+• Suggestions know the forms -абыз/-әбез and -мы/-ме
+• Safer backup restore, cleaner deletions, lighter dictionaries

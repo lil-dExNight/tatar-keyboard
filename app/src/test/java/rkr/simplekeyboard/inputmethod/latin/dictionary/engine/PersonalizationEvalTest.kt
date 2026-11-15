@@ -863,12 +863,12 @@ class PersonalizationEvalTest {
             "hash" to 54L, "chrono" to 38L, "rep" to 369L,
         )
         private val PIN_PRIME_UNSEEN_TOKENS = mapOf(
-            "hash" to 67L, "chrono" to 58L, "rep" to 417L,
+            "hash" to 60L, "chrono" to 55L, "rep" to 381L,
         )
         private val PIN_UNSEEN_STEM = mapOf(
             "hash" to listOf(0L, 0L, 0L),
             "chrono" to listOf(0L, 0L, 0L),
-            "rep" to listOf(366L, 366L, 366L),
+            "rep" to listOf(330L, 330L, 330L),
         )
 
         private const val PIN_REP_SWEEP_L100_GRAD_WORDS = 155
@@ -884,7 +884,7 @@ class PersonalizationEvalTest {
         // repetition split. The control count is cross-pinned with the fourth-cell keystroke
         // arm of TtSuggestEvalTest; the lift is pinned python-side (PIN_REP_KS_PERS_KEYS in
         // tests/personalization_eval) and floored here at 80%.
-        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_095
+        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_089
         private const val PIN_REP_KS_LIFT_KEYS = 1_084
 
         private lateinit var evalLines: List<String>

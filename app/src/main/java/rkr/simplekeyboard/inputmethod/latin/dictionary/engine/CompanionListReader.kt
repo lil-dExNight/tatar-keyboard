@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2026 Tatar Keyboard contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.CompanionListArtifactSpec
@@ -10,28 +26,42 @@ import java.security.MessageDigest
 import java.util.zip.Inflater
 
 /**
- * The validated contents of one cold-companion word list: the words in their stored (unsigned
- * UTF-8 byte) order. Android-free, so it is unit-testable on the plain JVM.
- *
- * [containsWord] answers an exact whole-word membership question with a binary search over the
- * stored order; an unlisted word answers false, so an unlisted word of the companion language
- * stays correctable exactly as before the list existed.
+ * A validated cold-companion list in unsigned UTF-8 byte order. One byte array and one offset
+ * array back both membership and [words]; decoded strings are created only when [words] is read.
  */
 class ValidatedCompanionList internal constructor(
-    /** The words, in unsigned UTF-8 byte order. */
-    val words: List<String>,
+    private val wordBytes: ByteArray,
+    private val wordStarts: IntArray,
 ) {
-    /** [words] as UTF-8 bytes, encoded once at load: a probe never re-encodes a stored word. */
-    private val encodedWords: List<ByteArray> = words.map { it.toByteArray(Charsets.UTF_8) }
+    internal constructor(words: List<String>) : this(packWords(words))
+
+    private constructor(packed: PackedWords) : this(packed.bytes, packed.starts)
+
+    /** The decoded words, in stored order; access does not retain the decoded strings. */
+    val words: List<String> = object : AbstractList<String>() {
+        override val size: Int get() = wordStarts.size - 1
+
+        override fun get(index: Int): String {
+            if (index < 0 || index >= size) throw IndexOutOfBoundsException(index.toString())
+            return String(
+                wordBytes, wordStarts[index], wordStarts[index + 1] - wordStarts[index],
+                Charsets.UTF_8,
+            )
+        }
+    }
+
+    /** Heap payload retained by this list, excluding the two array headers and the decoded view. */
+    val retainedByteEstimate: Long
+        get() = wordBytes.size.toLong() + wordStarts.size * Int.SIZE_BYTES
 
     fun containsWord(normalizedWord: String): Boolean {
         val query = normalizedWord.toByteArray(Charsets.UTF_8)
         if (query.isEmpty() || query.size > TatCompFormat.MAX_WORD_BYTES) return false
         var low = 0
-        var high = encodedWords.size - 1
+        var high = wordStarts.size - 2
         while (low <= high) {
             val middle = (low + high) ushr 1
-            when (compareBytes(query, encodedWords[middle])) {
+            when (compareToStored(query, middle)) {
                 0 -> return true
                 -1 -> high = middle - 1
                 else -> low = middle + 1
@@ -40,13 +70,34 @@ class ValidatedCompanionList internal constructor(
         return false
     }
 
-    private fun compareBytes(left: ByteArray, right: ByteArray): Int {
-        val limit = minOf(left.size, right.size)
+    private fun compareToStored(query: ByteArray, wordIndex: Int): Int {
+        val start = wordStarts[wordIndex]
+        val length = wordStarts[wordIndex + 1] - start
+        val limit = minOf(query.size, length)
         for (index in 0 until limit) {
-            val order = (left[index].toInt() and 0xff) - (right[index].toInt() and 0xff)
+            val order = (query[index].toInt() and 0xff) -
+                (wordBytes[start + index].toInt() and 0xff)
             if (order != 0) return Integer.signum(order)
         }
-        return Integer.signum(left.size - right.size)
+        return Integer.signum(query.size - length)
+    }
+
+    private class PackedWords(val bytes: ByteArray, val starts: IntArray)
+
+    companion object {
+        private fun packWords(words: List<String>): PackedWords {
+            val encoded = Array(words.size) { words[it].toByteArray(Charsets.UTF_8) }
+            val bytes = ByteArray(encoded.sumOf { it.size })
+            val starts = IntArray(words.size + 1)
+            var cursor = 0
+            for (index in encoded.indices) {
+                val word = encoded[index]
+                word.copyInto(bytes, cursor)
+                cursor += word.size
+                starts[index + 1] = cursor
+            }
+            return PackedWords(bytes, starts)
+        }
     }
 }
 
@@ -108,12 +159,12 @@ class CompanionListReader {
 
     /** The in-memory counterpart of [read]: the same checks over bytes already inflated. */
     fun validateRaw(raw: ByteArray, spec: CompanionListArtifactSpec): ValidatedCompanionList =
-        ValidatedCompanionList(parseHeader(raw, spec))
+        parseHeader(raw, spec)
 
     private fun parseHeader(
         raw: ByteArray,
         spec: CompanionListArtifactSpec,
-    ): List<String> {
+    ): ValidatedCompanionList {
         if (raw.size > TatCompFormat.MAX_RAW_SIZE.toInt()) {
             throw CompanionListValidationException("raw size limit exceeded")
         }
@@ -169,11 +220,18 @@ class CompanionListReader {
         if (!MessageDigest.getInstance("SHA-256").digest(zeroed).contentEquals(checksum)) {
             throw CompanionListValidationException("header checksum mismatch")
         }
+        if (wordCount > bodySize) {
+            throw CompanionListValidationException("body ends before the word count is met")
+        }
 
-        val words = ArrayList<String>(wordCount.toInt())
+        val count = wordCount.toInt()
+        val wordBytes = ByteArray(bodySize.toInt() - count)
+        val wordStarts = IntArray(count + 1)
         var cursor = TatCompFormat.HEADER_SIZE
-        var previous: ByteArray? = null
-        repeat(wordCount.toInt()) {
+        var writeCursor = 0
+        var previousStart = -1
+        var previousLength = 0
+        repeat(count) { index ->
             if (cursor >= raw.size) {
                 throw CompanionListValidationException("body ends before the word count is met")
             }
@@ -188,23 +246,22 @@ class CompanionListReader {
             if (cursor + length > raw.size) {
                 throw CompanionListValidationException("a stored word runs past the body")
             }
-            val word = raw.copyOfRange(cursor, cursor + length)
-            cursor += length
-            if (previous != null && compareUnsigned(previous!!, word) >= 0) {
+            if (previousStart >= 0 &&
+                compareUnsigned(raw, previousStart, previousLength, raw, cursor, length) >= 0
+            ) {
                 throw CompanionListValidationException("words are not strictly ascending")
             }
-            previous = word
-            val text = try {
-                String(word, Charsets.UTF_8)
-            } catch (error: RuntimeException) {
-                throw CompanionListValidationException("a stored word is not valid UTF-8", error)
-            }
-            words.add(text)
+            raw.copyInto(wordBytes, writeCursor, cursor, cursor + length)
+            previousStart = cursor
+            previousLength = length
+            cursor += length
+            writeCursor += length
+            wordStarts[index + 1] = writeCursor
         }
         if (cursor != raw.size) {
             throw CompanionListValidationException("body holds more than the word count")
         }
-        return words
+        return ValidatedCompanionList(wordBytes, wordStarts)
     }
 
     private fun readExactly(input: InputStream, spec: CompanionListArtifactSpec): ByteArray =
@@ -225,13 +282,20 @@ class CompanionListReader {
             throw CompanionListValidationException("unreadable asset stream", error)
         }
 
-    private fun compareUnsigned(left: ByteArray, right: ByteArray): Int {
-        val limit = minOf(left.size, right.size)
+    private fun compareUnsigned(
+        left: ByteArray,
+        leftStart: Int,
+        leftLength: Int,
+        right: ByteArray,
+        rightStart: Int,
+        rightLength: Int,
+    ): Int {
+        val limit = minOf(leftLength, rightLength)
         for (index in 0 until limit) {
-            val order = (left[index].toInt() and 0xff) - (right[index].toInt() and 0xff)
+            val order = (left[leftStart + index].toInt() and 0xff) -
+                (right[rightStart + index].toInt() and 0xff)
             if (order != 0) return Integer.signum(order)
         }
-        return Integer.signum(left.size - right.size)
+        return Integer.signum(leftLength - rightLength)
     }
 }
-

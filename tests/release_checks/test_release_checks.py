@@ -410,6 +410,61 @@ class ReleaseGateTest(unittest.TestCase):
         self.assertRegex(result.stdout, r"SKIP\s+gates\.text_hygiene")
 
 
+class LocalizedChangelogTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.repo = FixtureRepository(Path(self.temporary_directory.name))
+        script = RELEASE_CHECK.read_text(encoding="utf-8")
+        self.check = script.split("# --- 7. localized store changelogs", 1)[1].split(
+            "\n", 1)[1].split("# --- 8. delta against", 1)[0]
+        for locale in ("tt", "ru-RU", "en-US"):
+            self.write_changelog(locale, f"{locale} release notes\n")
+
+    def write_changelog(self, locale: str, text: str) -> None:
+        self.repo.write(f"metadata/{locale}/changelogs/57.txt", text)
+
+    def changelog_result(self) -> str:
+        harness = """set -euo pipefail
+EXPECTED_VC=57
+FAILURES=0
+report() { echo "RESULT|$1|$2|$3"; }
+""" + self.check
+        result = subprocess.run(
+            ["bash", "-c", harness], cwd=self.repo.root, check=False,
+            capture_output=True, text=True,
+        )
+        output = result.stdout + result.stderr
+        lines = [line for line in output.splitlines() if line.startswith("RESULT|") and
+                 "|artifact.changelog|" in line]
+        self.assertEqual(1, len(lines), output)
+        return lines[0]
+
+    def test_all_three_current_version_changelogs_pass(self) -> None:
+        line = self.changelog_result()
+        self.assertTrue(line.startswith("RESULT|PASS|artifact.changelog|"), line)
+        self.assertIn("versionCode 57", line)
+        for locale in ("tt", "ru-RU", "en-US"):
+            self.assertIn(locale, line)
+
+    def test_each_missing_locale_fails_the_gate(self) -> None:
+        for locale in ("tt", "ru-RU", "en-US"):
+            with self.subTest(locale=locale):
+                path = self.repo.root / "metadata" / locale / "changelogs" / "57.txt"
+                original = path.read_bytes()
+                path.unlink()
+                line = self.changelog_result()
+                self.assertTrue(line.startswith("RESULT|FAIL|artifact.changelog|"), line)
+                self.assertIn(f"{locale}:missing", line)
+                path.write_bytes(original)
+
+    def test_an_empty_localized_changelog_fails(self) -> None:
+        self.write_changelog("tt", " \n\t\n")
+        line = self.changelog_result()
+        self.assertTrue(line.startswith("RESULT|FAIL|artifact.changelog|"), line)
+        self.assertIn("tt:empty-or-invalid", line)
+
+
 class ContinuousIntegrationChecksTest(unittest.TestCase):
     """CI runs the keystore-free artifact checks on the unsigned release APK."""
 

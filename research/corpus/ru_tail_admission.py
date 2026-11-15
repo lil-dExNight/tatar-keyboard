@@ -41,6 +41,7 @@ import corpuslib as CL  # noqa: E402
 import dict_accept  # noqa: E402
 import dictionary_coverage as coverage  # noqa: E402
 import dictionary_pack as dp  # noqa: E402
+import evaluation_metrics as metrics  # noqa: E402
 import filters as F  # noqa: E402
 import rebuild_assets  # noqa: E402
 import suggest_chain  # noqa: E402
@@ -177,32 +178,39 @@ def measure_side(dict_asset: Path, bigram_asset: Path, lines: list[str]) -> dict
     sentence_tokens: list[int] = []
     sentence_covered: list[int] = []
     sentence_hits1: list[int] = []
-    sentence_hits3: list[int] = []
+    sentence_visible_hits: list[int] = []
+    sentence_engine_hits: list[int] = []
     sentence_pairs: list[int] = []
     for line in lines:
         line_words = line.split(" ")
         sentence_tokens.append(len(line_words))
         sentence_covered.append(sum(1 for word in line_words if word in vocabulary))
         hits1 = 0
-        hits3 = 0
+        visible_hits = 0
+        engine_hits = 0
         for head, successor in zip(line_words, line_words[1:]):
             shown = chain.predict_top3(head)
             if shown and successor == shown[0]:
                 hits1 += 1
-            if successor in shown:
-                hits3 += 1
+            visible_hits += successor in metrics.visible_top3(shown)
+            engine_hits += successor in metrics.engine_top4(shown)
         sentence_hits1.append(hits1)
-        sentence_hits3.append(hits3)
+        sentence_visible_hits.append(visible_hits)
+        sentence_engine_hits.append(engine_hits)
         sentence_pairs.append(len(line_words) - 1)
     return {
         "sentence_tokens": sentence_tokens,
         "sentence_covered": sentence_covered,
         "sentence_hits1": sentence_hits1,
-        "sentence_hits3": sentence_hits3,
+        "sentence_visible_hits": sentence_visible_hits,
+        "sentence_engine_hits": sentence_engine_hits,
         "sentence_pairs": sentence_pairs,
         "coverage_pct": sum(sentence_covered) * 100.0 / sum(sentence_tokens),
         "chain_top1_pct": sum(sentence_hits1) * 100.0 / sum(sentence_pairs),
-        "chain_top3_pct": sum(sentence_hits3) * 100.0 / sum(sentence_pairs),
+        "chain_visible_top3_pct": (
+            sum(sentence_visible_hits) * 100.0 / sum(sentence_pairs)
+        ),
+        "chain_engine_top4_pct": sum(sentence_engine_hits) * 100.0 / sum(sentence_pairs),
     }
 
 
@@ -216,24 +224,7 @@ def paired_delta_ci95(
     tt_gate_check.paired_delta_ci95; the weights of the two arms may differ (the chain
     rate has equal weights by construction, the coverage rate does not).
     """
-    size = len(base_hits)
-    stream = suggest_chain.splitmix64_index_stream(size)
-    deltas: list[float] = []
-    for _round in range(suggest_chain.BOOTSTRAP_ROUNDS):
-        base_h = base_w = cand_h = cand_w = 0
-        for _ in range(size):
-            drawn = next(stream)
-            base_h += base_hits[drawn]
-            base_w += base_weights[drawn]
-            cand_h += cand_hits[drawn]
-            cand_w += cand_weights[drawn]
-        deltas.append((cand_h * 100.0 / cand_w) - (base_h * 100.0 / base_w))
-    deltas.sort()
-    rounds = suggest_chain.BOOTSTRAP_ROUNDS
-    return (
-        deltas[suggest_chain.nearest_rank_index(25, rounds)],
-        deltas[suggest_chain.nearest_rank_index(975, rounds)],
-    )
+    return metrics.paired_delta_ci95(base_hits, base_weights, cand_hits, cand_weights)
 
 
 def gate(args) -> int:
@@ -248,23 +239,45 @@ def gate(args) -> int:
     top1_ci = paired_delta_ci95(
         base["sentence_hits1"], base["sentence_pairs"],
         cand["sentence_hits1"], cand["sentence_pairs"])
-    top3_ci = paired_delta_ci95(
-        base["sentence_hits3"], base["sentence_pairs"],
-        cand["sentence_hits3"], cand["sentence_pairs"])
+    visible = metrics.paired_metric_report(
+        base["sentence_visible_hits"],
+        base["sentence_pairs"],
+        cand["sentence_visible_hits"],
+        cand["sentence_pairs"],
+        k=metrics.VISIBLE_TOP_K,
+        role="user",
+    )
+    engine = metrics.paired_metric_report(
+        base["sentence_engine_hits"],
+        base["sentence_pairs"],
+        cand["sentence_engine_hits"],
+        cand["sentence_pairs"],
+        k=metrics.ENGINE_TOP_K,
+        role="diagnostic",
+    )
 
     coverage_delta = cand["coverage_pct"] - base["coverage_pct"]
     gate_coverage = coverage_delta >= COVERAGE_GATE_PP and coverage_ci[0] > 0.0
-    chain_ok = top3_ci[0] <= 0.0 <= top3_ci[1] or top3_ci[0] > 0.0
+    visible_ci = visible["delta"]["ci95"]
+    chain_ok = visible_ci[0] <= 0.0 <= visible_ci[1] or visible_ci[0] > 0.0
     report = {
         "baseline": {
+            "coverage_hits": sum(base["sentence_covered"]),
+            "coverage_denominator": sum(base["sentence_tokens"]),
             "coverage_pct": round(base["coverage_pct"], 4),
             "chain_top1_pct": round(base["chain_top1_pct"], 4),
-            "chain_top3_pct": round(base["chain_top3_pct"], 4),
+            "chain_visible_top3_pct": round(base["chain_visible_top3_pct"], 4),
+            "chain_engine_top4_pct": round(base["chain_engine_top4_pct"], 4),
+            "chain_pairs": sum(base["sentence_pairs"]),
         },
         "candidate": {
+            "coverage_hits": sum(cand["sentence_covered"]),
+            "coverage_denominator": sum(cand["sentence_tokens"]),
             "coverage_pct": round(cand["coverage_pct"], 4),
             "chain_top1_pct": round(cand["chain_top1_pct"], 4),
-            "chain_top3_pct": round(cand["chain_top3_pct"], 4),
+            "chain_visible_top3_pct": round(cand["chain_visible_top3_pct"], 4),
+            "chain_engine_top4_pct": round(cand["chain_engine_top4_pct"], 4),
+            "chain_pairs": sum(cand["sentence_pairs"]),
         },
         "coverage_delta_pp": round(coverage_delta, 4),
         "coverage_delta_ci95": [round(coverage_ci[0], 4), round(coverage_ci[1], 4)],
@@ -272,10 +285,22 @@ def gate(args) -> int:
         "coverage_gate_passed": gate_coverage,
         "chain_top1_delta_pp": round(cand["chain_top1_pct"] - base["chain_top1_pct"], 4),
         "chain_top1_delta_ci95": [round(top1_ci[0], 4), round(top1_ci[1], 4)],
-        "chain_top3_delta_pp": round(cand["chain_top3_pct"] - base["chain_top3_pct"], 4),
-        "chain_top3_delta_ci95": [round(top3_ci[0], 4), round(top3_ci[1], 4)],
+        "chain_top3_delta_pp": round(visible["delta"]["pp"], 4),
+        "chain_top3_delta_ci95": [round(bound, 4) for bound in visible_ci],
+        "chain_visible_top3_delta_pp": round(visible["delta"]["pp"], 4),
+        "chain_visible_top3_delta_ci95": [round(bound, 4) for bound in visible_ci],
+        "chain_engine_top4_delta_pp": round(engine["delta"]["pp"], 4),
+        "chain_engine_top4_delta_ci95": [
+            round(bound, 4) for bound in engine["delta"]["ci95"]
+        ],
         "chain_gate_passed": chain_ok,
         "gate_passed": gate_coverage and chain_ok,
+        "measurement": metrics.measurement_report(
+            units=len(lines),
+            denominator_name="adjacent next-word pairs",
+            visible_top3_report=visible,
+            engine_top4_report=engine,
+        ),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 0

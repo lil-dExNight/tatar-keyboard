@@ -843,7 +843,7 @@
 ⚽	футбол	футбол игра мяч спорт футбольный soccer ball ball football soccer уен туп	
 ⚾	бейсбол	бейсбол бейсбольный игра мяч спорт baseball ball туп	бейсбол
 🥎	софтбол	софтбол зажать мягкий мяч нести перчатка softball ball glove underarm туп	софтбол
-🏀	баскетбол	баскетбол баскетбольный игра мяч спорт basketball ball hoop туп уен	
+🏀	баскетбол	баскетбол баскетбольный игра мяч спорт basketball ball hoop туп уен	баскетбол
 🏐	волейбол	волейбол волейбольный игра мяч спорт volleyball ball game туп	волейбол
 🏈	американский футбол	американский футбол американский игра мяч спорт футбол american football american ball football туп	футбол
 🏉	регби	регби игра мяч спорт rugby football ball football rugby туп	регби

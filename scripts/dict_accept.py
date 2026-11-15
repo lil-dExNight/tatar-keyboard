@@ -1,16 +1,18 @@
 """Machine acceptance of new words from the queues `data/dictionary/*-conv-review.tsv`.
 
-`select` labels each queue word with the original rule: accepted if a second independent source
-confirms it (two-corpora: both OpenSubtitles and Tatoeba; shipped-word; shipped-paradigm, Russian
-only: the stem has other forms in the shipped dictionary) and cap_ratio is below MAX_CAP_RATIO.
-Words that fail it are accepted too, except formal fragments and EXCLUDED_WORDS; rejected words
-stay in rejected-*.tsv with the reason. `pack` builds the dictionary assets from the SHA-256
-checked 1.8.4 baseline plus accepted words, with written plus conversational frequencies plus
-the per-word bonus of `bonus-freq-*.tsv` when that file exists.
+`select` automatically accepts a queue word only when independent evidence confirms it:
+OpenSubtitles plus Tatoeba, an existing shipped word, or a Russian Tatoeba-attested form with
+other forms of its stem in the shipped dictionary. Capitalization evidence and every other
+single-source candidate require an explicit widened review with `approved=yes`,
+`reviewer`, `review_date`, and `note`. Fragments, excluded words, and `approved=no` rows are
+rejected. `pack` builds the dictionary assets from the SHA-256 checked 1.8.4 baseline plus
+accepted words, with written plus conversational frequencies plus the per-word bonus of
+`bonus-freq-*.tsv` when that file exists.
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import random
@@ -29,11 +31,11 @@ QUEUE = {
 OUT_DIR = ROOT / "data/dictionary/dict-accept"
 SUFFIX = {"rus": "ru", "tat": "tt"}
 
-# Share of capitalized occurrences outside sentence start at which a word no longer counts as
-# ordinary. The corpus filter (`research/corpus/filters.py`) cuts at 0.80 before the queue;
-# acceptance cuts at 0.50 after it, because a wrongly accepted word is worse than a wrongly
-# rejected one.
-MAX_CAP_RATIO = 0.50
+# Share of capitalized occurrences outside sentence start at or above which a word needs
+# explicit review. Even occasional capitalization can identify a character or place name, so
+# automatic admission uses a conservative ceiling; subtitle-only candidates never pass
+# automatically.
+MAX_CAP_RATIO = 0.05
 
 # Minimum stem length for the shipped-paradigm branch. Without it `ме` would split into
 # `м` + `е`, and a one-letter stem always has forms in the dictionary.
@@ -103,9 +105,11 @@ HEADER = ["word", "heldout_hits", "train_freq", "train_freq_clean", "sources",
 
 class Row:
     __slots__ = ("word", "heldout", "freq", "freq_clean", "sources", "license",
-                 "cap_ratio", "enters_top100k")
+                 "cap_ratio", "enters_top100k", "approved", "reviewer", "review_date", "note")
 
     def __init__(self, fields):
+        if len(fields) != len(HEADER):
+            raise ValueError(f"expected {len(HEADER)} queue columns, got {len(fields)}")
         self.word = fields[0]
         self.heldout = int(fields[1])
         self.freq = int(fields[2])
@@ -114,25 +118,57 @@ class Row:
         self.license = fields[5]
         self.cap_ratio = float(fields[6])
         self.enters_top100k = fields[7] == "yes"
+        self.approved = fields[8].strip()
+        self.reviewer = fields[9].strip()
+        self.review_date = fields[10].strip()
+        self.note = fields[11].strip()
+        if self.approved not in ("", "yes", "no"):
+            raise ValueError(f"approved must be empty, yes, or no: {self.approved!r}")
 
     def source_set(self):
         return set(self.sources.split("+"))
 
 
+def review_metadata_reason(row: Row) -> str:
+    """Return an empty string only for a complete widened approval."""
+    missing = []
+    if row.approved != "yes":
+        missing.append("approved=yes")
+    if not row.reviewer:
+        missing.append("reviewer")
+    if not row.review_date:
+        missing.append("review_date")
+    else:
+        try:
+            parsed_date = datetime.date.fromisoformat(row.review_date)
+            if parsed_date.isoformat() != row.review_date:
+                raise ValueError("non-canonical date")
+        except ValueError:
+            missing.append("review_date=YYYY-MM-DD")
+    if not row.note:
+        missing.append("note")
+    if not missing:
+        return ""
+    return "operator-widened admission requires " + ", ".join(missing)
+
+
 def read_queue(tag: str) -> list[Row]:
     rows = []
     with QUEUE[tag].open(encoding="utf-8") as handle:
-        for line in handle:
+        for line_number, line in enumerate(handle, start=1):
             if line.startswith("#"):
                 continue
             fields = line.rstrip("\n").split("\t")
             if fields[0] == "word":
-                if fields[: len(HEADER)] != HEADER:
+                if fields != HEADER:
                     raise SystemExit(f"{QUEUE[tag]}: unexpected columns {fields}")
                 continue
             if not fields[0]:
                 continue
-            rows.append(Row(fields))
+            try:
+                rows.append(Row(fields))
+            except ValueError as error:
+                raise SystemExit(f"{QUEUE[tag]}:{line_number}: {error}") from error
     return rows
 
 
@@ -162,11 +198,7 @@ def paradigm_siblings(word: str, shipped: frozenset[str]) -> tuple[int, str, str
 
 
 def prior_verdict(row: Row, tag: str, shipped: frozenset[str]) -> tuple[bool, str, str]:
-    """Verdict of the original rule: a second source and no proper-noun evidence.
-
-    It no longer decides acceptance but is still recorded in the `rule` column (or the detail of
-    a widened word), so the origin of every dictionary row is visible in the file.
-    """
+    """Return the automatic verdict and its provenance, before review."""
     if row.cap_ratio >= MAX_CAP_RATIO:
         return False, "proper-noun-evidence", f"cap_ratio={row.cap_ratio:.2f}>={MAX_CAP_RATIO:.2f}"
     sources = row.source_set()
@@ -174,7 +206,10 @@ def prior_verdict(row: Row, tag: str, shipped: frozenset[str]) -> tuple[bool, st
         return True, "two-corpora", row.sources
     if row.word in shipped:
         return True, "shipped-word", "already in the shipped dictionary"
-    if tag == "rus":
+    # Subtitle-only forms, including forms whose stems happen to be shipped, need review.
+    if "OpenSubtitles" in sources:
+        return False, "single-source", row.sources
+    if tag == "rus" and "Tatoeba" in sources:
         count, stem, ending = paradigm_siblings(row.word, shipped)
         if count >= MIN_PARADIGM_SIBLINGS:
             return True, "shipped-paradigm", f"{stem}|{ending} +{count} forms in the dictionary"
@@ -182,45 +217,51 @@ def prior_verdict(row: Row, tag: str, shipped: frozenset[str]) -> tuple[bool, st
 
 
 def decide(rows: list[Row], tag: str, shipped: frozenset[str]):
-    """Apply the rule; return (accepted, rejected), each a list of (Row, rule, detail).
-
-    Everything is accepted except formal fragments and EXCLUDED_WORDS. A word that passes the
-    original rule keeps its label; the others get the widened label and the original reason.
-    """
+    """Apply automatic evidence and explicit review; return accepted and rejected rows."""
     accepted, rejected = [], []
     for row in rows:
         passed, rule, detail = prior_verdict(row, tag, shipped)
         if row.word in EXCLUDED_WORDS:
             rejected.append((row, "operator-excluded",
-                             f"excluded by name (previous rule: {rule})"))
+                             f"excluded by name (automatic rule: {rule})"))
+            continue
+        reason = fragment_reason(row.word, tag)
+        if reason:
+            rejected.append((row, "fragment", f"{reason}; automatic rule: {rule}"))
+            continue
+        if row.approved == "no":
+            rejected.append((row, "review-rejected",
+                             row.note or f"reviewer rejected the candidate; automatic rule: {rule}"))
             continue
         if passed:
             accepted.append((row, rule, detail))
             continue
-        reason = fragment_reason(row.word, tag)
-        if reason:
-            rejected.append((row, "fragment", f"{reason}; previous rule: {rule}"))
+        metadata_reason = review_metadata_reason(row)
+        if metadata_reason:
+            rejected.append((row, "review-required",
+                             f"{metadata_reason}; automatic rule: {rule} ({detail})"))
             continue
-        accepted.append((row, "operator-widened", f"previous rule: {rule} ({detail})"))
+        accepted.append((row, "operator-widened", f"automatic rule: {rule} ({detail})"))
     return accepted, rejected
 
 
 PREAMBLE = """\
-# Words {kind} by the machine acceptance rule.
+# Words {kind} by the dictionary admission rule.
 #
-# The rule accepts every queue word except formal fragments and words excluded by hand:
-#   fragment          - a formal fragment: {frag}
-#   operator-excluded - named by hand: {excl}
-# The older second-source bar no longer decides a word but is still computed and recorded in
-# the rule column, so every row keeps its origin:
+# Automatic admission requires independent evidence and cap_ratio below {cap}:
 #   two-corpora       - seen in both OpenSubtitles and Tatoeba
 #   shipped-word      - already in the shipped dictionary (the queue holds none by construction)
-#   shipped-paradigm  - Russian: the stem has {sib} or more forms in the shipped dictionary
-#   operator-widened  - the older bar refused it (single source, or cap_ratio >= {cap}) and the
-#                       word was accepted by hand; the older reason is in rule_detail
+#   shipped-paradigm  - Russian Tatoeba attestation plus {sib} other shipped forms of the stem
+# All other non-fragment candidates need explicit review. operator-widened is admitted only with
+# approved=yes, reviewer, review_date=YYYY-MM-DD, and note. Subtitle-only candidates never pass
+# automatically, including Russian forms with a shipped stem.
+#   review-required   - operator-widened review is absent or incomplete
+#   review-rejected   - approved=no
+#   fragment          - a formal fragment: {frag}
+#   operator-excluded - named by hand: {excl}
 #
 # The columns are the queue columns plus rule and rule_detail. Rejected rows stay in
-# rejected-*.tsv: change the rule and rerun `python3 scripts/dict_accept.py select`.
+# rejected-*.tsv: complete the review fields and rerun `python3 scripts/dict_accept.py select`.
 """
 
 
@@ -229,14 +270,13 @@ def write_rows(path: Path, kind: str, decided, frag: str):
         handle.write(PREAMBLE.format(kind=kind, cap=f"{MAX_CAP_RATIO:.2f}",
                                      sib=MIN_PARADIGM_SIBLINGS, frag=frag,
                                      excl=", ".join(sorted(EXCLUDED_WORDS))))
-        handle.write("\t".join(["word", "heldout_hits", "train_freq", "train_freq_clean",
-                                "sources", "license_status", "cap_ratio", "enters_top100k",
-                                "rule", "rule_detail"]) + "\n")
+        handle.write("\t".join(HEADER + ["rule", "rule_detail"]) + "\n")
         for row, rule, detail in decided:
             handle.write("\t".join([
                 row.word, str(row.heldout), str(row.freq), str(row.freq_clean),
                 row.sources, row.license, f"{row.cap_ratio:.2f}",
-                "yes" if row.enters_top100k else "no", rule, detail]) + "\n")
+                "yes" if row.enters_top100k else "no", row.approved, row.reviewer,
+                row.review_date, row.note, rule, detail]) + "\n")
 
 
 SAMPLE_HEAD = """\
@@ -348,17 +388,54 @@ def select(args) -> int:
 
 
 def read_accepted(tag: str) -> dict[str, int]:
-    """{word: train_freq} from data/dictionary/dict-accept/accepted-*.tsv."""
+    """Read accepted words and reject missing review evidence or a bypassed exclusion."""
     path = OUT_DIR / f"accepted-{SUFFIX[tag]}.tsv"
-    out = {}
+    expected_header = HEADER + ["rule", "rule_detail"]
+    out: dict[str, int] = {}
     with path.open(encoding="utf-8") as handle:
-        for line in handle:
+        for line_number, line in enumerate(handle, start=1):
             if line.startswith("#"):
                 continue
             fields = line.rstrip("\n").split("\t")
-            if fields[0] == "word" or not fields[0]:
+            if fields[0] == "word":
+                if fields != expected_header:
+                    raise SystemExit(f"{path}:{line_number}: unexpected columns {fields}")
                 continue
-            out[fields[0]] = int(fields[2])
+            if not fields[0]:
+                continue
+            if len(fields) != len(expected_header):
+                raise SystemExit(
+                    f"{path}:{line_number}: expected {len(expected_header)} columns, "
+                    f"got {len(fields)}"
+                )
+            try:
+                row = Row(fields[: len(HEADER)])
+            except ValueError as error:
+                raise SystemExit(f"{path}:{line_number}: {error}") from error
+            rule = fields[len(HEADER)]
+            if row.word in out:
+                raise SystemExit(f"{path}:{line_number}: duplicate word {row.word!r}")
+            if row.word in EXCLUDED_WORDS or fragment_reason(row.word, tag):
+                raise SystemExit(f"{path}:{line_number}: excluded word {row.word!r} was accepted")
+            if row.approved == "no":
+                raise SystemExit(f"{path}:{line_number}: approved=no word {row.word!r} was accepted")
+            if rule == "operator-widened":
+                reason = review_metadata_reason(row)
+                if reason:
+                    raise SystemExit(f"{path}:{line_number}: {reason}")
+            else:
+                if row.cap_ratio >= MAX_CAP_RATIO:
+                    raise SystemExit(
+                        f"{path}:{line_number}: proper-noun evidence requires operator-widened review"
+                    )
+                sources = row.source_set()
+                if rule == "two-corpora" and not {"OpenSubtitles", "Tatoeba"} <= sources:
+                    raise SystemExit(f"{path}:{line_number}: invalid two-corpora provenance")
+                if rule == "shipped-paradigm" and "Tatoeba" not in sources:
+                    raise SystemExit(f"{path}:{line_number}: shipped-paradigm needs Tatoeba")
+                if rule not in ("two-corpora", "shipped-word", "shipped-paradigm"):
+                    raise SystemExit(f"{path}:{line_number}: unknown admission rule {rule!r}")
+            out[row.word] = row.freq
     return out
 
 

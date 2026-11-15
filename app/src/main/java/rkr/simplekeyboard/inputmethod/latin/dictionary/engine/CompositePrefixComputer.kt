@@ -58,7 +58,8 @@ internal class CompositePrefixComputer(
     // personal dictionary itself (see GlideDecoderHost).
     private val glideHost: GlideDecoderHost? = null,
 ) : ContextAwarePrefixComputer, ClassifiedPrefixComputer, KeyNeighborSink, NextWordComputer,
-    GlideComputer, GlideGeometrySink, GlideIndexPrewarmer, GlideIndexReleaser, EmptyPrefixProber {
+    GlideComputer, GlideGeometrySink, GlideIndexPrewarmer, GlideIndexReleaser, EmptyPrefixProber,
+    AutocorrectAdviceControl {
 
     init {
         // The glide bigram channel reranks the N-best against the context word's successors:
@@ -143,6 +144,16 @@ internal class CompositePrefixComputer(
         lastExactMissPrefix = null
         lastExactCount = 0
         lastNextWordWithoutTable = false
+    }
+
+    private var autocorrectAdviceEnabled = true
+
+    /** Applies the setting to the primary and clears only the published autocorrect verdict. */
+    override fun setAutocorrectAdviceEnabled(enabled: Boolean) {
+        if (enabled == autocorrectAdviceEnabled) return
+        autocorrectAdviceEnabled = enabled
+        (primary as? AutocorrectAdviceControl)?.setAutocorrectAdviceEnabled(enabled)
+        lastAutocorrectAdvice = null
     }
 
     // Scratch of the context-armed lookup: the previous committed word's packed bigram successors

@@ -2668,11 +2668,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      * (a URI or an intent in the clip is not text and is never coerced into some), blank clears,
      * and a clip its source marked sensitive clears too.
      * The clip's own set-time travels with it, so the strip's freshness rule measures from the
-     * copy, not from the keyboard's show. Nothing is logged; the text is never named here.
+     * copy, not from the keyboard's show. A clip already outside the cell's freshness window
+     * clears the offer before its text is read. Nothing is logged; the text is never named here.
      */
     private void capturePrimaryClipForOffer() {
         final SuggestionsController controller = mSuggestionsController;
         if (controller == null || mClipboardManager == null) {
+            return;
+        }
+        // Field eligibility runs FIRST, before any clipboard byte is read. The strip would never
+        // offer the clip in an ineligible field (password, numeric, NO_PERSONALIZED_LEARNING,
+        // unknown cursor, locked session), so reading the clipboard there would touch the user's
+        // copied text for an offer that can never appear. Clearing instead keeps no stale offer.
+        if (!isSuggestionsEligible()) {
+            controller.onPrimaryClipChanged(null, 0L);
             return;
         }
         // The session answer fails closed until the next show. Otherwise force a fresh lock read
@@ -2702,12 +2711,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             controller.onPrimaryClipChanged(null, 0L);
             return;
         }
-        final CharSequence text = clip.getItemAt(0).getText();
-        // The direct-paste limit also bounds this offer, before toString() materializes the text.
-        if (!RichInputConnection.shouldCommitPasteDirectly(text)) {
-            controller.onPrimaryClipChanged(null, 0L);
-            return;
-        }
         final long setAtMillis;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             final long timestamp = clip.getDescription().getTimestamp();
@@ -2716,10 +2719,23 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 controller.onPrimaryClipChanged(null, 0L);
                 return;
             }
+            // Apply the cell's freshness window here too: a clip already stale (or stamped in the
+            // future) clears the offer before getText() or toString() ever touches its text.
+            final long ageMillis = System.currentTimeMillis() - timestamp;
+            if (ageMillis < 0L || ageMillis > RecentClipCell.TTL_MILLIS) {
+                controller.onPrimaryClipChanged(null, 0L);
+                return;
+            }
             setAtMillis = timestamp;
         } else {
             // No clip timestamp before API 26: a change event means the clip was set just now.
             setAtMillis = System.currentTimeMillis();
+        }
+        final CharSequence text = clip.getItemAt(0).getText();
+        // The direct-paste limit also bounds this offer, before toString() materializes the text.
+        if (!RichInputConnection.shouldCommitPasteDirectly(text)) {
+            controller.onPrimaryClipChanged(null, 0L);
+            return;
         }
         controller.onPrimaryClipChanged(text.toString(), setAtMillis);
     }

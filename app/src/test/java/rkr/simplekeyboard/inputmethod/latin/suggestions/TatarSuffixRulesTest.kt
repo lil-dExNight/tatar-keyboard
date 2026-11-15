@@ -33,7 +33,7 @@ class TatarSuffixRulesTest {
     fun theTableIsSortedDistinctAndHoldsTheGroupedInventory() {
         // The init-time check already enforces strictly increasing; the count pins the inventory
         // so a careless edit cannot silently grow or shrink it.
-        assertEquals(167, TatarSuffixRules.suffixCount)
+        assertEquals(171, TatarSuffixRules.suffixCount)
     }
 
     // --- Membership ----------------------------------------------------------------------------
@@ -49,13 +49,15 @@ class TatarSuffixRulesTest {
             "ыгыз", "егез", "гыз", "гез", "лары", "ләре", "нары", "нәре",
             // post-3sg cases
             "н", "на", "нә", "нда", "ндә", "ннан", "ннән",
-            // verb forms
-            "а", "ә", "мый", "ми", "ды", "де", "ты", "те", "дым", "дең", "тык", "тегез", "дылар",
+            // verb forms (абыз/әбез: the present 1pl, completing the type-I person paradigm)
+            "а", "ә", "абыз", "әбез", "мый", "ми", "ды", "де", "ты", "те", "дым", "дең", "тык", "тегез", "дылар",
             "мады", "мәделәр", "ган", "гән", "кан", "кән", "маган", "мәгән",
             "ар", "әр", "ыр", "ер", "р", "яр", "мас", "мәс", "ачак", "әчәк", "ячак", "ячәк",
             "са", "сә", "маса", "мәсә", "ып", "еп", "п", "гач", "гәч", "кач", "кәч",
             "ганчы", "гәнче", "мыйча", "мичә", "учы", "үче", "асы", "әсе", "у", "ү", "ю",
             "макчы", "мәкче", "сың", "сең",
+            // interrogative clitic
+            "мы", "ме",
             // derivational
             "ча", "чә", "лык", "лек", "лы", "ле", "сыз", "сез", "чы", "че",
             "даш", "дәш", "таш", "тәш", "рак", "рәк",

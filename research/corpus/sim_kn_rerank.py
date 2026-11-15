@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import bigram_pack  # noqa: E402
 import dictionary_coverage as coverage  # noqa: E402
+import evaluation_metrics as metrics  # noqa: E402
 import suggest_chain  # noqa: E402
 import suggest_eval  # noqa: E402
 
@@ -284,25 +285,28 @@ def paired_bootstrap(
 
 def sentence_hits(
     lines: Sequence[str], chain: suggest_chain.ChainMirror
-) -> tuple[list[int], list[int], list[int]]:
-    """Per-sentence chain top-3 hits, top-1 hits and pair counts over the eval lines."""
-    hits_top3: list[int] = []
+) -> tuple[list[int], list[int], list[int], list[int]]:
+    """Per-sentence visible top-3, engine top-4, top-1 hits and pair counts."""
+    hits_visible: list[int] = []
+    hits_engine: list[int] = []
     hits_top1: list[int] = []
     weights: list[int] = []
     for line in lines:
         words = line.split(" ")
-        top3 = 0
+        visible = 0
+        engine = 0
         top1 = 0
         for head, successor in zip(words, words[1:]):
             shown = chain.predict_top3(head)
-            if successor in shown:
-                top3 += 1
-                if successor == shown[0]:
-                    top1 += 1
-        hits_top3.append(top3)
+            visible += successor in metrics.visible_top3(shown)
+            engine += successor in metrics.engine_top4(shown)
+            if shown and successor == shown[0]:
+                top1 += 1
+        hits_visible.append(visible)
+        hits_engine.append(engine)
         hits_top1.append(top1)
         weights.append(len(words) - 1)
-    return hits_top3, hits_top1, weights
+    return hits_visible, hits_engine, hits_top1, weights
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -382,35 +386,55 @@ def main(argv: Sequence[str] | None = None) -> int:
     kn_chain = suggest_chain.ChainMirror(
         dictionary_words, frequencies, kn_successes, suffix_rules=suffix_rules
     )
-    hits_a3, hits_a1, weights = sentence_hits(lines, baseline_chain)
-    hits_b3, hits_b1, _ = sentence_hits(lines, kn_chain)
+    visible_a, engine_a, hits_a1, weights = sentence_hits(lines, baseline_chain)
+    visible_b, engine_b, hits_b1, candidate_weights = sentence_hits(lines, kn_chain)
+    if weights != candidate_weights:
+        raise SimError("unpaired comparison: sentence denominators differ")
     pairs = sum(weights)
-    baseline_top3 = sum(hits_a3)
-    kn_top3 = sum(hits_b3)
+    visible = metrics.paired_metric_report(
+        visible_a, weights, visible_b, weights, k=metrics.VISIBLE_TOP_K, role="user"
+    )
+    engine = metrics.paired_metric_report(
+        engine_a, weights, engine_b, weights, k=metrics.ENGINE_TOP_K, role="diagnostic"
+    )
     baseline_top1 = sum(hits_a1)
     kn_top1 = sum(hits_b1)
-    top3 = paired_bootstrap(hits_a3, hits_b3, weights)
     top1 = paired_bootstrap(hits_a1, hits_b1, weights)
-    delta_top3 = (kn_top3 - baseline_top3) * 100.0 / pairs
     delta_top1 = (kn_top1 - baseline_top1) * 100.0 / pairs
-    passed = delta_top3 >= GATE_DELTA_PP and top3["delta_ci95"][0] > 0.0 and delta_top1 >= 0.0
+    passed = (
+        visible["delta"]["pp"] >= GATE_DELTA_PP
+        and visible["delta"]["ci95"][0] > 0.0
+        and delta_top1 >= 0.0
+    )
     report = {
         "language": args.language,
         "discount": args.discount,
         "pairs": pairs,
         "reranked_heads": reranked_heads,
-        "baseline_top3_hits": baseline_top3,
-        "kn_top3_hits": kn_top3,
-        "baseline_top3_pct": round(baseline_top3 * 100.0 / pairs, 4),
-        "kn_top3_pct": round(kn_top3 * 100.0 / pairs, 4),
-        "delta_top3_pp": round(delta_top3, 4),
-        "top3_delta_ci95": [round(bound, 4) for bound in top3["delta_ci95"]],
+        "baseline_top3_hits": visible["baseline"]["hits"],
+        "kn_top3_hits": visible["candidate"]["hits"],
+        "baseline_top3_pct": round(visible["baseline"]["pct"], 4),
+        "kn_top3_pct": round(visible["candidate"]["pct"], 4),
+        "delta_top3_pp": round(visible["delta"]["pp"], 4),
+        "top3_delta_ci95": [round(bound, 4) for bound in visible["delta"]["ci95"]],
+        "baseline_engine_top4_hits": engine["baseline"]["hits"],
+        "kn_engine_top4_hits": engine["candidate"]["hits"],
+        "baseline_engine_top4_pct": round(engine["baseline"]["pct"], 4),
+        "kn_engine_top4_pct": round(engine["candidate"]["pct"], 4),
+        "delta_engine_top4_pp": round(engine["delta"]["pp"], 4),
+        "engine_top4_delta_ci95": [round(bound, 4) for bound in engine["delta"]["ci95"]],
         "baseline_top1_hits": baseline_top1,
         "kn_top1_hits": kn_top1,
         "delta_top1_pp": round(delta_top1, 4),
         "top1_delta_ci95": [round(bound, 4) for bound in top1["delta_ci95"]],
         "gate_delta_pp": GATE_DELTA_PP,
         "passed": bool(passed),
+        "measurement": metrics.measurement_report(
+            units=len(lines),
+            denominator_name="adjacent next-word pairs",
+            visible_top3_report=visible,
+            engine_top4_report=engine,
+        ),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0

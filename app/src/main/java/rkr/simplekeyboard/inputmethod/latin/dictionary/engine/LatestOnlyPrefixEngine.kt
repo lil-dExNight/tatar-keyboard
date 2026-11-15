@@ -147,6 +147,10 @@ class LatestOnlyPrefixEngine internal constructor(
     private var autocorrectToken: LookupToken? = null
     @Volatile
     private var autocorrectAdvice: AutocorrectAdvice? = null
+    @Volatile
+    private var autocorrectAdviceEnabledValue = true
+    @Volatile
+    private var autocorrectAdviceGeneration = 0L
 
     val suppressedStaleResultCount: Long
         get() = synchronized(lock) { suppressedStaleResultCountValue }
@@ -167,6 +171,35 @@ class LatestOnlyPrefixEngine internal constructor(
         val token = autocorrectToken ?: return null
         val advice = autocorrectAdvice
         return if (token == autocorrectToken && token == currentToken) advice else null
+    }
+
+    /**
+     * Applies an autocorrect setting transition on the engine worker. The published verdict is
+     * invalidated here so an in-flight lookup cannot restore it; the computer's verdict is reset
+     * by the worker task, and every later PREFIX lookup applies the current value before compute.
+     */
+    fun setAutocorrectAdviceEnabled(enabled: Boolean) {
+        val target = synchronized(lock) {
+            if (state != State.ACTIVE || enabled == autocorrectAdviceEnabledValue) {
+                return@synchronized null
+            }
+            autocorrectAdviceEnabledValue = enabled
+            autocorrectAdviceGeneration = nextSerial(autocorrectAdviceGeneration)
+            autocorrectToken = null
+            autocorrectAdvice = null
+            computer as? AutocorrectAdviceControl
+        } ?: return
+        try {
+            executor.execute {
+                try {
+                    target.setAutocorrectAdviceEnabled(enabled)
+                } catch (_: Throwable) {
+                    // Ordinary lookup still applies the current value before its next compute.
+                }
+            }
+        } catch (_: Throwable) {
+            // The engine's generation guard still suppresses every verdict from the old setting.
+        }
     }
 
     /**
@@ -454,7 +487,16 @@ class LatestOnlyPrefixEngine internal constructor(
         try {
             while (true) {
                 traceHook.workerStart(request.traceCookie)
-                val lookup = synchronized(lock) { computer }
+                var adviceGeneration = 0L
+                val lookup = synchronized(lock) {
+                    if (request.token.kind == LookupKind.PREFIX) {
+                        (computer as? AutocorrectAdviceControl)?.setAutocorrectAdviceEnabled(
+                            autocorrectAdviceEnabledValue,
+                        )
+                    }
+                    adviceGeneration = autocorrectAdviceGeneration
+                    computer
+                }
                 var autocorrectAdvice: AutocorrectAdvice? = null
                 val suggestions = try {
                     val computed = when (request.token.kind) {
@@ -490,7 +532,9 @@ class LatestOnlyPrefixEngine internal constructor(
                 }
 
                 val completion = synchronized(lock) {
-                    val handoff = prepareHandoffLocked(request, suggestions, autocorrectAdvice)
+                    val handoff = prepareHandoffLocked(
+                        request, suggestions, autocorrectAdvice, adviceGeneration,
+                    )
                     val next = if (state == State.ACTIVE) pendingRequest else null
                     pendingRequest = null
 
@@ -517,13 +561,21 @@ class LatestOnlyPrefixEngine internal constructor(
         request: Request,
         suggestions: List<String>,
         autocorrectAdvice: AutocorrectAdvice? = null,
+        adviceGeneration: Long = autocorrectAdviceGeneration,
     ): LookupResult? {
         if (!isCurrent(request.token)) {
             suppressedStaleResultCountValue++
             return null
         }
         this.autocorrectAdvice =
-            if (request.token.kind == LookupKind.PREFIX) autocorrectAdvice else null
+            if (request.token.kind == LookupKind.PREFIX &&
+                adviceGeneration == autocorrectAdviceGeneration &&
+                autocorrectAdviceEnabledValue
+            ) {
+                autocorrectAdvice
+            } else {
+                null
+            }
         autocorrectToken = request.token
         handoffCountValue++
         return LookupResult(request.token, suggestions)

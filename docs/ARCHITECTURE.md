@@ -82,8 +82,10 @@ Trust boundaries in full: [THREAT-MODEL.md](THREAT-MODEL.md).
 
 Layouts are XML in `app/src/main/res/xml/`: `keyboard_layout_set_<name>.xml` names the alphabet,
 symbols, phone and number keyboards, `rows_<name>.xml` and `rowkeys_<name>*.xml` define the rows.
-The Tatar layout (`rows_tatar.xml`) is ЙЦУКЕН with an extra top row of ә ө ү җ ң һ
-(`rowkeys_tatar_extra.xml`). The Russian layout offers the same letters as long-press keys.
+The Tatar layout (`rows_tatar.xml`) is ЙЦУКЕН with an extra top row of ә ө ү җ ң һ ё ъ
+(`rowkeys_tatar_extra.xml`), so every letter of the Tatar alphabet has its own key; ё and ъ
+keep their long-press duplicates on е and ь. The Russian layout offers the six Tatar-only
+letters and ё/ъ as long-press keys.
 With the number row off, the first ten keys of the `й`–`х` row of both layouts carry the digits
 1–0 on long press (a `<switch>` on `showNumberRow` in `rowkeys_tatar1.xml` and
 `rowkeys_russian1.xml`); a key with a letter partner keeps that letter first.
@@ -98,6 +100,11 @@ the app's languages and, when the system allows it, moves to the next input meth
 On `ACTION_LOCALE_CHANGED`, `SystemBroadcastReceiver` reloads the language list only when the
 manager is already initialized (`RichInputMethodManager.reloadSubtypesIfInitialized`); a process
 the broadcast starts cold reads the list fresh at init.
+
+The app's own screens and keyboard chrome follow the system locale list through `AppLocale`:
+the first list entry with a shipped translation (tt, ru or en) wins, wherever it sits in the
+list, so a system list like `[de, tt]` gets the Tatar translation; a list without a supported
+language is forced to English.
 
 ## Suggestions
 
@@ -179,7 +186,9 @@ candidates. The exact pass carries the previous committed word (the `EditorSurfa
 the next-word context rule) and orders its candidates in three tracks, each by frequency: the
 previous word's packed bigram successors (`TatBigrPrefixIndex.collectSuccessorIds` hands the ids
 over without decoding strings), then same-stem forms (Tatar only, when the typed prefix is itself
-a word of at least four code points), then the rest. With exact candidates the personal word
+a word of at least four code points; the boost's suffix table `TatarSuffixRules` covers plural,
+case, possessive and tense suffixes — the present-tense 1pl `-абыз`/`-әбез` included — plus the
+interrogative clitic `-мы`/`-ме` and the derivational set, mirrored by the Python chain), then the rest. With exact candidates the personal word
 takes the second cell (`[exact0, personal, exact1, exact2]`). It takes the first cell when the
 exact pass is empty, or when it is promoted: its usage is at least
 `CompositePrefixComputer.PROMOTION_MIN_USAGE` and the dictionary's top exact candidate is below
@@ -241,7 +250,16 @@ inactive at a sentence start). The engine withholds it, on its
 worker, for a word in the personal dictionary and for an exact entry of the companion's dictionary
 (`CompanionLexicon`: the companion's bundled cold-companion word list first — it answers from the
 first keystroke and keeps protecting after a release — plus the companion's live engine while it
-is warm). Verdict publication requires a current lookup token. A late result is discarded after
+is warm). The loaded list is one packed byte array plus one offset array
+(`ValidatedCompanionList`): membership probes binary-search the stored UTF-8 bytes directly, and
+the decoded word view retains nothing. While the setting is off the verdict computation is skipped entirely
+(`AutocorrectAdviceControl`, pushed to every warm engine) and no cold-companion list is loaded —
+the list exists only for the correction guard, and the load is skipped before the
+one-per-process mark so turning the setting on still starts it. Every observed transition of the
+setting resets the published verdicts, the engine's and the computer's, without touching typo
+recovery, the exact-pass reports or companion fills, and the separator and the preview treat a
+pre-change verdict as gone until a post-change lookup lands. Verdict publication requires a
+current lookup token. A late result is discarded after
 `finishInput()`, a language change, an editor-session change, or engine teardown. On a space or
 punctuation `LatinImeAutocorrect` has the controller replace the word before the separator reaches
 `InputLogic`; one backspace right after undoes it (`RevertWindow`). While the undo window is open,
@@ -276,9 +294,17 @@ drawn clipboard marker (`SuggestionStripState.clipCell`), TalkBack names the act
 reading the clip aloud (`spoken_recent_clip_cell`), and a long press on it is not a word gesture.
 The clip is held in memory only (`RecentClipCell`), never written to disk or learned from. A
 generation-stamped timer clears the text and removes the painted cell at the freshness deadline.
+The offer is freshness-gated before the clip's text is read: on API 26+ the set time comes from
+the clip description, and an unprovable timestamp, a future stamp or an age past
+`RecentClipCell.TTL_MILLIS` clears the offer without calling `getText()`; before API 26 the
+change event's own moment is the set time.
 The direct-paste size limit rejects oversized clips before text materialization and before the
-editor commit. The clipboard listener is registered only while the input view is shown, the clipboard is not read
-while the session or the live keyguard check says locked (`LatinIME.capturePrimaryClipForOffer`),
+editor commit. Field eligibility runs before any clipboard byte is read
+(`LatinIME.capturePrimaryClipForOffer`): in a field where suggestions may not run (password,
+numeric, `IME_FLAG_NO_PERSONALIZED_LEARNING`, unknown cursor, locked session) the clipboard is
+never touched for the offer and any held offer is cleared. The clipboard listener is registered
+only while the input view is shown, the clipboard is not read
+while the session or the live keyguard check says locked,
 and the cell is never offered where suggestions may not run (`LatinIME.onWindowShown`/
 `onWindowHidden`) or for a clip its source app marked sensitive
 (`ClipDescription.EXTRA_IS_SENSITIVE`, `RecentClipCell.mayOfferClip`).
@@ -294,10 +320,11 @@ On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, 
 full (`TdictValidator.validateRaw`, `TatBigrValidator.validateRaw`) and publish it to
 device-protected storage: temp file, fsync, validate, atomic rename, directory fsync. A process
 start that finds the final file already present re-verifies it by the pinned-content tier
-(`verifyPinnedContent`: size, header constants, section arithmetic, checksum and pinned raw
-SHA-256), without the structural walk; a pinned SHA-256 match implies the walk's outcome, so the
-walk runs only on freshly written bytes: publication, and the mismatch fall-through that
-deletes a verify failure and republishes. The first activation after that check or a publication
+(`verifyPinnedContent`: size, header constants, section arithmetic and the pinned raw SHA-256,
+one streaming digest pass), without the structural walk; a pinned SHA-256 match authenticates
+the embedded checksum too and implies the walk's outcome, so the walk — which still checks the
+checksum on its own — runs only on freshly written bytes: publication, and the mismatch
+fall-through that deletes a verify failure and republishes. The first activation after that check or a publication
 reuses its recorded result while the file keeps the recorded length and modification time, and
 every later activation validates in full again. The lease carries a process-local validation
 token (`StoreValidationToken`), so the engine's open repeats only the header and section checks
@@ -356,8 +383,20 @@ from the settings screen, with no counters, no pending hashes and no learning.
   copy. A pending-counter file that does not parse moves to its own slot
   (`pending-*.bin.quarantine`) with no notice: it holds only salted hashes that relearn by
   themselves, and it is neither listed nor restored.
+- Deletion: deleting a saved word, pair or learned emoji also purges it from the quarantined
+  copy, so a later quarantine restore can never bring a reported deletion back. The purge fails
+  closed: a copy that was not read to its end may still hold the entry in the unread part, so
+  only a whole-read copy is rewritten or deleted, and a delete or rewrite whose directory fsync
+  failed counts as landed only when the slot then reads byte-identical to the expected result at
+  its real length. A directory fsync failure after the active replace or delete reports false but
+  keeps the installed removal in memory and on disk; an active removal that never lands restores
+  the previous snapshot and leaves both files unchanged. A failed quarantine cleanup restores the
+  active file, and the in-memory snapshot only when that restore succeeds, so memory never
+  disagrees with the disk; the store answers false either way. Only a fully successful deletion
+  also drops the entry's pending hash, so it is not relearned from scratch.
 - Erase everything saved (`PersonalErasure`, `PersonalEraseAll`): the settings screen first
-  deletes the import journal and its temp (if either stays, the erase stops), then clears the recent
+  deletes the import journal, its commit record and their temps (if anything stays, the erase
+  stops), then clears the recent
   emoji, then has every store of every supported language (words, pairs, emoji, sentence starts,
   refused corrections) and the text-shortcut store run its `clearAll` (memory, file and whichever
   pending counters, salt, quarantined copy and notice marks it keeps), and finally sweeps whatever
@@ -371,16 +410,26 @@ from the settings screen, with no counters, no pending hashes and no learning.
   it) on the store's worker, re-validating first, and re-publishes the snapshot, so an import takes
   effect in the live process. Import validates the archive and every recognized current file,
   writes a durable journal of the old and new states, then applies the new state through those
-  owners. A failure rolls the old state back. An interrupted journal is rolled back when the
+  owners. A failure rolls the old state back, and the rollback reinstalls the exact pre-import
+  state, not a recombined one. The import commits through `BackupImportJournalFiles`: a commit
+  record carrying the SHA-256 of the exact journal bytes is made durable before any journal byte
+  is swept, so a cleanup whose directory fsync fails cannot lose the rollback evidence of an
+  uncommitted import. A journal covered by a matching record is swept, never rolled back. An
+  interrupted journal is rolled back when the
   keyboard starts or the user unlocks (`BackupCoordinator.recoverInterruptedImport`) and when
-  settings open; a journal that fails validation is deleted, and erase-all deletes the journal
-  before the stores. Export and import first prime the store of every recognized personal file
+  settings open. Recovery fails closed: a journal or commit record that cannot be read or
+  validated stays untouched and recovery reports failure instead of discarding the evidence;
+  only erase-all discards it, ahead of the stores. Export and import first prime the store of every recognized personal file
   on the store worker (`BackupTarget.openPersonalStore`), so a damaged file is quarantined by its
   own store and left out of the export; a store left not loaded makes export fail and import
   refuse before the journal is written. The archive holds the settings (minus the restriction
   cache), words, pairs, learned emoji, refused corrections and text shortcuts; sentence starts,
   recent emoji, pending counters, salts and quarantined copies stay out. Pending counters and the
-  salt survive a restore, and quarantined copies stay in their own flow. Export also fails before
+  salt survive a restore, and quarantined copies stay in their own flow. Two privacy switches are
+  never taken from the archive verbatim (`BackupTransfer.combinePrivacySwitches`): the personal
+  dictionary ends up on only when it was on before AND the archive keeps it on, and pause
+  learning ends up on when either side had it paused, so a restore can never switch learning on
+  or resume it silently; every other preference is the archive's value. Export also fails before
   writing if any recognized personal file cannot be read and validated. After every successful
   preference replacement during import, rollback, or journal recovery, restrictions are re-applied
   first. The replacement then waits for
@@ -403,7 +452,15 @@ channels plus a frequency weight), ported with attribution from FlorisBoard's
 `StatisticalGlideTypingClassifier`. Its word index is built on the engine worker
 (`GlideDecoderHost`): the build starts at the keyboard session's first glide-eligible letter-key
 down (`PointerTracker` re-arms the once-per-session offer on every keyboard load), again when a
-gesture arms if the index is not resident yet, and on demand at decode. Only one language keeps
+gesture arms if the index is not resident yet, and on demand at decode. Both the build and
+prefix lookups run on the engine's one worker, so while suggestions are live and the session's
+first prefix lookup has not answered yet, the prewarm build is deferred until that lookup has
+finished — the answer the user is waiting for goes first; an armed gesture always forces the
+build (a decode is imminent), and a glide-only session (suggestions off) builds at once, as
+before. The build walks the dictionary's stored UTF-8 bytes directly
+(`GlideWordInventory.forEachWordUtf8`, `GlideUtf8`), without materializing a Java `String` per
+entry; decoding reproduces `String.codePointAt` for well-formed input, and a malformed sequence
+yields U+FFFD, which maps to no key, exactly as the String-based walk skipped it. Only one language keeps
 an index in memory, and the 10 s idle release drops it. The top word is committed on lift
 (`InputLogic.commitGlideWord`); the other candidates appear in the strip and a tap replaces the
 word. The decode's N-best is reranked by the previous committed word (`GlideBigramRerank`): the
@@ -419,8 +476,9 @@ types it in capitals.
 
 Letters and doubled letters: `GlideKeyGeometry` is built from the live keys and their long-press
 keys. A long-press letter without a key of its own is an alias of its base key, so a word with it
-is decoded from a gesture over that key and committed with the right letter: on the Tatar layout
-`ъ` on `ь` and `ё` on `е`; on the Russian layout the Tatar letters too. A letter that is the long
+is decoded from a gesture over that key and committed with the right letter: on the Russian
+layout the Tatar letters, `ъ` on `ь` and `ё` on `е` work that way; on the Tatar layout every
+alphabet letter has its own key, so no alias is needed there. A letter that is the long
 press of two keys takes its base from `ALIAS_BASES` (`һ` on `х`, `ә` on `а`) or gets no alias;
 digits and other non-letters never become aliases. Words that share a key sequence (`все` and
 `всё`) compete by frequency. A word with a doubled letter is scored against its looped ideal
@@ -469,7 +527,10 @@ the alternates, this strip is gated on the glide switch and also appears with su
 `EmojiPanelView` is a Canvas view that replaces `MainKeyboardView` while shown; `KeyboardSwitcher`
 swaps them and `EmojiPanelController` loads data in the background from `assets/emoji/`: the set
 (`EmojiSet`), search names (`EmojiSearchIndex`, shown in `EmojiSearchView` in place of the strip)
-and skin tones (`EmojiSkinTones`). No emoji font is shipped; `GlyphProbe` drops entries the system
+and skin tones (`EmojiSkinTones`). Search matching is word-prefix over the Russian and Tatar
+names and the keyword aliases, so a Tatar query matches by the prefix of any word of the emoji's
+Tatar spoken name; names are filled through native review and an emoji without a reviewed Tatar
+name simply does not answer a Tatar query. No emoji font is shipped; `GlyphProbe` drops entries the system
 font cannot draw. Skin-tone bases are probed once per process in the background
 (`EmojiToneVerdicts`, shared with the strip's emoji cell): a base whose toned form the font cannot
 draw gets no tone picker, and none of its toned forms is recorded in or shown from recents or
@@ -486,7 +547,10 @@ opens from the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
 with a manual back stack; `SettingsActivity` only forwards to it and keeps the component name used
 by `method.xml`. Preferences are device-protected (`PreferenceManagerCompat`). `FLAG_SECURE` keeps
 saved words out of screenshots and recent apps. Enterprise restrictions
-(`res/xml/app_restrictions.xml`) can disable rows. `SetupActivity` is the onboarding.
+(`res/xml/app_restrictions.xml`) can disable rows. `SetupActivity` is the onboarding: two system
+steps (enable, select) watched live from the system, then one done block with a single guide card
+that teaches the Tatar layout (the extra row and the long-press partners), the four gestures and
+long-press saving of a suggestion-strip word to the personal dictionary.
 
 ## Privacy and security
 
@@ -510,7 +574,11 @@ Details and the risk register: [THREAT-MODEL.md](THREAT-MODEL.md).
 - `app/src/test/`: JVM tests (JUnit 4, no Robolectric). Android types sit behind small interfaces
   (`EditorSurface`, `EngineHandle`, storage seams), so logic runs with fakes. `*SourceContractTest`
   files read `app/src/main` and pin identifiers and call sites a unit test cannot reach.
-  `latin/golden/` exports golden vectors for a parity suite on another platform.
+  `latin/golden/` exports golden vectors for a parity suite on another platform. Explicit
+  memory-scaling gates (`GlideWordIndexMemoryScalingTest`, `GlideIndexMemoryScalingTest`) pin
+  linear growth and a per-entry retained-heap budget for the glide word index, and
+  `CompanionListReaderTest` pins the compact cold-companion list's exact retained-byte payload,
+  so enlarging the Tatar model fails loudly instead of silently multiplying memory.
 - `tests/<script>/test_*.py`: `unittest` tests of the Python asset pipeline in `scripts/`.
 - `app/src/androidTest/`: device tests (glide on a real screen, dictionary I/O, draw allocations,
   emoji index reload, engine timing).

@@ -1,0 +1,40 @@
+# Tatar word-form evidence and admission review.
+# Counts are exact normalized token occurrences in the named source revisions.
+# Tatoeba: Tatoeba-v2026-10-31.tt.txt.gz. OpenSubtitles: OpenSubtitles-v2024.tt.txt.gz.
+# extra=present means a row exists in dict-accept/bonus-freq-tt.tsv, whose filtered union is
+# MADLAD-400, tt.wikipedia, and HPLT 2.0. Its numeric bonus is not a raw occurrence count.
+# This is corpus analysis, not native human approval. Empty review fields are intentional.
+# Attestation: independent-attestation (two or more source layers), single-source, or unattested.
+# Decisions: already-shipped, generated-by-rule, candidate-awaiting-review, hold.
+# candidate-awaiting-review and hold rows are not admitted by this file. An operator-widened
+# admission additionally requires approved=yes, reviewer, review_date=YYYY-MM-DD, and note.
+word	lemma	paradigm_cell	corpus_evidence	attestation_status	admission_decision	approved	reviewer	review_date	note
+бүгөн	бүген	variant	Tatoeba=1;OpenSubtitles=0;extra=absent	single-source	hold				The only occurrence shares sentence 13417955 with йөрөп; do not infer a standard variant from that sentence.
+бүген	бүген	citation	Tatoeba=701;OpenSubtitles=412;extra=present	independent-attestation	already-shipped				Standard form with independent evidence.
+бүгенге	бүген	derived	Tatoeba=63;OpenSubtitles=25;extra=present	independent-attestation	already-shipped				Related high-frequency derived form.
+бүгенгә	бүген	derived	Tatoeba=8;OpenSubtitles=11;extra=present	independent-attestation	already-shipped				Related derived form.
+горурлана	горурлана	present.3sg	Tatoeba=11;OpenSubtitles=5;extra=present	independent-attestation	already-shipped				Present base of the target paradigm.
+горурланам	горурлана	present.1sg	Tatoeba=8;OpenSubtitles=20;extra=present	independent-attestation	already-shipped				Present first-person singular.
+горурланасың	горурлана	present.2sg	Tatoeba=0;OpenSubtitles=1;extra=absent	single-source	hold				Subtitle-only evidence is insufficient for automatic admission.
+горурланабыз	горурлана	present.1pl	Tatoeba=3;OpenSubtitles=2;extra=present	independent-attestation	already-shipped				Present first-person plural.
+горурланасыз	горурлана	present.2pl	Tatoeba=1;OpenSubtitles=0;extra=present	independent-attestation	candidate-awaiting-review				Attested in Tatoeba sentence 13636256 and independently in the filtered extra-corpus union; absent from the pinned baseline.
+горурланалар	горурлана	present.3pl	Tatoeba=0;OpenSubtitles=0;extra=present	single-source	already-shipped				Already in the pinned baseline; no new admission is proposed.
+горурланып	горурлана	gerund.ip	Tatoeba=3;OpenSubtitles=2;extra=present	independent-attestation	already-shipped				Related gerund.
+горурланды	горурлана	past.3sg	Tatoeba=1;OpenSubtitles=0;extra=present	independent-attestation	already-shipped				Related past-tense form.
+горурланган	горурлана	rpast.3sg	Tatoeba=0;OpenSubtitles=1;extra=present	independent-attestation	already-shipped				Related participle and recent-past form.
+горурлану	горурлана	masdar	Tatoeba=0;OpenSubtitles=0;extra=present	single-source	already-shipped				Already in the pinned baseline; no new admission is proposed.
+йөрөп	йөр	gerund.ip.variant	Tatoeba=1;OpenSubtitles=0;extra=absent	single-source	hold				The only occurrence shares sentence 13417955 with бүгөн; standard vowel harmony gives йөреп.
+йөреп	йөр	gerund.ip	Tatoeba=35;OpenSubtitles=68;extra=present	independent-attestation	already-shipped				Standard gerund with independent evidence.
+йөри	йөр	present.3sg	Tatoeba=146;OpenSubtitles=100;extra=present	independent-attestation	already-shipped				Present base of the walking paradigm.
+йөрибез	йөр	present.1pl	Tatoeba=9;OpenSubtitles=4;extra=present	independent-attestation	already-shipped				Present first-person plural.
+йөрер	йөр	future.3sg	Tatoeba=9;OpenSubtitles=2;extra=present	independent-attestation	already-shipped				Lexical future exception already recorded in the exceptions table.
+йөргән	йөр	rpast.3sg	Tatoeba=20;OpenSubtitles=23;extra=present	independent-attestation	already-shipped				Related participle and recent-past form.
+йөрү	йөр	masdar	Tatoeba=26;OpenSubtitles=14;extra=present	independent-attestation	already-shipped				Related masdar.
+һәрмәл	һәрмәл	citation	Tatoeba=0;OpenSubtitles=0;extra=absent	unattested	hold				No independent stem attestation found.
+һәрмәлдә	һәрмәл	locative	Tatoeba=1;OpenSubtitles=0;extra=absent	single-source	hold				Only Tatoeba sentence 8833718 attests the locative; meaning and spelling need native review.
+язабыз	яз	present.1pl	Tatoeba=3;OpenSubtitles=3;extra=present	independent-attestation	generated-by-rule				Direct evidence for -абыз on a consonant stem.
+китәбез	кит	present.1pl	Tatoeba=13;OpenSubtitles=96;extra=present	independent-attestation	generated-by-rule				Direct evidence for -әбез on a consonant stem.
+эшлибез	эшлә	present.1pl	Tatoeba=16;OpenSubtitles=48;extra=present	independent-attestation	generated-by-rule				Direct evidence for the contracted present base plus -без.
+бармыйбыз	бар	present.neg.1pl	Tatoeba=11;OpenSubtitles=16;extra=present	independent-attestation	generated-by-rule				Direct evidence for negative present first-person plural.
+эшләмибез	эшлә	present.neg.1pl	Tatoeba=2;OpenSubtitles=5;extra=present	independent-attestation	generated-by-rule				Direct evidence for negative present first-person plural on a vowel stem.
+язмыйбыз	яз	present.neg.1pl	Tatoeba=0;OpenSubtitles=0;extra=present	single-source	generated-by-rule				Extra-corpus evidence for the same negative present person ending.

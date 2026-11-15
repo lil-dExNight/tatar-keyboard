@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Version:** 1.13 — 2026-11-09
+**Version:** 1.14 — 2026-11-15
 
 Tatar Keyboard keeps what you type **on your device**.
 
@@ -119,7 +119,7 @@ Keyboard settings → “Backup” can write one backup file with your settings 
 
 - **The file is not encrypted.** Anyone who can open it can read your saved words. Keep it the way you would keep a note with those words.
 - The app never uploads it. The app has no INTERNET permission; the file moves only if you move it, with whatever app you trust for that. That choice is yours and happens outside the keyboard.
-- **Restoring replaces.** Restoring a file replaces the current settings, saved words, learned pairs, learned emoji, refused corrections and text shortcuts on this device with the file's contents; what was here before is lost. The screen asks for confirmation first. A file that fails any integrity check is rejected whole: nothing is changed.
+- **Restoring replaces.** Restoring a file replaces the current settings, saved words, learned pairs, learned emoji, refused corrections and text shortcuts on this device with the file's contents; what was here before is lost. Two settings are combined instead of replaced, so a restore can never quietly widen learning: the personal dictionary stays on only if it was already on and the file keeps it on, and Pause learning ends up on if either this device or the file has it paused. The screen asks for confirmation first. A file that fails any integrity check is rejected whole: nothing is changed. A failed or interrupted restore rolls back to the exact state that was there before.
 - Damaged files stay out. Before saving or restoring, the keyboard opens every saved store, so a damaged file is moved aside into its quarantined copy (as described above) and is not put into the backup. If a store cannot be read at all, saving fails and restoring is refused before anything changes.
 - **What is not in the file.** The recently used emoji list, the sentence starts, the half-learned words, pairs and emoji that have not crossed the learning threshold yet (with their salts), the quarantined copies, and the restriction cache that records your organization's device-policy restrictions. All setting values are included, even policy-managed ones; after a restore, device policy is read again and takes precedence.
 - An interrupted restore is undone. Before a restore changes anything, the keyboard writes a private journal of the old and the new state. If the restore is cut off (the phone restarts, the app is closed), the old state is restored the next time the keyboard starts or the settings open. “Erase everything saved” deletes this journal first, so an undo can never bring erased words back.

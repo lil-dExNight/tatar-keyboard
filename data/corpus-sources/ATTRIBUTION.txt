@@ -1,0 +1,13 @@
+Tatar Speech Corpus (TatSC)
+License: CC-BY-4.0
+Upstream: https://issai.nu.edu.kz/issai-datasets
+Retrieved from: https://huggingface.co/datasets/yasalma/TatSC_ASR at 3da29ce200d04a27c1696464f2653c982afb277f
+Attribution: TatSC, Institute of Smart Systems and Artificial Intelligence (ISSAI), Nazarbayev University, and the Institute of Applied Semiotics of the Tatarstan Academy of Sciences (CC BY 4.0). Text extracted from the ungated Hugging Face mirror yasalma/TatSC_ASR; audio and speaker identifiers are discarded.
+Provenance: data/provenance.d/corpus-tatsc.json
+
+Mozilla Common Voice Corpus 17.0, Tatar (tt)
+License: CC0-1.0
+Upstream: https://commonvoice.mozilla.org/en/datasets
+Retrieved from: https://huggingface.co/datasets/fsicoli/common_voice_17_0 at 8262c16bf297c87a9cd88c51997c4758ed7a8ba2
+Attribution: Mozilla Common Voice contributors; Common Voice Corpus 17.0 (CC0-1.0). Retrieved from the ungated Hugging Face mirror fsicoli/common_voice_17_0 because Mozilla moved distribution to its Data Collective.
+Provenance: data/provenance.d/corpus-common-voice.json

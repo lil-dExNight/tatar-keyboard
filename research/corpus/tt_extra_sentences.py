@@ -164,9 +164,14 @@ def load_exclusion_set(path: Path, cache: dict[str, str | None]) -> frozenset[st
 
 
 def build(args) -> int:
+    if not args.tatar_refs:
+        raise SystemExit("sentence filtering requires --tatar-refs besides the dictionary")
     tatar_refs: set[str] = set()
     for path in args.tatar_refs:
         tatar_refs |= read_word_set(path, coverage.TATAR.alphabet)
+    if not tatar_refs:
+        raise SystemExit("non-dictionary Tatar reference layer is empty")
+    independent_tatar_refs = frozenset(tatar_refs)
     if args.tatar_dict_asset is not None:
         tatar_refs |= read_dictionary_words(args.tatar_dict_asset)
     russian_refs: set[str] = set()
@@ -230,7 +235,12 @@ def build(args) -> int:
                 for token in tokens:
                     klass = class_cache.get(token)
                     if klass is None:
-                        klass = bleed_class(token, tatar_refs_frozen, russian_refs_frozen)
+                        klass = bleed_class(
+                            token,
+                            tatar_refs_frozen,
+                            russian_refs_frozen,
+                            independent_tatar_refs=independent_tatar_refs,
+                        )
                         if len(class_cache) >= 4_000_000:
                             class_cache.clear()
                         class_cache[token] = klass

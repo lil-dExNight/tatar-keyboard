@@ -60,12 +60,15 @@ class KeyNeighborTableTest {
     }
 
     @Test
-    fun theTatarLayoutHasThirtySevenLetterKeysAndThirtyNineNodes() {
-        // 37 = 6 + 11 + 11 + 9 letter keys; the node set also carries the two more-key-only
-        // letters ё and ъ, which are not keys of their own.
+    fun theTatarLayoutHasThirtyNineLetterKeysAndThirtyNineNodes() {
+        // 39 = 8 + 11 + 11 + 9 letter keys: the extra row carries ё and ъ as direct keys, so
+        // every node of the alphabet is a key with its own rectangle.
         val table = TatarLayoutTestFixtures.tatarNeighborTable()
-        assertEquals(37, table.letterKeyCount)
+        assertEquals(39, table.letterKeyCount)
         assertEquals(39, table.nodes.size)
+        for (letter in listOf('ә', 'ө', 'ү', 'җ', 'ң', 'һ', 'ё', 'ъ')) {
+            assertTrue("missing node $letter", table.nodes.contains(letter.code))
+        }
     }
 
     @Test
@@ -76,35 +79,40 @@ class KeyNeighborTableTest {
     @Test
     fun geometricNeighborsFollowTheLayoutGeometry() {
         val table = TatarLayoutTestFixtures.tatarNeighborTable()
-        // Cross-row pairs of the layout-derived relation (TypoMutatedEvalTest's literal).
+        // Cross-row pairs of the layout-derived relation, recomputed from the shipped rows:
+        // scripts/typo_pack.py's read_layout_geometric_map derives the same map.
         assertTrue(table.areGeometricNeighbors('к'.code, 'а'.code))
         assertTrue(table.areGeometricNeighbors('у'.code, 'ө'.code))
-        assertTrue(table.areGeometricNeighbors('ү'.code, 'н'.code))
+        assertTrue(table.areGeometricNeighbors('н'.code, 'җ'.code))
         // Same-row adjacent keys, the physically closest pairs.
         assertTrue(table.areGeometricNeighbors('к'.code, 'е'.code))
         assertTrue(table.areGeometricNeighbors('ә'.code, 'ө'.code))
         // The rule is symmetric.
         assertTrue(table.areGeometricNeighbors('а'.code, 'к'.code))
+        // ё and ъ are direct keys now, so they carry rectangles and join pairs of their own.
+        assertTrue(table.areGeometricNeighbors('ё'.code, 'з'.code))
+        assertTrue(table.areGeometricNeighbors('ъ'.code, 'х'.code))
+        assertTrue(table.areGeometricNeighbors('ё'.code, 'ъ'.code))
         // Distant keys are not neighbors: one key over on the same row, the near-miss across
-        // rows (ү↔к), and keys two rows apart.
+        // rows (ү↔у, the nearest false pair of the whole layout), and keys two rows apart.
         assertFalse(table.areGeometricNeighbors('к'.code, 'н'.code))
-        assertFalse(table.areGeometricNeighbors('ү'.code, 'к'.code))
+        assertFalse(table.areGeometricNeighbors('ү'.code, 'у'.code))
         assertFalse(table.areGeometricNeighbors('ә'.code, 'а'.code))
-        // A more-key-only letter has no rectangle and joins no pair, in either direction.
+        // A direct key is not a neighbor of its long-press base row partner by distance.
         assertFalse(table.areGeometricNeighbors('ё'.code, 'е'.code))
         assertFalse(table.areGeometricNeighbors('е'.code, 'ё'.code))
         // A key is never its own neighbor.
         assertFalse(table.areGeometricNeighbors('к'.code, 'к'.code))
-        // The full relation over the node set: the 32 cross-row pairs of the layout-derived
-        // geometric map (TypoMutatedEvalTest.GEOMETRIC_NEIGHBORS) plus the 33 same-row adjacent
-        // pairs the radius admits. More-key-only letters (ё, ъ) contribute nothing.
+        // The full relation over the node set: 34 cross-row pairs plus the 35 same-row adjacent
+        // pairs the radius admits (7 on the eight-key extra row, 10 + 10 on the home rows, 8 on
+        // the third row). Every node has a rectangle, so no letter is excluded.
         var pairs = 0
         for (first in table.nodes) {
             for (second in table.nodes) {
                 if (first < second && table.areGeometricNeighbors(first, second)) pairs++
             }
         }
-        assertEquals(65, pairs)
+        assertEquals(69, pairs)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
@@ -24,6 +25,20 @@ class TdictPrefixIndexColdWalkTest {
         val index = EngineTestFixtures.index(entries)
         val visited = ArrayList<Pair<String, Long>>()
         index.forEachWordCold(ColdWordVisitor { word, frequency -> visited.add(word to frequency) })
+        assertEquals(entries, visited)
+    }
+
+    @Test
+    fun utf8ColdWalkMatchesTheStringWalkAndReusesItsScratch() {
+        val index = EngineTestFixtures.index(entries)
+        val visited = ArrayList<Pair<String, Long>>()
+        var scratch: ByteArray? = null
+
+        index.forEachWordBytesCold { bytes, length, frequency ->
+            if (scratch == null) scratch = bytes else assertSame(scratch, bytes)
+            visited += String(bytes, 0, length, Charsets.UTF_8) to frequency
+        }
+
         assertEquals(entries, visited)
     }
 

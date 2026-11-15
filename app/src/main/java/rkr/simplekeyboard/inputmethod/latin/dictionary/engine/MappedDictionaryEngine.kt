@@ -227,6 +227,9 @@ class MappedDictionaryEngine private constructor(
         computer.companionLexicon = lexicon
     }
 
+    /** Enables or skips the autocorrect pass on the serialized worker; transitions clear verdicts. */
+    fun setAutocorrectAdviceEnabled(enabled: Boolean) = engine.setAutocorrectAdviceEnabled(enabled)
+
     /** Pushes the live layout geometry into the glide decode side (null disables glide typing). */
     fun updateGlideGeometry(geometry: GlideKeyGeometry?) = engine.updateGlideGeometry(geometry)
 

@@ -12,6 +12,67 @@ These hold for every release:
   `apksigner verify --print-certs <apk>`.
 
 
+## [4.0.0] — 2026-11-14
+
+### Added
+
+- The Tatar extra row carries ё and ъ next to ә ө ү җ ң һ, so every Tatar alphabet letter has
+  its own key; their long-press duplicates on е and ь stay. Tablet and one-handed geometry
+  follow the wider row.
+- Emoji search answers a Tatar query by the prefix of each reviewed Tatar spoken name. Names
+  are filled through native review; an emoji without a reviewed name simply does not match a
+  Tatar query.
+- The onboarding's done block shows one guide card: the Tatar layout, the long-press partners,
+  the four gestures and saving a suggestion-strip word to the personal dictionary.
+- The privacy policy exists in Tatar (PRIVACY.tt.md), and the Tatar UI links to it.
+- The Tatar same-stem boost knows the present-tense first-person-plural suffixes -абыз/-әбез
+  and the interrogative clitic -мы/-ме, matching the word-form generator.
+
+### Changed
+
+- The app's own screens pick the first supported language (Tatar, Russian or English) from the
+  whole system locale list instead of looking only at its first entry.
+- With autocorrect off, the keyboard skips the verdict computation and never loads the
+  cold-companion lists; turning the setting either way resets pending verdicts, and the first
+  prefix lookup of a session answers before the glide index finishes warming up.
+- Dictionary and bigram-table verification at activation is a single streaming SHA-256 pass,
+  the cold-companion lists keep a compact byte form, and the glide index builds without a Java
+  string per dictionary entry; memory-scaling tests pin the per-entry budgets.
+- Deleting a saved word, pair or learned emoji also purges it from its quarantined copy, and a
+  deletion reports success only when nothing of it can be restored later. A quarantined copy that
+  cannot be read to its end blocks the purge, and a directory sync that fails after a deletion
+  has landed keeps memory and disk consistent.
+- The clipboard is read for the recent-clip cell only after the field proves eligible, and a clip
+  that is already stale or whose copy time cannot be proven is refused before its text is read.
+- Restoring a backup no longer replaces the two privacy switches: the personal dictionary ends
+  up on only if it was already on and the backup keeps it on, and Pause learning ends up on if
+  either side had it paused. A failed or interrupted restore rolls back to the exact previous
+  state; the restore is committed by a durable record written before the rollback journal is
+  swept, and a damaged journal or commit record stops recovery instead of being discarded.
+- Dictionary admission requires independent corpus evidence or an explicit reviewed approval
+  with reviewer, date and note; subtitle-only candidates and capitalization evidence no longer
+  pass automatically.
+- Suggestion quality gates report visible top-3 (the engine's fourth candidate stays
+  diagnostic) with paired confidence intervals, and gate reports recompute every percentage
+  from its recorded hits and denominators, so a stale or edited rate fails. Evaluation inputs
+  are checked for train/development/final split collisions against the live tree. A frozen
+  Tatar Common Voice final evaluation set joins the existing development sets.
+- The licensed-corpus comparison of TatSC and Common Voice against the current Tatar input is
+  committed with its attribution and pins; its current recommendation is to keep the shipped
+  pipeline. TatSC pages are cached only bound to the pinned dataset revision and the hashes of
+  the exact response bytes, and an edited or unverifiable cached page is refetched.
+- The glide benchmark replays recorded Tatar gestures through the production decoder on frozen
+  session/device splits, and each report fingerprints the concrete key geometry, the bundled
+  dictionaries and every production decoder source; comparisons refuse differing geometry or
+  dictionary identities.
+- Release validation gains an emulator matrix across every supported API level, and the strict
+  device performance run fails on any skipped check or sample instead of reporting it as
+  information. Debug and instrumentation APKs must match the candidate build, a skipped critical
+  suggestion probe fails the smoke leg, and strict performance evidence must cover every PSS
+  scenario and carry a budgeted jank result for every frame run. Device probe taps are derived
+  from the layout resources and pinned against them, including the eight keys of the Tatar extra
+  row.
+
 ## [3.14.2] — 2026-11-13
 
 ### Fixed

@@ -99,6 +99,31 @@ class EmojiSearchTest {
         assertEquals(listOf("🐱"), results(index, "CAT"))
     }
 
+    /**
+     * Deterministic Tatar fixture: the fourth field is searchable like a name, and a Tatar alias
+     * phrase in the keywords is searchable by its whole-word prefix. A prefix starting inside a
+     * word still never matches.
+     */
+    @Test
+    fun tatarNamesAndAliasesMatchByWordPrefix() {
+        val index = indexOf(
+            "😀\tулыбка\tулыбка smile\tелмаю бит",
+            "🐝\tпчела\tпчела мёд мед бал корты\tбал корты",
+            "🚀\tракета\tракета rocket\tочкыч",
+            "🌼\tцветок\tцветок елмаю бит\tчәчәк",
+        )
+        // A prefix of the whole Tatar name outranks the same text as a keyword.
+        assertEquals(listOf("😀", "🌼"), results(index, "елмаю б"))
+        // The same rule for a multi-word Tatar alias in the keyword field.
+        assertEquals(listOf("🐝"), results(index, "бал к"))
+        // A Tatar name needs no duplicate keyword to be searchable, in either case.
+        assertEquals(listOf("🚀"), results(index, "очкыч"))
+        assertEquals(listOf("🚀"), results(index, "ОЧКЫ"))
+        // A prefix cannot begin inside a word of a Tatar name or alias.
+        assertTrue(results(index, "маю б").isEmpty())
+        assertTrue(results(index, "орты").isEmpty())
+    }
+
     @Test
     fun aBlankQueryReturnsNothing() {
         val index = indexOf("🐱\tкот\tкот кошка cat")
@@ -230,6 +255,32 @@ class EmojiSearchTest {
     }
 
     @Test
+    fun everyTatarSpokenNameIsFindableByItsOwnPrefix() {
+        val lines = File(sourceRoot(), "assets/emoji/emoji_search_v1.txt")
+            .readText(Charsets.UTF_8).split('\n').filter { it.isNotEmpty() }
+        val index = EmojiSearchIndex.parse(lines.joinToString("\n") + "\n")
+        val misses = ArrayList<String>()
+        var namedCount = 0
+        for (line in lines) {
+            val fields = line.split('\t')
+            val name = fields[3]
+            if (name.isEmpty()) continue
+            namedCount++
+            val query = name.substring(
+                0,
+                name.offsetByCodePoints(0, minOf(4, name.codePointCount(0, name.length))),
+            )
+            if (fields[0] !in results(index, query)) {
+                misses += "${fields[0]}\t$name\t$query"
+            }
+        }
+        // A new Tatar-name prefix collision must be resolved or explicitly documented, just as for
+        // the Russian-name sweep above; the current curated names have none.
+        assertEquals(emptyList<String>(), misses)
+        assertEquals("the pinned Tatar naming coverage changed", 604, namedCount)
+    }
+
+    @Test
     fun theShippedIndexIsCreditedInTheNoticeBesideIt() {
         val notice = File(sourceRoot(), "assets/emoji/NOTICE.txt").readText()
         assertTrue(notice.contains("emoji_search_v1.txt"))
@@ -266,6 +317,9 @@ class EmojiSearchTest {
         // A hand-written Tatar keyword (the rooster).
         assertTrue("этэч", results(index, "этэч").contains("🐓"))
         assertTrue("этэ (prefix)", results(index, "этэ").contains("🐓"))
+        // The unique primary alias is also its curated Tatar spoken name.
+        assertTrue("баскет (prefix)", results(index, "баскет").contains("🏀"))
+        assertEquals("баскетбол", index.nameOf("🏀", "tt"))
         // A prefix of a Tatar word matches, a suffix does not.
         assertTrue(results(index, "йөр").contains("❤️"))
         assertFalse(results(index, "рәк").contains("❤️"))

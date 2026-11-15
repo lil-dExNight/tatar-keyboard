@@ -1,0 +1,11 @@
+{
+  "generation_command": "research/corpus/dl.sh  # Tatoeba-v2026-10-31.tt.txt.gz",
+  "id": "corpus-dump-tatoeba-v2026-10-31.tt",
+  "license": "CC-BY-2.0-FR",
+  "path": "research/corpus/Tatoeba-v2026-10-31.tt.txt.gz",
+  "revision": "Tatoeba-v2026-10-31.tt",
+  "sha256": "9ed9b8cdb35268b89960a89f006df7b7099aaf56999eead7edb5542b0253d3e1",
+  "size_bytes": 1892694,
+  "source_role": "raw_corpus",
+  "split_rule": "training input; Tatoeba heldout rows id % 10 == 1 form the development set"
+}

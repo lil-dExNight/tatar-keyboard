@@ -214,7 +214,7 @@ class TtDl1TierCalibrationTest {
     /**
      * Per-class top-3 recovery on the mutated set, under the production Tatar wiring. Bars:
      * del >= 45 % (previous pin 19.8 %), ins >= 70 % (0 %), trans >= 60 % (0 %), sub >= 90.0 %
-     * (pin 92.8 % with the geometry-neighbor bonus armed, tolerance -2.8 pp). The fuzzy budget
+     * (pin 92.3 % with the geometry-neighbor bonus armed, tolerance -2.3 pp). The fuzzy budget
      * must never trip on the eval set.
      */
     @Test
@@ -450,17 +450,17 @@ class TtDl1TierCalibrationTest {
             0x0430 to intArrayOf(0x043A, 0x0441), // "а" -> "кс"
             0x0431 to intArrayOf(0x0434), // "б" -> "д"
             0x0432 to intArrayOf(0x0443, 0x0447), // "в" -> "уч"
-            0x0433 to intArrayOf(0x043E, 0x0497), // "г" -> "оҗ"
+            0x0433 to intArrayOf(0x043E, 0x04A3), // "г" -> "оң"
             0x0434 to intArrayOf(0x0431, 0x0449), // "д" -> "бщ"
-            0x0435 to intArrayOf(0x043F, 0x04AF), // "е" -> "пү"
+            0x0435 to intArrayOf(0x043F, 0x0497), // "е" -> "пҗ"
             0x0436 to intArrayOf(0x0437, 0x044E), // "ж" -> "зю"
-            0x0437 to intArrayOf(0x0436, 0x04BB), // "з" -> "жһ"
+            0x0437 to intArrayOf(0x0436, 0x0451), // "з" -> "жё"
             0x0438 to intArrayOf(0x0440), // "и" -> "р"
             0x0439 to intArrayOf(0x0444, 0x04D9), // "й" -> "фә"
-            0x043A to intArrayOf(0x0430, 0x04E9), // "к" -> "аө"
+            0x043A to intArrayOf(0x0430, 0x04AF), // "к" -> "аү"
             0x043B to intArrayOf(0x0448, 0x044C), // "л" -> "шь"
             0x043C to intArrayOf(0x043F), // "м" -> "п"
-            0x043D to intArrayOf(0x0440, 0x0497, 0x04AF), // "н" -> "рҗү"
+            0x043D to intArrayOf(0x0440, 0x0497, 0x04A3), // "н" -> "рҗң"
             0x043E to intArrayOf(0x0433, 0x0442), // "о" -> "гт"
             0x043F to intArrayOf(0x0435, 0x043C), // "п" -> "ем"
             0x0440 to intArrayOf(0x0438, 0x043D), // "р" -> "ин"
@@ -468,22 +468,24 @@ class TtDl1TierCalibrationTest {
             0x0442 to intArrayOf(0x043E), // "т" -> "о"
             0x0443 to intArrayOf(0x0432, 0x04E9), // "у" -> "вө"
             0x0444 to intArrayOf(0x0439), // "ф" -> "й"
-            0x0445 to intArrayOf(0x044D, 0x04BB), // "х" -> "эһ"
-            0x0446 to intArrayOf(0x044B, 0x04D9), // "ц" -> "ыә"
+            0x0445 to intArrayOf(0x044A, 0x044D), // "х" -> "ъэ"
+            0x0446 to intArrayOf(0x044B, 0x04E9), // "ц" -> "ыө"
             0x0447 to intArrayOf(0x0432), // "ч" -> "в"
-            0x0448 to intArrayOf(0x043B, 0x04A3), // "ш" -> "лң"
-            0x0449 to intArrayOf(0x0434, 0x04A3), // "щ" -> "дң"
+            0x0448 to intArrayOf(0x043B, 0x04BB), // "ш" -> "лһ"
+            0x0449 to intArrayOf(0x0434, 0x0451), // "щ" -> "дё"
+            0x044A to intArrayOf(0x0445), // "ъ" -> "х"
             0x044B to intArrayOf(0x0446, 0x044F), // "ы" -> "ця"
             0x044C to intArrayOf(0x043B), // "ь" -> "л"
             0x044D to intArrayOf(0x0445), // "э" -> "х"
             0x044E to intArrayOf(0x0436), // "ю" -> "ж"
             0x044F to intArrayOf(0x044B), // "я" -> "ы"
-            0x0497 to intArrayOf(0x0433, 0x043D), // "җ" -> "гн"
-            0x04A3 to intArrayOf(0x0448, 0x0449), // "ң" -> "шщ"
-            0x04AF to intArrayOf(0x0435, 0x043D), // "ү" -> "ен"
-            0x04BB to intArrayOf(0x0437, 0x0445), // "һ" -> "зх"
-            0x04D9 to intArrayOf(0x0439, 0x0446), // "ә" -> "йц"
-            0x04E9 to intArrayOf(0x043A, 0x0443), // "ө" -> "ку"
+            0x0451 to intArrayOf(0x0437, 0x0449), // "ё" -> "зщ"
+            0x0497 to intArrayOf(0x0435, 0x043D), // "җ" -> "ен"
+            0x04A3 to intArrayOf(0x0433, 0x043D), // "ң" -> "гн"
+            0x04AF to intArrayOf(0x043A), // "ү" -> "к"
+            0x04BB to intArrayOf(0x0448), // "һ" -> "ш"
+            0x04D9 to intArrayOf(0x0439), // "ә" -> "й"
+            0x04E9 to intArrayOf(0x0443, 0x0446), // "ө" -> "уц"
         )
 
         // Input pins over the committed dictionary, eval set and layout — the same identities
@@ -492,7 +494,7 @@ class TtDl1TierCalibrationTest {
         private const val PIN_SET_ROWS = 9_524
         private const val PIN_SET_BYTES = 310_834
         private const val PIN_SET_SHA256 =
-            "80891b11c01776303adc1a1cb8fa0b3eadb8b534bb447f8186d6348a7000acd8"
+            "ee64e2699257d1daa9ad11d4a32c987240e783165b7c44a11777f37b3183b8c3"
         private const val PIN_EVAL_PREFIXES_GE4 = 7_599
 
         private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
