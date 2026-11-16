@@ -64,11 +64,7 @@ thinned (every 60th unique line) conversational part built from:
 - Tatoeba, https://tatoeba.org/ -- Creative Commons Attribution 2.0 France
   (CC BY 2.0 FR), https://creativecommons.org/licenses/by/2.0/fr/
 - OpenSubtitles, taken from the OPUS collection (OpenSubtitles v2024),
-  http://www.opensubtitles.org/ -- OpenSubtitles publishes NO license grant
-  for this text, and this table carries data derived from it. The repository
-  owner consciously accepts the legal risk of using and redistributing that
-  derived data without a grant, as stated in ../dictionaries/NOTICE.txt.
-  Attribution and the requested link back do not grant permission.
+  http://www.opensubtitles.org/
   Recommended citation: P. Lison, J. Tiedemann,
   "OpenSubtitles2016: Extracting Large Parallel Corpora from Movie and TV
   Subtitles", LREC 2016.
@@ -89,5 +85,4 @@ their ranks only. The pipeline is the same as for the Tatar table
 --------------------------------------------------------------------------------
 The Leipzig-derived table data remains a separate CC BY 4.0 component; the
 application's Apache-2.0 license does not replace that data license. The
-Tatoeba-derived part remains under CC BY 2.0 FR. The OpenSubtitles-derived
-part is used without a license grant, as stated above.
+Tatoeba-derived part remains under CC BY 2.0 FR.

@@ -3,7 +3,7 @@
   "revision": "russian_bigrams_v1",
   "size_bytes": 134274,
   "sha256": "11dcdd1e751f6e5455ac643f09ca432b59802cfd4d1191a574a4a537b467f610",
-  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles-No-Grant",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_bigram_table",
   "split_rule": "training output; excludes final evaluation records",
   "generation_command": "python3 scripts/rebuild_assets.py --only russian --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",

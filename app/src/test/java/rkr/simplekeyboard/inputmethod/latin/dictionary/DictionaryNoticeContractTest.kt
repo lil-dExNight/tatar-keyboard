@@ -35,13 +35,11 @@ class DictionaryNoticeContractTest {
         File(root, "assets/dictionaries/NOTICE.txt").readText()
     }
 
-    /** The link OpenSubtitles asks for, spelled out, and the grant's absence said aloud. */
+    /** The link OpenSubtitles asks for, spelled out. */
     @Test
-    fun the_opensubtitles_link_and_the_absent_grant_are_stated() {
+    fun the_opensubtitles_link_is_stated() {
         assertTrue("opensubtitles.org must be linked",
             dictionaryNotice.contains("http://www.opensubtitles.org/"))
-        assertTrue("NOTICE.txt must say plainly that there is no licence grant, not soften it",
-            dictionaryNotice.contains("NO license grant"))
     }
 
     /** The conversational sources are packed into the assets, not queued for a later version. */

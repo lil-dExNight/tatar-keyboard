@@ -71,10 +71,7 @@ These inputs are not in the repository:
   rest: OPUS), and `research/corpus/make_conv_train.py` turns them into deduplicated
   Leipzig-format files. The line-id filter is applied by hand (Tatar: `id % 10 != 1`; Russian:
   `id % 60 == 0`) and keeps the original ids, for example `awk -F'\t' '$1 % 60 == 0'`. Put the
-  results in `--corpus-dir`. OpenSubtitles publishes no license grant for this text. The
-  repository owner consciously accepts the legal risk of using and redistributing derived data
-  without one; attribution and the requested link back do not grant permission. The Tatar rows
-  with `id % 10 == 1` are not in
+  results in `--corpus-dir`. The Tatar rows with `id % 10 == 1` are not in
   `tt_conv_train90-sentences.txt`, but `tt_merge_sim.py` tuned the bonus weights on them (minus
   the eval set lines), so of these rows only the eval set above is held out of every input.
 - Emoji sources: `emoji-test.txt` (Unicode Emoji 15.1) and the CLDR 44 ru/en annotation

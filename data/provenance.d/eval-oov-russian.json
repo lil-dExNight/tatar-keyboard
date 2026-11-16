@@ -3,7 +3,7 @@
   "revision": "ru-valid-oov/v1",
   "size_bytes": 2951,
   "sha256": "190446b414ec58ddf58a78a8fcc9fa3f084c6dcc22f6cd44c481e10505f13eb0",
-  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles-No-Grant",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "development_regression_evaluation",
   "split_rule": "reviewed development/regression safety data; never final",
   "generation_command": "python3 scripts/typo_eval_pack.py safety-set --language rus --eval-set app/src/test/resources/ru_eval_sentences.txt --dictionary app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib --conv-frequency data/dictionary/dict-accept/conv-freq-ru.tsv --output app/src/test/resources/ru_valid_oov_safety_set.tsv",

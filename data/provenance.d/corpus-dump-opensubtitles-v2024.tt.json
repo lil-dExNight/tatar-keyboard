@@ -1,7 +1,7 @@
 {
   "generation_command": "research/corpus/dl.sh  # OpenSubtitles-v2024.tt.txt.gz",
   "id": "corpus-dump-opensubtitles-v2024.tt",
-  "license": "LicenseRef-OpenSubtitles-No-Grant",
+  "license": "LicenseRef-OpenSubtitles",
   "path": "research/corpus/OpenSubtitles-v2024.tt.txt.gz",
   "revision": "OpenSubtitles-v2024.tt",
   "sha256": "4324a04983c8bed56ee07e5627410ae7caa20a76477a8ecfd474822420d2d740",

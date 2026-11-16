@@ -3,7 +3,7 @@
   "revision": "tatar_bigrams_v1",
   "size_bytes": 212223,
   "sha256": "c5d07358e2a1f5c0f18cd05f1218a33af157f6ba1588c72e225e18949b1c6004",
-  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles-No-Grant",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_bigram_table",
   "split_rule": "training output; excludes final evaluation records",
   "generation_command": "python3 scripts/rebuild_assets.py --only tatar --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",

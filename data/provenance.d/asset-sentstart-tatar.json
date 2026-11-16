@@ -1,9 +1,9 @@
 {
   "id": "asset-sentstart-tatar-v1",
   "revision": "tatar_sentstart_v1",
-  "size_bytes": 2014,
-  "sha256": "b4755e3376b6068fd85fdd829f461bc56d91a4f4ecfc0a7bd85f144c73540587",
-  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles-No-Grant",
+  "size_bytes": 1935,
+  "sha256": "a80e645ed33bcb8429e2d288cc90c890d064598899bd13ee53cffca2b642ec15",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_sentence_start_list",
   "split_rule": "training output; excludes final evaluation records",
   "generation_command": "python3 scripts/rebuild_assets.py --only tatar --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",

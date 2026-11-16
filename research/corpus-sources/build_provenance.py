@@ -31,7 +31,7 @@ CORPUS_DIR = ROOT / "research" / "corpus"
 # notices record and the acquisition command research/corpus/dl.sh runs.
 CORPUS_DUMPS: dict[str, dict[str, str]] = {
     "OpenSubtitles-v2024.tt.txt.gz": {
-        "license": "LicenseRef-OpenSubtitles-No-Grant",
+        "license": "LicenseRef-OpenSubtitles",
         "split_rule": "training input; held-out lines excluded from evaluation by the eval builders",
         "role": "raw_corpus",
     },

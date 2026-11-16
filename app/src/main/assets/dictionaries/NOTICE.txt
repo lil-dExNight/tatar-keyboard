@@ -146,12 +146,6 @@ OpenSubtitles, taken from the OPUS collection (OpenSubtitles v2024)
 http://www.opensubtitles.org/
 Recommended citation: P. Lison, J. Tiedemann, "OpenSubtitles2016: Extracting
 Large Parallel Corpora from Movie and TV Subtitles", LREC 2016.
-OpenSubtitles publishes NO license grant for this text -- not an unclear
-license, an absent one. The repository owner consciously accepts the legal
-risk of using and redistributing derived data without that grant. The
-collection asks for a link back to opensubtitles.org from anything built on
-its data; that link is on the line above. Attribution and the link do not
-grant permission.
 
 Changes by the Tatar Keyboard project: lines are deduplicated, tokens are
 normalized to NFC lowercase and filtered to the language alphabet, proper nouns

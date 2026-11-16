@@ -1,8 +1,8 @@
 {
   "id": "asset-dictionary-notice",
   "revision": "dictionary-notice/v1",
-  "size_bytes": 10452,
-  "sha256": "0f492a0c66101ad48537df1aec31a9e51e5c3ee13789e6b8a47ce3d3f602ace0",
+  "size_bytes": 10066,
+  "sha256": "2110f172b9c1a8f96c5d428c3c054f4d80f3de328b8cafd9927f9d7d77c70d71",
   "license": "Apache-2.0",
   "source_role": "license_attribution",
   "split_rule": "not-applicable",

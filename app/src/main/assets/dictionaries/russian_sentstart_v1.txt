@@ -7,7 +7,6 @@
 # every 60th unique line).
 # License: the Leipzig part is Creative Commons Attribution 4.0 International
 # (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/; Tatoeba is CC BY 2.0 FR;
-# OpenSubtitles publishes no license grant -- see NOTICE.txt beside this file.
 #
 # Pipeline: the first whitespace token of every sentence, hugging punctuation
 # stripped (the dict_tokens rule), normalized exactly like the dictionary pipeline

@@ -165,6 +165,6 @@ class TatarSentStartAssetTest {
         // rebuilds it.
         const val EXPECTED_RECORD_COUNT = 64
         const val EXPECTED_ASSET_SHA256 =
-            "b4755e3376b6068fd85fdd829f461bc56d91a4f4ecfc0a7bd85f144c73540587"
+            "a80e645ed33bcb8429e2d288cc90c890d064598899bd13ee53cffca2b642ec15"
     }
 }

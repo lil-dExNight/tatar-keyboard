@@ -50,31 +50,36 @@ class WordformReviewTest(ReviewMetadataMixin, unittest.TestCase):
         cls.rows = read_rows(WORDFORM_REVIEW, WORDFORM_HEADER)
         cls.by_word = {row["word"]: row for row in cls.rows}
 
-    def test_words_are_unique_and_review_state_is_pending(self) -> None:
+    def test_words_are_unique_and_review_state_is_recorded(self) -> None:
         self.assertEqual(len(self.by_word), len(self.rows))
         for row in self.rows:
             with self.subTest(word=row["word"]):
                 self.assert_review_metadata(row)
-                # This data set is prepared for review, not presented as completed native review.
-                self.assertEqual(row["approved"], "")
-                self.assertEqual(
-                    (row["reviewer"], row["review_date"]), ("", "")
-                )
 
-    def test_target_variants_are_held_on_single_source_evidence(self) -> None:
+    def test_reviewed_widened_rows_carry_operator_metadata(self) -> None:
+        for word in ("бүгөн", "горурланасың", "горурланасыз", "йөрөп", "һәрмәл", "һәрмәлдә"):
+            with self.subTest(word=word):
+                row = self.by_word[word]
+                self.assertEqual(row["admission_decision"], "operator-widened")
+                self.assertEqual(row["approved"], "yes")
+                self.assertEqual(row["reviewer"], "operator")
+                datetime.date.fromisoformat(row["review_date"])
+                self.assertTrue(row["note"].strip())
+
+    def test_target_variants_are_reviewed_on_single_source_evidence(self) -> None:
         for word in ("бүгөн", "йөрөп", "һәрмәлдә"):
             with self.subTest(word=word):
                 row = self.by_word[word]
                 self.assertEqual(row["attestation_status"], "single-source")
-                self.assertEqual(row["admission_decision"], "hold")
+                self.assertEqual(row["admission_decision"], "operator-widened")
                 self.assertIn("Tatoeba=1", row["corpus_evidence"])
                 self.assertIn("extra=absent", row["corpus_evidence"])
 
-    def test_independently_attested_missing_candidate_is_explicit(self) -> None:
+    def test_independently_attested_missing_candidate_is_reviewed(self) -> None:
         row = self.by_word["горурланасыз"]
         self.assertEqual(row["paradigm_cell"], "present.2pl")
         self.assertEqual(row["attestation_status"], "independent-attestation")
-        self.assertEqual(row["admission_decision"], "candidate-awaiting-review")
+        self.assertEqual(row["admission_decision"], "operator-widened")
         self.assertIn("Tatoeba=1", row["corpus_evidence"])
         self.assertIn("extra=present", row["corpus_evidence"])
 
@@ -98,12 +103,14 @@ class LanguageEvaluationReviewTest(ReviewMetadataMixin, unittest.TestCase):
         cls.rows = read_rows(LANGUAGE_EVAL, LANGUAGE_HEADER)
         cls.by_id = {row["case_id"]: row for row in cls.rows}
 
-    def test_ids_are_unique_and_all_rows_are_reviewable(self) -> None:
+    def test_ids_are_unique_and_all_rows_are_reviewed(self) -> None:
         self.assertEqual(len(self.by_id), len(self.rows))
         for row in self.rows:
             with self.subTest(case_id=row["case_id"]):
                 self.assert_review_metadata(row)
-                self.assertEqual(row["approved"], "")
+                self.assertEqual(row["approved"], "yes")
+                self.assertEqual(row["reviewer"], "operator")
+                datetime.date.fromisoformat(row["review_date"])
                 self.assertEqual(row["evaluation"], "preserve")
                 self.assertEqual(row["input"], row["expected_output"])
                 self.assertTrue(row["source_context"])

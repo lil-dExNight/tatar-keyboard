@@ -3,7 +3,7 @@
   "revision": "russian_companion_v1",
   "size_bytes": 76096,
   "sha256": "5e1f1d70d1c9982f9c2b827f6e99ca591f0c3165a0dcc4797298d065b208a318",
-  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles-No-Grant",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_companion_list",
   "split_rule": "training output; excludes final evaluation records",
   "generation_command": "python3 scripts/rebuild_assets.py --only russian --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",

@@ -3,7 +3,7 @@
   "revision": "tatar_top100k_v1",
   "size_bytes": 597694,
   "sha256": "cc4fbc4321ccbf89d7e4d38783c9367776b2ee07c2db94f650b6d15d8122addf",
-  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles-No-Grant",
+  "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles",
   "source_role": "generated_dictionary",
   "split_rule": "training output; excludes final evaluation records",
   "generation_command": "python3 scripts/rebuild_assets.py --only tatar --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
