@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.CompanionListArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.CompanionListValidationException
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatCompFormat
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.zeroedWindowDigest
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -214,10 +215,12 @@ class CompanionListReader {
         System.arraycopy(
             raw, TatCompFormat.CHECKSUM_OFFSET, checksum, 0, TatCompFormat.CHECKSUM_SIZE,
         )
-        val zeroed = raw.copyOf()
-        zeroed.fill(0, TatCompFormat.CHECKSUM_OFFSET,
-            TatCompFormat.CHECKSUM_OFFSET + TatCompFormat.CHECKSUM_SIZE)
-        if (!MessageDigest.getInstance("SHA-256").digest(zeroed).contentEquals(checksum)) {
+        val zeroedChecksum = zeroedWindowDigest(
+            raw,
+            TatCompFormat.CHECKSUM_OFFSET,
+            TatCompFormat.CHECKSUM_SIZE,
+        )
+        if (!zeroedChecksum.contentEquals(checksum)) {
             throw CompanionListValidationException("header checksum mismatch")
         }
         if (wordCount > bodySize) {

@@ -168,6 +168,24 @@ class CompanionListReaderTest {
     }
 
     @Test
+    fun checksumCoversTheBodyAndDecodedStorageIsUnchanged() {
+        val raw = buildRaw(words)
+        val list = CompanionListReader().validateRaw(raw, specFor(raw, words))
+
+        assertEquals(words, list.words)
+        val expectedPayload = raw.size.toLong() - TatCompFormat.HEADER_SIZE - words.size +
+            (words.size + 1) * Int.SIZE_BYTES
+        assertEquals(expectedPayload, list.retainedByteEstimate)
+
+        val differentBody = raw.copyOf()
+        val lastByte = TatCompFormat.HEADER_SIZE + words.first().toByteArray(Charsets.UTF_8).size
+        differentBody[lastByte] = (differentBody[lastByte] + 1).toByte()
+        assertThrows(CompanionListValidationException::class.java) {
+            CompanionListReader().validateRaw(differentBody, specFor(raw, words))
+        }
+    }
+
+    @Test
     fun aWrongMagicIsRejected() {
         val raw = buildRaw(words)
         raw[0] = 'X'.code.toByte()
