@@ -12,6 +12,15 @@ These hold for every release:
   `apksigner verify --print-certs <apk>`.
 
 
+## [Unreleased]
+
+### Changed
+
+- Cold-companion validation computes the list checksum without a whole-list copy.
+- The generated-profile check requires critical startup, suggestion and glide methods to appear
+  as method rules.
+
+
 ## [4.0.0] — 2026-11-14
 
 ### Added

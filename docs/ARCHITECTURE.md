@@ -593,6 +593,8 @@ Details and the risk register: [THREAT-MODEL.md](THREAT-MODEL.md).
   `CompanionListReaderTest` pins the compact cold-companion list's exact retained-byte payload,
   so enlarging the Tatar model fails loudly instead of silently multiplying memory.
 - `tests/<script>/test_*.py`: `unittest` tests of the Python asset pipeline in `scripts/`.
+  `scripts/check_profiles.py` parses both generated profiles, gates the startup subset and
+  requires the critical startup, suggestion and glide methods to appear as method rules.
 - `app/src/androidTest/`: device tests (glide on a real screen, dictionary I/O, draw allocations,
   emoji index reload, engine timing).
 - `baselineprofile/`: generator of the baseline and startup profiles
