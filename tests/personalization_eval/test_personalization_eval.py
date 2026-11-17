@@ -57,7 +57,7 @@ PIN_CONTROL_TOP1 = 345
 PIN_CONTROL_VISIBLE_TOP3 = 652
 PIN_CONTROL_ENGINE_TOP4 = 741
 PIN_REP_CTRL_KS_BASELINE = 34_196
-PIN_REP_CTRL_KS_SIMULATED = 21_102
+PIN_REP_CTRL_KS_SIMULATED = 21_103
 PIN_REP_CTRL_KS_ORACLE = 8_451
 
 # Graduation-counter pins per split and arm; PersonalizationEvalTest.kt pins the same
@@ -79,9 +79,9 @@ PIN_OBSERVED_LOOKUPS = {
     ("rep", "oracle"): 89_169, ("rep", "realistic"): 89_169, ("rep", "fixed"): 89_169,
 }
 PIN_EMPTY_OBSERVATIONS = {
-    ("hash", "oracle"): 795, ("hash", "realistic"): 795, ("hash", "fixed"): 795,
+    ("hash", "oracle"): 794, ("hash", "realistic"): 794, ("hash", "fixed"): 794,
     ("chrono", "oracle"): 810, ("chrono", "realistic"): 810, ("chrono", "fixed"): 810,
-    ("rep", "oracle"): 5_028, ("rep", "realistic"): 5_028, ("rep", "fixed"): 5_028,
+    ("rep", "oracle"): 5_019, ("rep", "realistic"): 5_019, ("rep", "fixed"): 5_019,
 }
 PIN_WORD_COMPLETIONS = {
     "hash": 95, "chrono": 88, "rep": 600,
@@ -121,7 +121,7 @@ PIN_REP_KS_PERS_KEYS = 20_167
 PIN_REP_REORD_PROMO_1 = 200
 # Pollution pins: personal cells shown and hit, per measure walk (the hash/chrono halves
 # graduate no word, so only the next-word pair cells appear there).
-PIN_REP_COMP_PERSONAL_SHOWN = 8_594
+PIN_REP_COMP_PERSONAL_SHOWN = 8_593
 PIN_REP_COMP_PERSONAL_HIT = 200
 PIN_REP_NW_PERSONAL_SHOWN = 1_523
 PIN_REP_NW_PERSONAL_HIT = 145

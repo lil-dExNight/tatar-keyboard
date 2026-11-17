@@ -1,8 +1,8 @@
 {
   "id": "asset-companion-tatar-v1",
   "revision": "tatar_companion_v1",
-  "size_bytes": 78889,
-  "sha256": "56e40f6238c58dbde3fba7d012a6bafc59d4fd1eff0941b8d600084f11b7c112",
+  "size_bytes": 78985,
+  "sha256": "9e658c4118b0013f5a3e99a217ccff71498776652c92fa9be1835fc4d7ed4b5f",
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles",
   "source_role": "generated_companion_list",
   "split_rule": "training output; excludes final evaluation records",

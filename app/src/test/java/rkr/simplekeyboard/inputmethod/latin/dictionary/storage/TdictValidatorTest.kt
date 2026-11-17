@@ -333,6 +333,62 @@ class TdictValidatorTest {
     }
 
     @Test
+    fun acceptsInternalAsciiHyphensBetweenAlphabetLetters() {
+        val words = listOf("азык-төлек", "аз-ык-тө-лек").sorted()
+        val raw = DictionaryTestFixtures.raw(words.map { it to 1L })
+        val spec = DictionaryTestFixtures.spec(210, raw)
+
+        assertEquals(words.size.toLong(), validator.validateRaw(writeRaw(raw), spec).entryCount)
+    }
+
+    @Test
+    fun rejectsHyphensOutsideTwoAlphabetLettersAndOtherDashes() {
+        val cases = listOf(
+            "-азык",
+            "азык-",
+            "азык--төлек",
+            "азык–төлек",
+            "азык—төлек",
+            "азык‐төлек",
+            "азык’төлек",
+        )
+        cases.forEachIndexed { index, word ->
+            val raw = DictionaryTestFixtures.raw(listOf(word to 1L))
+            val spec = DictionaryTestFixtures.spec(220 + index, raw)
+            try {
+                validator.validateRaw(writeRaw(raw), spec)
+                fail("accepted: $word")
+            } catch (expected: DictionaryValidationException) {
+                assertTrue(word, expected.message.orEmpty().isNotEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun keepsTheSixtyFourCodePointLimitWithHyphens() {
+        val longest = "а-".repeat(31) + "аа"
+        assertEquals(64, longest.codePointCount(0, longest.length))
+        val raw = DictionaryTestFixtures.raw(listOf(longest to 1L))
+        assertEquals(
+            1,
+            validator.validateRaw(writeRaw(raw), DictionaryTestFixtures.spec(230, raw)).entryCount,
+        )
+
+        val overlong = "а-".repeat(31) + "ааа"
+        assertEquals(65, overlong.codePointCount(0, overlong.length))
+        val overlongRaw = DictionaryTestFixtures.raw(listOf(overlong to 1L))
+        try {
+            validator.validateRaw(
+                writeRaw(overlongRaw),
+                DictionaryTestFixtures.spec(231, overlongRaw),
+            )
+            fail("accepted a 65-code-point word")
+        } catch (expected: DictionaryValidationException) {
+            assertTrue(expected.message.orEmpty().isNotEmpty())
+        }
+    }
+
+    @Test
     fun everyAlphabetLetterAndPairIsNfcLowercase() {
         val letters = TATAR_ALPHABET.codePoints().toArray().map { String(Character.toChars(it)) }
         for (first in letters) {

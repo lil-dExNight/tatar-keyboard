@@ -35,9 +35,10 @@ data class InflatedAsset(
  * of the raw file (bounded by [DictionaryArtifactSpec.maxRawSize], because the front-coded
  * blocks are easier to walk over a byte array), while [verifyPinnedContent] checks the bounds,
  * the header constants, the section arithmetic and the pinned raw SHA-256 through one fixed-size
- * buffer. A pinned SHA-256 match implies the embedded checksum and the walk's outcome, so
- * activation uses the fast tier; publication and any hash mismatch (which deletes the bad file
- * and republishes fresh bytes) use the full one.
+ * buffer. Stored words admit U+002D only between two alphabet letters. A pinned SHA-256 match
+ * implies the embedded checksum and the walk's outcome, so activation uses the fast tier;
+ * publication and any hash mismatch (which deletes the bad file and republishes fresh bytes) use
+ * the full one.
  */
 class TdictValidator {
     fun inflateAsset(
@@ -486,29 +487,63 @@ class TdictValidator {
 
     /**
      * Every alphabet letter is a precomposed lowercase code point below [ALPHABET_TABLE_SIZE], so
-     * a word is canonical (strict UTF-8, NFC, lowercase, in the alphabet) exactly when it is a
-     * sequence of 2-byte UTF-8 letters found in [ALPHABET]; NFC and case mapping leave such a word
-     * unchanged, which `TdictValidatorTest` checks for every letter and letter pair.
+     * letters use the same 2-byte UTF-8 walk. U+002D is the only other admitted code point, and
+     * only between two alphabet letters. NFC and case mapping leave this shape unchanged, which
+     * `TdictValidatorTest` checks for every letter and letter pair.
      */
     private fun validateStoredWord(word: ByteArray, length: Int, index: Int) {
         if (length == 0 || length > MAX_CANONICAL_WORD_BYTES) {
             throw DictionaryValidationException("word $index: invalid word byte length")
         }
         var offset = 0
+        var codePointCount = 0
+        var previousWasLetter = false
         while (offset < length) {
             val lead = word[offset].toInt() and 0xff
-            if (lead < 0xc2 || lead > 0xdf || offset + 1 >= length) {
-                throw DictionaryValidationException("word $index: not a Tatar alphabet letter")
+            if (lead == HYPHEN) {
+                if (!previousWasLetter || offset + 2 >= length) {
+                    throw DictionaryValidationException(
+                        "word $index: hyphen must be between two letters",
+                    )
+                }
+                val nextLead = word[offset + 1].toInt() and 0xff
+                if (nextLead < 0xc2 || nextLead > 0xdf) {
+                    throw DictionaryValidationException(
+                        "word $index: hyphen must be between two letters",
+                    )
+                }
+                val nextContinuation = word[offset + 2].toInt() and 0xff
+                if (nextContinuation and 0xc0 != 0x80) {
+                    throw DictionaryValidationException("word $index: not valid UTF-8")
+                }
+                val nextCodePoint = ((nextLead and 0x1f) shl 6) or (nextContinuation and 0x3f)
+                if (nextCodePoint >= ALPHABET_TABLE_SIZE || !ALPHABET_TABLE[nextCodePoint]) {
+                    throw DictionaryValidationException(
+                        "word $index: hyphen must be between two letters",
+                    )
+                }
+                offset += 3
+                codePointCount += 2
+                previousWasLetter = true
+            } else {
+                if (lead < 0xc2 || lead > 0xdf || offset + 1 >= length) {
+                    throw DictionaryValidationException("word $index: not a Tatar alphabet letter")
+                }
+                val continuation = word[offset + 1].toInt() and 0xff
+                if (continuation and 0xc0 != 0x80) {
+                    throw DictionaryValidationException("word $index: not valid UTF-8")
+                }
+                val codePoint = ((lead and 0x1f) shl 6) or (continuation and 0x3f)
+                if (codePoint >= ALPHABET_TABLE_SIZE || !ALPHABET_TABLE[codePoint]) {
+                    throw DictionaryValidationException("word $index: outside the Tatar alphabet")
+                }
+                offset += 2
+                codePointCount++
+                previousWasLetter = true
             }
-            val continuation = word[offset + 1].toInt() and 0xff
-            if (continuation and 0xc0 != 0x80) {
-                throw DictionaryValidationException("word $index: not valid UTF-8")
+            if (codePointCount > MAX_CANONICAL_WORD_CODE_POINTS) {
+                throw DictionaryValidationException("word $index: invalid word code point length")
             }
-            val codePoint = ((lead and 0x1f) shl 6) or (continuation and 0x3f)
-            if (codePoint >= ALPHABET_TABLE_SIZE || !ALPHABET_TABLE[codePoint]) {
-                throw DictionaryValidationException("word $index: outside the Tatar alphabet")
-            }
-            offset += 2
         }
     }
 
@@ -542,7 +577,9 @@ class TdictValidator {
     companion object {
         private const val BUFFER_SIZE = 8 * 1024
         private const val VERIFY_BUFFER_SIZE = 64 * 1024
-        private const val MAX_CANONICAL_WORD_BYTES = 64 * 2
+        private const val MAX_CANONICAL_WORD_CODE_POINTS = 64
+        private const val MAX_CANONICAL_WORD_BYTES = MAX_CANONICAL_WORD_CODE_POINTS * 2
+        private const val HYPHEN = 0x2d
         private const val ALPHABET = "аәбвгдеёжҗзийклмнңоөпрстуүфхһцчшщъыьэюя"
         private const val ALPHABET_TABLE_SIZE = 0x500
         private val ALPHABET_TABLE = BooleanArray(ALPHABET_TABLE_SIZE).also { table ->

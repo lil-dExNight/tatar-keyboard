@@ -335,7 +335,7 @@ class AutocorrectWideningCalibrationTest {
         val raw = inflate(DictionaryArtifactSpec.TATAR_TOP100K_V1)
         val sortedFrequencies = vocabulary.map { requireNotNull(currentIndex).frequencyOf(it) }.sorted()
         val expected = mapOf(
-            10_000 to Triple(3_283L, 2_937, 0),
+            10_000 to Triple(3_284L, 2_937, 0),
             5_000 to Triple(7_565L, 2_183, 0),
             2_000 to Triple(20_012L, 1_272, 0),
             1_000 to Triple(38_359L, 757, 0),

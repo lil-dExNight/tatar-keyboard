@@ -16,6 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalWordShapes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 import java.nio.charset.StandardCharsets
@@ -38,8 +39,8 @@ internal object PersonalWordFilter {
     /**
      * Returns the normalized form of [rawWord] if it is eligible for a subtype with [alphabet], or
      * null. Rejects mixed casing, a normalized length outside 3..24 code points, a combining mark
-     * left after NFC, any code point outside the alphabet, and a raw form too long for the u8
-     * `wordByteLength` field.
+     * left after NFC, any code point outside the alphabet, punctuation other than an internal
+     * U+002D, and a raw form too long for the u8 `wordByteLength` field.
      */
     fun acceptedNormalizedForm(rawWord: String, alphabet: Set<Int>): String? {
         if (rawWord.isEmpty()) return null
@@ -49,27 +50,16 @@ internal object PersonalWordFilter {
         if (rawWord.toByteArray(StandardCharsets.UTF_8).size > MAX_RAW_WORD_BYTES) return null
 
         val normalized = normalize(rawWord)
-        val codePointCount = normalized.codePointCount(0, normalized.length)
-        if (codePointCount < TpersFormat.MIN_WORD_CODE_POINTS ||
-            codePointCount > TpersFormat.MAX_WORD_CODE_POINTS
+        if (PersonalWordShapes.rejectionReason(
+                normalized,
+                alphabet,
+                TpersFormat.MIN_WORD_CODE_POINTS,
+                TpersFormat.MAX_WORD_CODE_POINTS,
+            ) != null
         ) {
             return null
         }
-        var offset = 0
-        while (offset < normalized.length) {
-            val codePoint = normalized.codePointAt(offset)
-            if (isCombiningMark(codePoint)) return null
-            if (codePoint !in alphabet) return null
-            offset += Character.charCount(codePoint)
-        }
         return normalized
-    }
-
-    private fun isCombiningMark(codePoint: Int): Boolean {
-        val type = Character.getType(codePoint)
-        return type == Character.NON_SPACING_MARK.toInt() ||
-            type == Character.COMBINING_SPACING_MARK.toInt() ||
-            type == Character.ENCLOSING_MARK.toInt()
     }
 
     /** u8 length field: the raw form cannot exceed 255 UTF-8 bytes on disk. */

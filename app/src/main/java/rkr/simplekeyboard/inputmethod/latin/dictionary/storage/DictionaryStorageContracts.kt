@@ -53,6 +53,11 @@ data class DictionaryArtifactSpec(
      */
     val sentStartAssetPath: String? = null,
     /**
+     * The proper-name display table asset of this language, or null when it ships none. It is a
+     * plain text asset without a storage contract, like [sentStartAssetPath].
+     */
+    val properNameAssetPath: String? = null,
+    /**
      * The lowercase alphabet the personal dictionary filters this language's words by, or null
      * when the language has no personal dictionary. `PersonalSubtypes.alphabetFor` reads this
      * field, so the language list lives only here; the alphabets are defined in `PersonalSubtypes`.
@@ -69,6 +74,7 @@ data class DictionaryArtifactSpec(
         require(FAMILY_PATTERN.matches(storageDirectoryName.replace('-', '_')))
         require(assetPath.isNotBlank())
         require(sentStartAssetPath == null || sentStartAssetPath.isNotBlank())
+        require(properNameAssetPath == null || properNameAssetPath.isNotBlank())
         require(expectedCompressedSize > 0)
         require(expectedRawSize in TdictFormat.HEADER_SIZE.toLong()..maxRawSize)
         require(expectedEntryCount > 0)
@@ -112,17 +118,18 @@ data class DictionaryArtifactSpec(
             storageDirectoryName = "dictionaries",
             generation = 1,
             assetPath = "dictionaries/tatar_top100k_v1.tdict.zlib",
-            expectedCompressedSize = 596_740,
+            expectedCompressedSize = 598_003,
             expectedCompressedSha256 =
-                "5f93cc68d649b4a94c7bc2d66e13d62b7726c514ce63c60668a7941acccefcd1",
-            expectedRawSize = 1_310_584,
+                "231a911806b03138a7641eb1b6103cfcfea09a310feb6650ddb1937fcbb23986",
+            expectedRawSize = 1_311_911,
             expectedRawSha256 =
-                "7cd7774625d349a1795e2f05c7368dd1fc663342267011445a3a76a0900d0f7b",
-            expectedEntryCount = 110_006,
+                "0313eacb1845559ec3a65e85770f87bb82a3363e94ee899328a3b4cebdfff723",
+            expectedEntryCount = 110_088,
             fallbackWords = listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
             harmonyTwins = listOf("дә" to "да"),
             bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V1,
             sentStartAssetPath = "dictionaries/tatar_sentstart_v1.txt",
+            properNameAssetPath = "dictionaries/tatar_proper_names_v1.txt",
             personalAlphabet = PersonalSubtypes.TATAR_RU_ALPHABET,
         )
         // </generated pins>
@@ -183,6 +190,14 @@ data class DictionaryArtifactSpec(
         @JvmStatic
         fun sentStartAssetForSubtype(subtypeId: String): String? =
             forSubtype(subtypeId)?.sentStartAssetPath
+
+        /**
+         * The proper-name display table asset path of [subtypeId], or null when there is none; then
+         * display casing stays as it was without the table.
+         */
+        @JvmStatic
+        fun properNameAssetForSubtype(subtypeId: String): String? =
+            forSubtype(subtypeId)?.properNameAssetPath
     }
 }
 

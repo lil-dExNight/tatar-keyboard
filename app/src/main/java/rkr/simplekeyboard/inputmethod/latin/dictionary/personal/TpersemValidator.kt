@@ -207,19 +207,12 @@ class TpersemValidator {
         ) {
             fail("word is not in the normalized form")
         }
-        val codePointCount = normalized.codePointCount(0, normalized.length)
-        if (codePointCount < TpersemFormat.MIN_WORD_CODE_POINTS ||
-            codePointCount > TpersemFormat.MAX_WORD_CODE_POINTS
-        ) {
-            fail("normalized word length out of bounds")
-        }
-        var offset = 0
-        while (offset < normalized.length) {
-            val codePoint = normalized.codePointAt(offset)
-            if (isCombiningMark(codePoint)) fail("combining mark remains after NFC")
-            if (codePoint !in alphabet) fail("word is outside the subtype alphabet")
-            offset += Character.charCount(codePoint)
-        }
+        PersonalWordShapes.rejectionReason(
+            normalized,
+            alphabet,
+            TpersemFormat.MIN_WORD_CODE_POINTS,
+            TpersemFormat.MAX_WORD_CODE_POINTS,
+        )?.let { reason -> fail(reason) }
     }
 
     /**
@@ -264,13 +257,6 @@ class TpersemValidator {
     } catch (_: Exception) {
         // Constant message: never echo the bytes that failed to decode.
         fail(failureMessage)
-    }
-
-    private fun isCombiningMark(codePoint: Int): Boolean {
-        val type = Character.getType(codePoint)
-        return type == Character.NON_SPACING_MARK.toInt() ||
-            type == Character.COMBINING_SPACING_MARK.toInt() ||
-            type == Character.ENCLOSING_MARK.toInt()
     }
 
     private fun compareUnsigned(first: ByteArray, second: ByteArray): Int {

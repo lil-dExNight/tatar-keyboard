@@ -153,21 +153,14 @@ class TsentValidator {
                 fail("word casing is mixed")
             }
 
-            // NORMALIZED form: length, no leftover combining marks, alphabet, ordering, dedup.
+            // NORMALIZED form: content shape, ordering and dedup.
             val normalized = Normalizer.normalize(rawWord, Normalizer.Form.NFC).lowercase(Locale.ROOT)
-            val codePointCount = normalized.codePointCount(0, normalized.length)
-            if (codePointCount < TsentFormat.MIN_WORD_CODE_POINTS ||
-                codePointCount > TsentFormat.MAX_WORD_CODE_POINTS
-            ) {
-                fail("normalized word length out of bounds")
-            }
-            var offset = 0
-            while (offset < normalized.length) {
-                val codePoint = normalized.codePointAt(offset)
-                if (isCombiningMark(codePoint)) fail("combining mark remains after NFC")
-                if (codePoint !in alphabet) fail("word is outside the subtype alphabet")
-                offset += Character.charCount(codePoint)
-            }
+            PersonalWordShapes.rejectionReason(
+                normalized,
+                alphabet,
+                TsentFormat.MIN_WORD_CODE_POINTS,
+                TsentFormat.MAX_WORD_CODE_POINTS,
+            )?.let { reason -> fail(reason) }
 
             val normalizedBytes = normalized.toByteArray(StandardCharsets.UTF_8)
             previousNormalizedBytes?.let { previous ->
@@ -219,13 +212,6 @@ class TsentValidator {
     } catch (_: Exception) {
         // Constant message: never echo the bytes that failed to decode.
         fail("word is not valid UTF-8")
-    }
-
-    private fun isCombiningMark(codePoint: Int): Boolean {
-        val type = Character.getType(codePoint)
-        return type == Character.NON_SPACING_MARK.toInt() ||
-            type == Character.COMBINING_SPACING_MARK.toInt() ||
-            type == Character.ENCLOSING_MARK.toInt()
     }
 
     private fun compareUnsigned(first: ByteArray, second: ByteArray): Int {

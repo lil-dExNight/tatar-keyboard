@@ -207,7 +207,9 @@ def _check_canonical_entries(
     checked: list[tuple[bytes, int]] = []
     previous_word: str | None = None
     for word, frequency in entries:
-        normalized, reason = coverage.normalize_word(word, language.alphabet)
+        normalized, reason = coverage.normalize_word(
+            word, language.alphabet, allow_internal_hyphen=True
+        )
         if reason is not None or normalized != word:
             raise DictionaryInputError(f"word is not canonical: {word!r}")
         if previous_word is not None:
@@ -331,7 +333,9 @@ def _serialize_entries_v1(
     frequencies: list[int] = []
     previous_word: str | None = None
     for word, frequency in entries:
-        normalized, reason = coverage.normalize_word(word, language.alphabet)
+        normalized, reason = coverage.normalize_word(
+            word, language.alphabet, allow_internal_hyphen=True
+        )
         if reason is not None or normalized != word:
             raise DictionaryInputError(f"word is not canonical: {word!r}")
         if previous_word is not None:
@@ -505,7 +509,9 @@ def _check_word(
     language: coverage.Language,
     previous_word: str | None,
 ) -> None:
-    normalized, reason = coverage.normalize_word(word, language.alphabet)
+    normalized, reason = coverage.normalize_word(
+        word, language.alphabet, allow_internal_hyphen=True
+    )
     if reason is not None:
         raise DictionaryFormatError(f"word {index} is invalid: {reason}")
     if normalized != word:
@@ -736,7 +742,9 @@ def _validate_raw_v1(
             word = encoded.decode("utf-8", errors="strict")
         except UnicodeDecodeError as error:
             raise DictionaryFormatError(f"word {index} is not valid UTF-8") from error
-        normalized, reason = coverage.normalize_word(word, language.alphabet)
+        normalized, reason = coverage.normalize_word(
+            word, language.alphabet, allow_internal_hyphen=True
+        )
         if reason is not None:
             raise DictionaryFormatError(f"word {index} is invalid: {reason}")
         if normalized != word:
@@ -909,7 +917,9 @@ def prefix_candidates(
     top: int,
     language: coverage.Language = coverage.DEFAULT_LANGUAGE,
 ) -> list[tuple[str, int]]:
-    normalized, reason = coverage.normalize_word(prefix, language.alphabet)
+    normalized, reason = coverage.normalize_word(
+        prefix, language.alphabet, allow_internal_hyphen=True
+    )
     if reason is not None or normalized != prefix:
         raise DictionaryInputError(f"query is not canonical: {prefix!r}")
     if top <= 0:
@@ -936,7 +946,9 @@ def _read_queries(
             query = line.strip()
             if not query or query.startswith("#"):
                 continue
-            normalized, reason = coverage.normalize_word(query, language.alphabet)
+            normalized, reason = coverage.normalize_word(
+                query, language.alphabet, allow_internal_hyphen=True
+            )
             if reason is not None or normalized != query:
                 raise DictionaryInputError(
                     f"{path}:{line_number}: query is not canonical"

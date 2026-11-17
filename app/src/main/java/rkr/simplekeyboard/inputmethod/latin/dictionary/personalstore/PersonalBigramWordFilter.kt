@@ -16,6 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalWordShapes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 import java.nio.charset.StandardCharsets
@@ -36,7 +37,7 @@ internal object PersonalBigramWordFilter {
     /**
      * Returns the normalized form of [rawWord] if it is eligible as a pair member for a subtype
      * with [alphabet], or null. The same rejections as [PersonalWordFilter.acceptedNormalizedForm],
-     * with the 1..24 length window.
+     * including punctuation other than an internal U+002D, with the 1..24 length window.
      */
     fun acceptedNormalizedForm(rawWord: String, alphabet: Set<Int>): String? {
         if (rawWord.isEmpty()) return null
@@ -47,27 +48,16 @@ internal object PersonalBigramWordFilter {
         if (rawWord.toByteArray(StandardCharsets.UTF_8).size > MAX_RAW_WORD_BYTES) return null
 
         val normalized = normalize(rawWord)
-        val codePointCount = normalized.codePointCount(0, normalized.length)
-        if (codePointCount < TpersbFormat.MIN_WORD_CODE_POINTS ||
-            codePointCount > TpersbFormat.MAX_WORD_CODE_POINTS
+        if (PersonalWordShapes.rejectionReason(
+                normalized,
+                alphabet,
+                TpersbFormat.MIN_WORD_CODE_POINTS,
+                TpersbFormat.MAX_WORD_CODE_POINTS,
+            ) != null
         ) {
             return null
         }
-        var offset = 0
-        while (offset < normalized.length) {
-            val codePoint = normalized.codePointAt(offset)
-            if (isCombiningMark(codePoint)) return null
-            if (codePoint !in alphabet) return null
-            offset += Character.charCount(codePoint)
-        }
         return normalized
-    }
-
-    private fun isCombiningMark(codePoint: Int): Boolean {
-        val type = Character.getType(codePoint)
-        return type == Character.NON_SPACING_MARK.toInt() ||
-            type == Character.COMBINING_SPACING_MARK.toInt() ||
-            type == Character.ENCLOSING_MARK.toInt()
     }
 
     /** u8 length field: neither half of a record can exceed 255 UTF-8 bytes on disk. */

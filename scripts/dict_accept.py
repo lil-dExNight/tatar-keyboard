@@ -19,6 +19,7 @@ import random
 import sys
 import tempfile
 from pathlib import Path
+from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -550,8 +551,9 @@ def load_baseline(tag: str, directory: Path):
 
 def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
     """Extra word<TAB>frequency entries merged into the composition, such as the admitted Tatar
-    word forms from rebuild_assets.py. Each word must pass `normalize_word` unchanged and each
-    frequency must be a positive u32; a duplicate or malformed row stops the build.
+    word forms from rebuild_assets.py. Each word must pass `normalize_word` unchanged, with the
+    internal-hyphen grammar of reviewed compounds, and each frequency must be a positive u32;
+    a duplicate or malformed row stops the build.
     """
     import dictionary_coverage as cov
     language = cov.language_for(tag)
@@ -565,7 +567,9 @@ def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
                 raise SystemExit(
                     f"{path}:{line_number}: expected a word<TAB>frequency row, "
                     f"got {len(fields)} fields")
-            word, reason = cov.normalize_word(fields[0], language.alphabet)
+            word, reason = cov.normalize_word(
+                fields[0], language.alphabet, allow_internal_hyphen=True
+            )
             if reason is not None or word != fields[0]:
                 raise SystemExit(
                     f"{path}:{line_number}: word {fields[0]!r} is not canonical "
@@ -597,7 +601,9 @@ def read_required_words(path: Path, tag: str) -> frozenset[str]:
             word = line.rstrip("\n")
             if not word or word.startswith("#"):
                 continue
-            normalized, reason = cov.normalize_word(word, language.alphabet)
+            normalized, reason = cov.normalize_word(
+                word, language.alphabet, allow_internal_hyphen=True
+            )
             if reason is not None or normalized != word:
                 raise SystemExit(
                     f"{path}:{line_number}: word {word!r} is not canonical "
@@ -607,6 +613,36 @@ def read_required_words(path: Path, tag: str) -> frozenset[str]:
                 raise SystemExit(f"{path}:{line_number}: duplicate word {word!r}")
             words.add(word)
     return frozenset(words)
+
+
+def read_extra_entries_many(paths: Sequence[Path], tag: str) -> dict[str, int]:
+    """Merge several extra-entry files; a word repeated in a second file stops the build."""
+    merged: dict[str, int] = {}
+    origins: dict[str, Path] = {}
+    for path in paths:
+        for word, frequency in read_extra_entries(path, tag).items():
+            if word in merged:
+                raise SystemExit(
+                    f"{path}: duplicate word {word!r}, already in {origins[word]}"
+                )
+            merged[word] = frequency
+            origins[word] = path
+    return merged
+
+
+def read_required_words_many(paths: Sequence[Path], tag: str) -> frozenset[str]:
+    """Merge several required-word files; a word repeated in a second file stops the build."""
+    merged: set[str] = set()
+    origins: dict[str, Path] = {}
+    for path in paths:
+        for word in read_required_words(path, tag):
+            if word in merged:
+                raise SystemExit(
+                    f"{path}: duplicate word {word!r}, already in {origins[word]}"
+                )
+            merged.add(word)
+            origins[word] = path
+    return frozenset(merged)
 
 
 def merged_entries(tag: str, baseline: Path, top: int = 100_000,
@@ -663,9 +699,13 @@ def pack(args) -> int:
         if args.extra_entries is not None:
             # --extra-entries/--top require --only: they are per language, and without --only
             # both languages would get the same extra entries.
-            extra = read_extra_entries(Path(args.extra_entries), tag)
+            extra = read_extra_entries_many(
+                [Path(item) for item in args.extra_entries], tag
+            )
         required = (
-            read_required_words(Path(args.require_entries), tag)
+            read_required_words_many(
+                [Path(item) for item in args.require_entries], tag
+            )
             if args.require_entries is not None else frozenset()
         )
         if not required <= set(extra or {}):
@@ -756,14 +796,16 @@ def main(argv=None) -> int:
                     help="write the assets to app/src/main/assets (without the flag, only measures)")
     pk.add_argument("--only", choices=("rus", "tat"), default=None,
                     help="build one language only; the other asset is neither read nor written")
-    pk.add_argument("--extra-entries", default=None, metavar="TSV",
+    pk.add_argument("--extra-entries", default=None, metavar="TSV", action="append",
                     help="extra word<TAB>frequency entries merged into the composition "
-                         "(the admitted Tatar word forms); requires --only, because the "
-                         "entries are per language")
-    pk.add_argument("--require-entries", default=None, metavar="FILE",
+                         "(the admitted Tatar word forms, the reviewed compounds); "
+                         "repeatable, a word repeated across files stops the build; "
+                         "requires --only, because the entries are per language")
+    pk.add_argument("--require-entries", default=None, metavar="FILE", action="append",
                     help="one word per line that must ship even below the composition cutoff "
                          "(explicit operator approvals); each word must also be in "
-                         "--extra-entries and this requires --only")
+                         "--extra-entries and this requires --only; repeatable, a word "
+                         "repeated across files stops the build")
     pk.add_argument("--top", type=int, default=100_000,
                     help="composition cutoff size (default %(default)s); requires --only "
                          "when it differs from the default")

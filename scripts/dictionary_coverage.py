@@ -80,20 +80,35 @@ class SourceStats:
 
 
 def normalize_word(
-    raw_word: str, alphabet: frozenset[str] = TATAR_ALPHABET
+    raw_word: str,
+    alphabet: frozenset[str] = TATAR_ALPHABET,
+    *,
+    allow_internal_hyphen: bool = False,
 ) -> tuple[str | None, str | None]:
-    """Return a normalized Cyrillic word of [alphabet], or a filtering reason."""
+    """Return a normalized Cyrillic word of [alphabet], or a filtering reason.
+
+    With ``allow_internal_hyphen``, U+002D is also accepted, but only between two alphabet
+    letters: no leading, trailing or doubled hyphen. Other dashes and apostrophes stay
+    outside the grammar in both modes.
+    """
     word = unicodedata.normalize("NFC", raw_word.strip()).lower()
     if not word:
         return None, "empty_word"
     if len(word) > MAX_WORD_LENGTH:
         return None, "too_long"
-    if any(character not in alphabet for character in word):
-        return None, (
-            "outside_tatar_alphabet"
-            if alphabet is TATAR_ALPHABET
-            else "outside_alphabet"
-        )
+    reason = "outside_tatar_alphabet" if alphabet is TATAR_ALPHABET else "outside_alphabet"
+    for index, character in enumerate(word):
+        if character in alphabet:
+            continue
+        if (
+            allow_internal_hyphen
+            and character == "-"
+            and 0 < index < len(word) - 1
+            and word[index - 1] in alphabet
+            and word[index + 1] in alphabet
+        ):
+            continue
+        return None, reason
     return word, None
 
 

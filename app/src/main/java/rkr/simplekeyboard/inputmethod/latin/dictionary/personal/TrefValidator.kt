@@ -204,40 +204,20 @@ class TrefValidator {
 
     companion object {
         /**
-         * The content rule of both words of a record: within the length bounds, already in the
-         * normalized lookup form (NFC lowercase), a leading letter followed by letters and
-         * combining marks — the shape the undo path can actually record.
+         * Both words use the normalized lookup form (NFC lowercase) and the shared length and
+         * internal-hyphen rule. Any Unicode letter is admitted because this format has no subtype
+         * alphabet check; a combining mark may continue a letter, and every other punctuation
+         * character is rejected.
          */
         fun isWellFormedWord(word: String): Boolean {
-            val codePointCount = word.codePointCount(0, word.length)
-            if (codePointCount < TrefFormat.MIN_WORD_CODE_POINTS ||
-                codePointCount > TrefFormat.MAX_WORD_CODE_POINTS
-            ) {
-                return false
-            }
             if (TatarWordUtils.normalizeForLookup(word) != word) return false
-            var offset = 0
-            var first = true
-            while (offset < word.length) {
-                val codePoint = word.codePointAt(offset)
-                if (Character.isLetter(codePoint)) {
-                    // A letter is always allowed.
-                } else if (!first && isCombiningMark(codePoint)) {
-                    // A combining mark may only continue a letter.
-                } else {
-                    return false
-                }
-                first = false
-                offset += Character.charCount(codePoint)
-            }
-            return true
-        }
-
-        private fun isCombiningMark(codePoint: Int): Boolean {
-            val type = Character.getType(codePoint)
-            return type == Character.NON_SPACING_MARK.toInt() ||
-                type == Character.COMBINING_SPACING_MARK.toInt() ||
-                type == Character.ENCLOSING_MARK.toInt()
+            return PersonalWordShapes.rejectionReason(
+                word,
+                alphabet = null,
+                minCodePoints = TrefFormat.MIN_WORD_CODE_POINTS,
+                maxCodePoints = TrefFormat.MAX_WORD_CODE_POINTS,
+                allowCombiningMarks = true,
+            ) == null
         }
     }
 }

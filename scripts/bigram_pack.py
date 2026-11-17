@@ -198,7 +198,8 @@ def edge_normalized_tokens(
     """Strip Unicode punctuation only at token edges, then apply canonical word normalization.
 
     Sentence-ending edge punctuation remains as boundary metadata. Punctuation left inside the
-    trimmed token is not removed, so canonical normalization still rejects the whole token.
+    trimmed token is not removed, so canonical normalization still rejects the whole token,
+    except for a U+002D between two letters, which the dictionary word grammar admits.
     """
     result: list[EdgeNormalizedToken] = []
     for raw_token in sentence.split():
@@ -215,7 +216,7 @@ def edge_normalized_tokens(
         edge_characters = leading + trailing
         classes = tuple(sorted({_punctuation_class(character) for character in edge_characters}))
         core = raw_token[start:end]
-        normalized, _reason = normalize_word(core, alphabet)
+        normalized, _reason = normalize_word(core, alphabet, allow_internal_hyphen=True)
         result.append(
             EdgeNormalizedToken(
                 word=normalized,
@@ -239,12 +240,16 @@ def normalized_tokens(
 ) -> list[str | None]:
     """Normalize one sentence, using ``None`` for rejected tokens and sentence boundaries.
 
-    By default, any punctuation rejects its whole token. With ``recover_punctuation``, edge
-    punctuation is removed first; hard boundaries still insert ``None`` so no pair crosses them.
+    By default, any punctuation rejects its whole token, except for a U+002D between two
+    letters. With ``recover_punctuation``, edge punctuation is removed first; hard boundaries
+    still insert ``None`` so no pair crosses them.
     Russian text needs the Russian alphabet because the Tatar one is a superset.
     """
     if not recover_punctuation:
-        return [normalize_word(token, alphabet)[0] for token in sentence.split()]
+        return [
+            normalize_word(token, alphabet, allow_internal_hyphen=True)[0]
+            for token in sentence.split()
+        ]
     result: list[str | None] = []
     for token in edge_normalized_tokens(sentence, alphabet):
         if token.word is None:
@@ -291,7 +296,10 @@ def measure_punctuation_recovery(
     for path in paths:
         for sentence in iter_sentences(path):
             raw_tokens = sentence.split()
-            baseline = [normalize_word(token, alphabet)[0] for token in raw_tokens]
+            baseline = [
+                normalize_word(token, alphabet, allow_internal_hyphen=True)[0]
+                for token in raw_tokens
+            ]
             recovered = edge_normalized_tokens(sentence, alphabet)
             for token in recovered:
                 if token.word is not None and token.punctuation_classes:

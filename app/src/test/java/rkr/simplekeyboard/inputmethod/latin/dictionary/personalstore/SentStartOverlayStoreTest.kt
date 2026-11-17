@@ -84,6 +84,19 @@ class SentStartOverlayStoreTest {
     }
 
     @Test
+    fun aCompoundGraduatesIntoTheOverlay() {
+        val directory = newPersonalDir()
+        val store = store(directory)
+
+        repeat(PendingCounters.LEARN_THRESHOLD) { store.noteSentenceStart("Азык-төлек") }
+
+        assertEquals(listOf("Азык-төлек"), store.snapshot.topWords())
+        val onDisk = TsentValidator().validate(overlayFile(directory), subtype)
+        assertEquals(listOf("азык-төлек"), onDisk.normalizedForms)
+        assertEquals(listOf("Азык-төлек"), onDisk.rawForms)
+    }
+
+    @Test
     fun aFreshStoreReadsBackTheOverlayInUsageOrder() {
         val directory = newPersonalDir()
         val store = store(directory)

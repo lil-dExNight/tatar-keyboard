@@ -508,10 +508,10 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["strip_empty_prefix_pct"], "2.0000")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
         # The shipped default strip shows three cells; the fourth-cell arm is the opt-in setting.
-        self.assertEqual(table["ks_simulated_keys"], "21905")
-        self.assertEqual(table["ks_pct"], "35.9428")
-        self.assertEqual(table["ks_cells4_simulated_keys"], "21102")
-        self.assertEqual(table["ks_cells4_pct"], "38.2910")
+        self.assertEqual(table["ks_simulated_keys"], "21904")
+        self.assertEqual(table["ks_pct"], "35.9457")
+        self.assertEqual(table["ks_cells4_simulated_keys"], "21103")
+        self.assertEqual(table["ks_cells4_pct"], "38.2881")
         # The context boost (the armed exact pass) over the cp>=2 prefix moments; the JVM pins
         # in TtSuggestEvalTest assert the same values on the real index.
         self.assertEqual(table["ctxboost_cp2plus_moments"], "18789")
@@ -522,8 +522,8 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+3.4156")
         self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "51.1842")
         self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "53.4355")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "55.2823")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "57.2250")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "55.2770")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "57.2196")
 
     def test_russian_pins(self) -> None:
         table = self.tables["rus"]

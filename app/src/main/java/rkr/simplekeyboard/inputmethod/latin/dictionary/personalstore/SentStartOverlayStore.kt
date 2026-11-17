@@ -17,6 +17,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentStartOverlay
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalWordShapes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TsentFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TsentValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
@@ -216,24 +217,14 @@ internal class SentStartOverlayStore(
         // The raw form is what goes on disk; its UTF-8 length must fit the u8 length field.
         if (word.toByteArray(StandardCharsets.UTF_8).size > MAX_RAW_WORD_BYTES) return null
         val normalized = PersonalWordFilter.normalize(word)
-        val codePointCount = normalized.codePointCount(0, normalized.length)
-        if (codePointCount < TsentFormat.MIN_WORD_CODE_POINTS ||
-            codePointCount > TsentFormat.MAX_WORD_CODE_POINTS
+        if (PersonalWordShapes.rejectionReason(
+                normalized,
+                alpha,
+                TsentFormat.MIN_WORD_CODE_POINTS,
+                TsentFormat.MAX_WORD_CODE_POINTS,
+            ) != null
         ) {
             return null
-        }
-        var offset = 0
-        while (offset < normalized.length) {
-            val codePoint = normalized.codePointAt(offset)
-            val type = Character.getType(codePoint)
-            if (type == Character.NON_SPACING_MARK.toInt() ||
-                type == Character.COMBINING_SPACING_MARK.toInt() ||
-                type == Character.ENCLOSING_MARK.toInt()
-            ) {
-                return null
-            }
-            if (codePoint !in alpha) return null
-            offset += Character.charCount(codePoint)
         }
         return normalized
     }

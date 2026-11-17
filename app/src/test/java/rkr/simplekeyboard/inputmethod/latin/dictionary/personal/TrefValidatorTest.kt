@@ -86,6 +86,46 @@ class TrefValidatorTest {
     }
 
     @Test
+    fun anInternalAsciiHyphenBetweenLettersIsAccepted() {
+        assertTrue(TrefValidator.isWellFormedWord("азык-төлек"))
+        // Refused corrections still have no subtype alphabet restriction.
+        assertTrue(TrefValidator.isWellFormedWord("self-taught"))
+
+        val validated = TrefValidator().validate(
+            RefusedCorrections.EMPTY
+                .noting("азык-төлек", "китап", 500)
+                .serialize(TAG),
+            TAG,
+        )
+        assertEquals(listOf("азык-төлек"), validated.typedWords)
+    }
+
+    @Test
+    fun hyphensOutsideTwoLettersAndOtherDashesAreRejected() {
+        val words = listOf(
+            "-азык",
+            "азык-",
+            "азык--төлек",
+            "азык–төлек",
+            "азык—төлек",
+            "азык‐төлек",
+            "азык’төлек",
+        )
+        for (word in words) {
+            assertFalse(word, TrefValidator.isWellFormedWord(word))
+            assertRejected(RefusedCorrectionsTestFixtures.build(
+                RefusedCorrectionsTestFixtures.record(word, "китап", 1), entryCount = 1))
+            assertRejected(RefusedCorrectionsTestFixtures.build(
+                RefusedCorrectionsTestFixtures.record("китап", word, 1), entryCount = 1))
+        }
+    }
+
+    @Test
+    fun aCombiningMarkThatComposesOutOfNfcIsRejected() {
+        assertFalse(TrefValidator.isWellFormedWord("азык\u0301"))
+    }
+
+    @Test
     fun aWordThatIsNotLettersIsRejected() {
         assertRejected(RefusedCorrectionsTestFixtures.build(
             RefusedCorrectionsTestFixtures.record("ки2", "кит", 1), entryCount = 1))

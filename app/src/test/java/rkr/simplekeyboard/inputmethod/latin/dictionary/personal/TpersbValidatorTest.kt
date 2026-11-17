@@ -187,6 +187,34 @@ class TpersbValidatorTest {
     }
 
     @Test
+    fun anInternalAsciiHyphenIsAcceptedInBothPairMembers() {
+        val validated = validate(
+            PersonalBigramTestFixtures.build(listOf(Entry("азык-төлек", "Азык-төлек"))),
+        )
+
+        assertEquals(listOf("азык-төлек"), validated.contexts)
+        assertEquals(listOf("Азык-төлек"), validated.successorRawForms)
+        assertEquals(listOf("азык-төлек"), validated.successorNormalizedForms)
+    }
+
+    @Test
+    fun hyphensOutsideTwoAlphabetLettersAndOtherDashesAreRejected() {
+        val words = listOf(
+            "-азык",
+            "азык-",
+            "азык--төлек",
+            "азык–төлек",
+            "азык—төлек",
+            "азык‐төлек",
+            "азык’төлек",
+        )
+        for (word in words) {
+            assertRejected(PersonalBigramTestFixtures.build(listOf(Entry(word, "дөнья"))))
+            assertRejected(PersonalBigramTestFixtures.build(listOf(Entry("сәләм", word))))
+        }
+    }
+
+    @Test
     fun aWordOutsideTheSubtypeAlphabetIsRejected() {
         assertRejected(PersonalBigramTestFixtures.build(listOf(Entry("hello", "дөнья"))))
         assertRejected(PersonalBigramTestFixtures.build(listOf(Entry("сәләм", "world"))))

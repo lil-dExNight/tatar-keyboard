@@ -42,7 +42,7 @@ class TatarWordUtilsTest {
 
     @Test
     fun extractTrailingWordStopsAtPunctuation() {
-        assertEquals("def", TatarWordUtils.extractTrailingWord("abc-def"))
+        assertEquals("def", TatarWordUtils.extractTrailingWord("abc.def"))
     }
 
     @Test
@@ -119,6 +119,48 @@ class TatarWordUtilsTest {
         assertEquals("ёлка", TatarWordUtils.extractTrailingWord("бу ёлка"))
     }
 
+    @Test
+    fun extractTrailingWordKeepsInternalAsciiHyphenInRawSpan() {
+        assertEquals("азык-төлек", TatarWordUtils.extractTrailingWord("азык-төлек"))
+        assertEquals("Азык-Төлек", TatarWordUtils.extractTrailingWord("яз Азык-Төлек"))
+    }
+
+    @Test
+    fun extractTrailingWordTreatsNonInternalHyphensAsBoundaries() {
+        assertEquals("азык-төлек", TatarWordUtils.extractTrailingWord("-азык-төлек"))
+        assertEquals("азык-төлек-", TatarWordUtils.extractTrailingWord("азык-төлек-"))
+        assertEquals("төлек", TatarWordUtils.extractTrailingWord("азык--төлек"))
+        assertEquals("төлек", TatarWordUtils.extractTrailingWord("азык-\u0306төлек"))
+    }
+
+    @Test
+    fun aTrailingHyphenKeepsTheWordUnfinished() {
+        // Typing "-" after a word must not look like a separator that completed it.
+        assertEquals("сүз", TatarWordUtils.extractTrailingWord("сүз"))
+        assertEquals("сүз-", TatarWordUtils.extractTrailingWord("сүз-"))
+        assertEquals("азык-", TatarWordUtils.extractTrailingWord("Бу азык-"))
+        assertEquals("эш", TatarWordUtils.extractWordBeforeTrailingWord("эш азык-", true))
+        assertEquals("", TatarWordUtils.extractTrailingWord(" -"))
+    }
+
+    @Test
+    fun extractTrailingWordSplitsAtOtherDashesAndApostrophes() {
+        for (dash in listOf("\u2010", "\u2013", "\u2014")) {
+            assertEquals("төлек", TatarWordUtils.extractTrailingWord("азык${dash}төлек"))
+        }
+        assertEquals("төлек", TatarWordUtils.extractTrailingWord("азык'төлек"))
+        assertEquals("төлек", TatarWordUtils.extractTrailingWord("азык’төлек"))
+        assertEquals("", TatarWordUtils.extractTrailingWord("азык'"))
+        assertEquals("", TatarWordUtils.extractTrailingWord("азык’"))
+    }
+
+    @Test
+    fun extractTrailingWordKeepsNfdLetterBeforeInternalHyphen() {
+        val word = nfd("сәй") + "-төлек"
+        assertEquals('\u0306', word[word.indexOf('-') - 1])
+        assertEquals(word, TatarWordUtils.extractTrailingWord("яз $word"))
+    }
+
     // --- extractNextWordContext ------------------------------------------------------------------
 
     @Test
@@ -129,6 +171,12 @@ class TatarWordUtilsTest {
     @Test
     fun extractNextWordContextAcceptsMoreThanOneTrailingSpace() {
         assertEquals("сүз", TatarWordUtils.extractNextWordContext("яз сүз   "))
+    }
+
+    @Test
+    fun extractNextWordContextReturnsCompoundBeforeTrailingSpace() {
+        assertEquals("азык-төлек", TatarWordUtils.extractNextWordContext("Бу азык-төлек "))
+        assertEquals("Азык-Төлек", TatarWordUtils.extractNextWordContext("Азык-Төлек ", true))
     }
 
     @Test
@@ -309,6 +357,14 @@ class TatarWordUtilsTest {
         assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сәләм.", true))
         assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сүз. дә", true))
         assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("сүз!\nтава ", true))
+    }
+
+    @Test
+    fun trailingWordAtSentenceStartRecognizesACompound() {
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("Азык-төлек", true))
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("Азык-төлек ", true))
+        assertTrue(TatarWordUtils.isTrailingWordAtSentenceStart("Сүз. Азык-төлек", true))
+        assertFalse(TatarWordUtils.isTrailingWordAtSentenceStart("Бу азык-төлек", true))
     }
 
     @Test
@@ -530,7 +586,13 @@ class TatarWordUtilsTest {
         assertFalse(TatarWordUtils.startsWithWordCharacter(", дигән"))
         assertFalse(TatarWordUtils.startsWithWordCharacter("\nсүз"))
         assertFalse(TatarWordUtils.startsWithWordCharacter("123"))
-        assertFalse(TatarWordUtils.startsWithWordCharacter("-сүз"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("-"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("- сүз"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("‐сүз"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("–сүз"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("—сүз"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("'сүз"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("’сүз"))
         assertFalse(TatarWordUtils.startsWithWordCharacter("😀"))
     }
 
@@ -549,6 +611,14 @@ class TatarWordUtilsTest {
         // The cursor sits inside a canonically decomposed letter ("й" = "и" + U+0306), which is
         // inside a word by definition.
         assertTrue(TatarWordUtils.startsWithWordCharacter(nfd("й").substring(1)))
+    }
+
+    @Test
+    fun startsWithWordCharacterIsTrueForHyphenFollowedByLetter() {
+        // This is the text after the cursor in "азык|-төлек".
+        assertTrue(TatarWordUtils.startsWithWordCharacter("-төлек"))
+        assertTrue(TatarWordUtils.startsWithWordCharacter("-ә"))
+        assertFalse(TatarWordUtils.startsWithWordCharacter("-\u0306төлек"))
     }
 
     @Test
@@ -590,6 +660,7 @@ class TatarWordUtilsTest {
         // quotes. All of them are covered because the classification is by Unicode category.
         assertFalse(TatarWordUtils.needsAutoSpace("»"))
         assertFalse(TatarWordUtils.needsAutoSpace("«дигән»"))
+        assertFalse(TatarWordUtils.needsAutoSpace("–"))
         assertFalse(TatarWordUtils.needsAutoSpace("—"))
         assertFalse(TatarWordUtils.needsAutoSpace("…"))
         assertFalse(TatarWordUtils.needsAutoSpace("“дигән”"))
@@ -648,6 +719,14 @@ class TatarWordUtilsTest {
         assertEquals("сүз", TatarWordUtils.extractWordBeforeTrailingWord("яз сүз бүген ", false))
         assertEquals("сүз", TatarWordUtils.extractWordBeforeTrailingWord("яз сүз, бүген ", false))
         assertEquals("сүз", TatarWordUtils.extractWordBeforeTrailingWord("яз сүз  бүген.", false))
+    }
+
+    @Test
+    fun thePairContextIncludesCompoundsOnEitherSide() {
+        assertEquals("азык-төлек",
+            TatarWordUtils.extractWordBeforeTrailingWord("азык-төлек бүген ", true))
+        assertEquals("эш", TatarWordUtils.extractWordBeforeTrailingWord("эш азык-төлек ", true))
+        assertEquals("эш", TatarWordUtils.extractWordBeforeTrailingWord("эш азык-төлек", true))
     }
 
     @Test
@@ -770,6 +849,19 @@ class TatarWordUtilsTest {
     }
 
     @Test
+    fun theWordDeleteEatsTheWholeCompound() {
+        assertEquals(10, TatarWordUtils.wordDeleteLengthBeforeCursor("азык-төлек", true))
+        assertEquals(12, TatarWordUtils.wordDeleteLengthBeforeCursor("азык-төлек  ", true))
+        assertEquals(4, TatarWordUtils.wordDeleteLengthBeforeCursor("Бу сүз-", true))
+        assertEquals(10, TatarWordUtils.wordDeleteLengthBeforeCursor("Бу азык-төлек", false))
+        val nfdCompound = nfd("сәй") + "-төлек"
+        assertEquals(10, TatarWordUtils.wordDeleteLengthBeforeCursor(nfdCompound, true))
+        for (separator in listOf("\u2010", "\u2013", "\u2014", "'", "’")) {
+            assertEquals(5, TatarWordUtils.wordDeleteLengthBeforeCursor("азык${separator}төлек", true))
+        }
+    }
+
+    @Test
     fun theWordDeleteSwallowsABareWhitespaceRun() {
         assertEquals(2, TatarWordUtils.wordDeleteLengthBeforeCursor("  ", true))
         assertEquals("but the word before the spaces goes with them",
@@ -816,6 +908,15 @@ class TatarWordUtilsTest {
     }
 
     @Test
+    fun theCaseCycleFindsAWholeCompoundButStopsAtItsInternalCursor() {
+        assertEquals(10, TatarWordUtils.caseCycleWordLength("Азык-төлек", "", true))
+        assertEquals(10, TatarWordUtils.caseCycleWordLength("Бу азык-төлек", "", false))
+        assertEquals(0, TatarWordUtils.caseCycleWordLength("азык", "-төлек", true))
+        assertEquals(5, TatarWordUtils.caseCycleWordLength("Бу азык–төлек", "", false))
+        assertEquals(5, TatarWordUtils.caseCycleWordLength("Бу азык—төлек", "", false))
+    }
+
+    @Test
     fun theCaseCycleStaysOutOfTheMiddleOfAWord() {
         assertEquals(0, TatarWordUtils.caseCycleWordLength("сү", "з", true))
         assertEquals(0, TatarWordUtils.caseCycleWordLength("сү", "з ә", true))
@@ -829,6 +930,41 @@ class TatarWordUtilsTest {
         assertEquals(3, TatarWordUtils.caseCycleWordLength("сүз", "", true))
         assertEquals("a word not touching index 0 needs no provenance",
             3, TatarWordUtils.caseCycleWordLength("x сүз", "", false))
+    }
+
+    // --- endsWithWordOfAtLeast ------------------------------------------------------------------
+
+    @Test
+    fun endsWithWordOfAtLeastCountsLettersOnBothSidesOfACompound() {
+        assertTrue(TatarWordUtils.endsWithWordOfAtLeast("Бу азык-төлек ", 9))
+        assertFalse(TatarWordUtils.endsWithWordOfAtLeast("Бу азык-төлек ", 10))
+        assertTrue(TatarWordUtils.endsWithWordOfAtLeast("Бу азык-төлек!.. ", 9))
+        val nfdCompound = nfd("сәй") + "-төлек"
+        assertTrue(TatarWordUtils.endsWithWordOfAtLeast(nfdCompound, 8))
+        assertFalse(TatarWordUtils.endsWithWordOfAtLeast(nfdCompound, 9))
+    }
+
+    @Test
+    fun endsWithWordOfAtLeastStillSplitsAtDashesAndApostrophes() {
+        for (separator in listOf("\u2010", "\u2013", "\u2014", "'", "’")) {
+            val text = "Бу азык${separator}төлек "
+            assertTrue(TatarWordUtils.endsWithWordOfAtLeast(text, 5))
+            assertFalse(TatarWordUtils.endsWithWordOfAtLeast(text, 6))
+        }
+    }
+
+    // --- isAutocorrectSeparator -----------------------------------------------------------------
+
+    @Test
+    fun autocorrectSeparatorExcludesAsciiHyphenButKeepsOtherDashes() {
+        assertFalse(TatarWordUtils.isAutocorrectSeparator('-'.code))
+        assertTrue(TatarWordUtils.isAutocorrectSeparator('\u2010'.code))
+        assertTrue(TatarWordUtils.isAutocorrectSeparator('\u2013'.code))
+        assertTrue(TatarWordUtils.isAutocorrectSeparator('\u2014'.code))
+        assertTrue(TatarWordUtils.isAutocorrectSeparator(' '.code))
+        assertTrue(TatarWordUtils.isAutocorrectSeparator(','.code))
+        assertTrue(TatarWordUtils.isAutocorrectSeparator('\''.code))
+        assertTrue(TatarWordUtils.isAutocorrectSeparator('’'.code))
     }
 
     // --- lastVowelIsFront -----------------------------------------------------------------------

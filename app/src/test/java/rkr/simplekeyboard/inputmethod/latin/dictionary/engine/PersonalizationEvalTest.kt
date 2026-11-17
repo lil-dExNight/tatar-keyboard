@@ -840,9 +840,9 @@ class PersonalizationEvalTest {
             "rep.oracle" to 89_169L, "rep.realistic" to 89_169L, "rep.fixed" to 89_169L,
         )
         private val PIN_EMPTY_OBSERVATIONS = mapOf(
-            "hash.oracle" to 795L, "hash.realistic" to 795L, "hash.fixed" to 795L,
+            "hash.oracle" to 794L, "hash.realistic" to 794L, "hash.fixed" to 794L,
             "chrono.oracle" to 810L, "chrono.realistic" to 810L, "chrono.fixed" to 810L,
-            "rep.oracle" to 5_028L, "rep.realistic" to 5_028L, "rep.fixed" to 5_028L,
+            "rep.oracle" to 5_019L, "rep.realistic" to 5_019L, "rep.fixed" to 5_019L,
         )
         private val PIN_WORD_COMPLETIONS = mapOf(
             "hash" to 95L, "chrono" to 88L, "rep" to 600L,
@@ -884,7 +884,7 @@ class PersonalizationEvalTest {
         // repetition split. The control count is cross-pinned with the fourth-cell keystroke
         // arm of TtSuggestEvalTest; the lift is pinned python-side (PIN_REP_KS_PERS_KEYS in
         // tests/personalization_eval) and floored here at 80%.
-        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_102
+        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_103
         private const val PIN_REP_KS_LIFT_KEYS = 1_084
 
         private lateinit var evalLines: List<String>

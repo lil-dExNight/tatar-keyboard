@@ -120,5 +120,35 @@ class DictionaryCoverageTest(unittest.TestCase):
         self.assertIn("no usable Tatar words", result.stderr)
 
 
+class InternalHyphenGrammarTest(unittest.TestCase):
+    """The compound grammar is opt-in; the default corpus rule stays letter-only."""
+
+    def test_internal_hyphen_is_accepted_only_with_the_flag(self) -> None:
+        word, reason = dictionary_coverage.normalize_word(
+            "Азык-төлек", allow_internal_hyphen=True
+        )
+        self.assertEqual("азык-төлек", word)
+        self.assertIsNone(reason)
+        word, reason = dictionary_coverage.normalize_word("Азык-төлек")
+        self.assertIsNone(word)
+        self.assertEqual("outside_tatar_alphabet", reason)
+
+    def test_hyphens_outside_two_letters_are_rejected(self) -> None:
+        for word in ("-азык", "азык-", "азык--төлек", "азык–төлек", "азык—төлек",
+                     "азык‐төлек", "азык'төлек", "азык’төлек", "а-", "2-3"):
+            normalized, reason = dictionary_coverage.normalize_word(
+                word, allow_internal_hyphen=True
+            )
+            self.assertIsNone(normalized, msg=word)
+            self.assertIsNotNone(reason, msg=word)
+
+    def test_multiple_internal_hyphens_are_allowed(self) -> None:
+        word, reason = dictionary_coverage.normalize_word(
+            "аз-ык-тө-лек", allow_internal_hyphen=True
+        )
+        self.assertEqual("аз-ык-тө-лек", word)
+        self.assertIsNone(reason)
+
+
 if __name__ == "__main__":
     unittest.main()

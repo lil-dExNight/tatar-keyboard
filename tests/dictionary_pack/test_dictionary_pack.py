@@ -407,7 +407,7 @@ class DictionaryPackTest(unittest.TestCase):
             "invalid_utf8": [(b"\xff", 1)],
             "nfd": [("йорт", 1)],
             "uppercase": [("Сәлам", 1)],
-            "alphabet": [("бер-ике", 1)],
+            "alphabet": [("бер–ике", 1)],
             "too_long": [("а" * 65, 1)],
             "duplicate": [("алма", 2), ("алма", 1)],
             "unsorted": [("юл", 1), ("алма", 2)],
@@ -667,3 +667,22 @@ class DictionaryPackTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CompoundWordTest(unittest.TestCase):
+    def test_serializes_and_validates_internal_hyphens(self) -> None:
+        words = [("азык-төлек", 10), ("хатын-кыз", 7), ("юл", 3)]
+        raw = pack.serialize_entries(words, schema=pack.SCHEMA_ID_V2)
+        parsed = pack.validate_raw(raw)
+        self.assertEqual(words, list(zip(parsed.words, parsed.frequencies)))
+
+    def test_rejects_a_hyphen_outside_two_letters(self) -> None:
+        for word in ("-азык", "азык-", "азык--төлек", "азык–төлек"):
+            with self.assertRaises(pack.DictionaryInputError):
+                pack.serialize_entries([(word, 1)], schema=pack.SCHEMA_ID_V2)
+
+    def test_hyphen_sort_order_is_byte_order(self) -> None:
+        words = [("азык", 1), ("азык-төлек", 1), ("азыкл", 1)]
+        raw = pack.serialize_entries(words, schema=pack.SCHEMA_ID_V2)
+        parsed = pack.validate_raw(raw)
+        self.assertEqual([word for word, _ in words], list(parsed.words))

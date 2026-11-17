@@ -38,6 +38,7 @@ import dictionary_pack  # noqa: E402
 import wordform_gen  # noqa: E402
 from bigram_pack import select_heads  # noqa: E402
 import companion_list_pack  # noqa: E402
+import proper_name_pack  # noqa: E402
 
 STORAGE_DIR = Path("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage")
 DICT_CONTRACT = STORAGE_DIR / "DictionaryStorageContracts.kt"
@@ -98,9 +99,10 @@ COMPANIONS = (
     ),
 )
 
-# Tatar dictionary cutoff; at 100 000 no admitted word form makes the cut. The release APK size
-# limit is the only size limit, so run release_check.sh after changing it.
-TATAR_DICTIONARY_TOP = 110_000
+# Tatar dictionary cutoff. The reviewed compounds enter the ranking above the old tail, so the
+# cutoff carries exactly their number of extra slots to keep every previously shipped word. The
+# release APK size limit is the only size limit, so run release_check.sh after changing it.
+TATAR_DICTIONARY_TOP = 110_082
 
 DICTIONARIES = (
     DictionaryAsset(
@@ -115,6 +117,8 @@ DICTIONARIES = (
         asset="app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib",
     ),
 )
+
+TATAR_DICTIONARY_ASSET = Path(DICTIONARIES[0].asset)
 
 # Packing parameters of the shipped tables (H heads, K successors per head, extra heads,
 # training corpora). Changing any of them changes the table, so change them only together
@@ -193,6 +197,10 @@ WORDFORM_FREQUENCY_SOURCES = (
     "tat_web_2018_1M-words.txt",
 )
 WORDFORM_REVIEW = Path("data/dictionary/tatar-wordform-review.tsv")
+# The reviewed compound list and the proper-name display list both feed the Tatar side: the
+# first adds whole hyphenated words to the dictionary, the second ships the display forms.
+COMPOUND_REVIEW = proper_name_pack.COMPOUND_REVIEW
+PROPER_NAME_ASSET = proper_name_pack.PROPER_NAME_ASSET
 WORDFORM_REVIEW_HEADER = [
     "word", "lemma", "paradigm_cell", "corpus_evidence", "attestation_status",
     "admission_decision", "approved", "reviewer", "review_date", "note",
@@ -333,6 +341,55 @@ def merge_reviewed_wordforms(root: Path, out: Path) -> Path:
         file=sys.stderr,
     )
     return out
+
+
+def write_reviewed_compounds(root: Path, work_dir: Path) -> tuple[Path, Path]:
+    """Write the reviewed compound extras and required list; return their paths.
+
+    The extra file carries the review-table frequency, which is the summed exact count of the
+    reviewed written forms. Every approved compound is required, so an explicit review
+    decision ships even below the composition cutoff. The display forms of the proper compounds
+    are written into the proper-name asset, not into the dictionary.
+    """
+    review = proper_name_pack.read_compound_review(root / COMPOUND_REVIEW)
+    extra = work_dir / "compounds-extra-tt.tsv"
+    data = "".join(
+        f"{word}\t{review.frequencies[word]}\n" for word in sorted(review.frequencies)
+    ).encode("utf-8")
+    wordform_gen.write_atomic(extra, data)
+    required = work_dir / "compounds-required-tt.txt"
+    required_data = "".join(
+        f"{word}\n" for word in sorted(review.frequencies)
+    ).encode("utf-8")
+    wordform_gen.write_atomic(required, required_data)
+    print(
+        f"compound review: {len(review.frequencies)} approved compounds, "
+        f"{len(review.proper_displays)} with a display form",
+        file=sys.stderr,
+    )
+    return extra, required
+
+
+def write_proper_name_asset(root: Path) -> Path:
+    """Write the proper-name display asset from the two review tables; return its path.
+
+    The dictionary is already rebuilt at this point, so every key must be present; a key that
+    does not ship is a failed rebuild, not a warning.
+    """
+    data = proper_name_pack.build_asset(
+        root / proper_name_pack.PROPER_NAME_REVIEW, root / COMPOUND_REVIEW
+    )
+    target = root / PROPER_NAME_ASSET
+    target.parent.mkdir(parents=True, exist_ok=True)
+    wordform_gen.write_atomic(target, data)
+    forms = proper_name_pack.parse_asset(data, str(PROPER_NAME_ASSET))
+    absent = proper_name_pack.missing_dictionary_keys(forms, root / TATAR_DICTIONARY_ASSET)
+    if absent:
+        raise wordform_gen.WordformError(
+            "proper-name keys outside the rebuilt dictionary: " + ", ".join(absent[:10])
+        )
+    print(f"proper-name asset: {len(forms)} display forms", file=sys.stderr)
+    return target
 
 
 # --- corpus manifest --------------------------------------------------------------------------
@@ -863,10 +920,13 @@ def run_check(
     known_drift_path: Path | None,
     stream: TextIO = sys.stdout,
     corpus_dir: Path | None = None,
+    check_proper_names: bool = True,
 ) -> int:
     """Check assets against pins and dictionaries, and the corpus manifest. Writes nothing.
 
-    The manifest itself is always checked; the corpus files only when corpus_dir is given.
+    The manifest itself is always checked; the corpus files only when corpus_dir is given. The
+    proper-name asset and the reviewed compounds are checked against the Tatar dictionary unless
+    `check_proper_names` is false, which a fixture tree without those review inputs uses.
     Returns 1 on a mismatch and 2 on missing inputs or an unparsable contract or manifest.
     """
     dict_contract = root / DICT_CONTRACT
@@ -919,6 +979,50 @@ def run_check(
         report["dictionaries"][dictionary.tag] = entry  # type: ignore[index]
 
     used_drift_keys: set[str] = set()
+    if check_proper_names:
+        proper_entry: dict[str, object] = {"asset": str(PROPER_NAME_ASSET)}
+        report["proper_names"] = proper_entry
+        try:
+            expected_forms = proper_name_pack.build_asset(
+                root / proper_name_pack.PROPER_NAME_REVIEW, root / COMPOUND_REVIEW
+            )
+            asset_path = root / PROPER_NAME_ASSET
+            problems: list[str] = []
+            if not asset_path.is_file():
+                problems.append("the proper-name asset is missing")
+            elif asset_path.read_bytes() != expected_forms:
+                problems.append("the proper-name asset does not match the review tables")
+            dictionary_words = set(
+                dictionary_pack.validate_asset(
+                    (root / TATAR_DICTIONARY_ASSET).read_bytes()
+                ).words
+            )
+            forms = proper_name_pack.parse_asset(expected_forms, str(PROPER_NAME_ASSET))
+            absent = sorted(set(forms) - dictionary_words)
+            if absent:
+                problems.append(
+                    f"{len(absent)} proper-name keys are outside the dictionary: "
+                    + ", ".join(absent[:10])
+                )
+            compound_review = proper_name_pack.read_compound_review(root / COMPOUND_REVIEW)
+            missing_compounds = sorted(set(compound_review.frequencies) - dictionary_words)
+            if missing_compounds:
+                problems.append(
+                    f"{len(missing_compounds)} reviewed compounds are outside the dictionary: "
+                    + ", ".join(missing_compounds[:10])
+                )
+            proper_entry["display_forms"] = len(forms)
+            proper_entry["compound_words"] = len(compound_review.frequencies)
+            proper_entry["problems"] = problems
+            proper_entry["verdict"] = "mismatch" if problems else "ok"
+            failed = failed or bool(problems)
+        except Exception as error:  # a broken asset is a check verdict, not a crash
+            proper_entry["verdict"] = "mismatch"
+            proper_entry["problems"] = [f"unreadable: {error}"]
+            failed = True
+    else:
+        report["proper_names"] = {"verdict": "not-checked"}
+
     for bigram in BIGRAMS:
         asset_path = root / bigram.asset
         asset_key = str(Path(bigram.asset).relative_to("app/src/main/assets"))
@@ -1396,13 +1500,22 @@ def companion_pack_argv(root: Path, companion: CompanionListAsset) -> list[str]:
     ]
 
 
+def _path_list(value: Path | Sequence[Path] | None) -> list[Path]:
+    """Normalize one path or a sequence to a list; None means none."""
+    if value is None:
+        return []
+    if isinstance(value, Path):
+        return [value]
+    return list(value)
+
+
 def dict_accept_argv(
     root: Path,
     baseline: Path,
     work_dir: Path,
     dictionary: DictionaryAsset,
-    extra_entries: Path | None,
-    required_entries: Path | None = None,
+    extra_entries: Path | Sequence[Path] | None,
+    required_entries: Path | Sequence[Path] | None = None,
 ) -> list[str]:
     """Command line that rebuilds one dictionary; a separate function so tests can inspect it."""
     argv = [
@@ -1419,10 +1532,10 @@ def dict_accept_argv(
         "--top",
         str(dictionary.top),
     ]
-    if extra_entries is not None:
-        argv += ["--extra-entries", str(extra_entries)]
-    if required_entries is not None:
-        argv += ["--require-entries", str(required_entries)]
+    for path in _path_list(extra_entries):
+        argv += ["--extra-entries", str(path)]
+    for path in _path_list(required_entries):
+        argv += ["--require-entries", str(path)]
     return argv
 
 
@@ -1517,6 +1630,9 @@ def run_rebuild(
                 missing.append(str(corpus_dir / name))
         if not (root / WORDFORM_EXCEPTIONS).is_file():
             missing.append(str(root / WORDFORM_EXCEPTIONS))
+        for review in (COMPOUND_REVIEW, proper_name_pack.PROPER_NAME_REVIEW):
+            if not (root / review).is_file():
+                missing.append(str(root / review))
     if missing:
         print("error: missing rebuild inputs:", file=sys.stderr)
         for path in missing:
@@ -1542,24 +1658,38 @@ def run_rebuild(
     work_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Dictionaries of the selected languages. dict_accept verifies the baseline SHA-256 and
-    # refuses an already rebuilt asset. The Tatar side first runs the word-form stage; the
-    # admitted forms are passed as --extra-entries.
+    # refuses an already rebuilt asset. The Tatar side first runs the word-form stage and writes
+    # the reviewed compound extras; both lists are passed as repeated --extra-entries, and the
+    # reviewed words as --require-entries so they ship below the cutoff.
     wordforms: Path | None = None
+    compound_extra: Path | None = None
+    compound_required: Path | None = None
     if "tat" in selected:
         wordforms = build_admitted_wordforms(root, baseline, corpus_dir, work_dir)
         wordforms = merge_reviewed_wordforms(root, wordforms)
+        compound_extra, compound_required = write_reviewed_compounds(root, work_dir)
     for dictionary in DICTIONARIES:
         if dictionary.tag not in selected:
             continue
+        if dictionary.tag == "tat" and wordforms is not None:
+            extra: list[Path] = [wordforms]
+            required: list[Path] = [wordforms.with_name("wordforms-required-tt.txt")]
+            if compound_extra is not None and compound_required is not None:
+                extra.append(compound_extra)
+                required.append(compound_required)
+        else:
+            extra = []
+            required = []
         _run_step(
             dict_accept_argv(
                 root, baseline, work_dir, dictionary,
-                wordforms if dictionary.tag == "tat" else None,
-                wordforms.with_name("wordforms-required-tt.txt")
-                if dictionary.tag == "tat" and wordforms is not None else None,
+                extra or None,
+                required or None,
             ),
             cwd=root,
         )
+    if "tat" in selected:
+        write_proper_name_asset(root)
 
     # 2. Bigram tables of the selected languages, built against the dictionaries of step 1.
     for bigram in BIGRAMS:
@@ -1733,6 +1863,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     except wordform_gen.WordformError as error:
         print(f"error: wordform stage: {error}", file=sys.stderr)
+        return 2
+    except proper_name_pack.ProperNameError as error:
+        print(f"error: review table: {error}", file=sys.stderr)
         return 2
 
 

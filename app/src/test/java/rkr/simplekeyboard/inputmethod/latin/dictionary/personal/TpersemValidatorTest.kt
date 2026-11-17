@@ -155,6 +155,31 @@ class TpersemValidatorTest {
     }
 
     @Test
+    fun anInternalAsciiHyphenIsAccepted() {
+        val validated = validate(
+            PersonalEmojiTestFixtures.build(listOf(Entry("азык-төлек", "☀️"))),
+        )
+
+        assertEquals(listOf("азык-төлек"), validated.words)
+    }
+
+    @Test
+    fun hyphensOutsideTwoAlphabetLettersAndOtherDashesAreRejected() {
+        val words = listOf(
+            "-азык",
+            "азык-",
+            "азык--төлек",
+            "азык–төлек",
+            "азык—төлек",
+            "азык‐төлек",
+            "азык’төлек",
+        )
+        for (word in words) {
+            assertRejected(PersonalEmojiTestFixtures.build(listOf(Entry(word, "☀️"))))
+        }
+    }
+
+    @Test
     fun aWordOutsideTheSubtypeAlphabetIsRejected() {
         assertRejected(PersonalEmojiTestFixtures.build(listOf(Entry("hello", "☀️"))))
         assertRejected(PersonalEmojiTestFixtures.build(listOf(Entry("код1234", "☀️"))))

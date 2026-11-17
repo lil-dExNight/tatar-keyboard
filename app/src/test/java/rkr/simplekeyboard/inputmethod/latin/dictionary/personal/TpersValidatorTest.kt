@@ -122,6 +122,30 @@ class TpersValidatorTest {
         assertRejected(PersonalDictionaryTestFixtures.build(listOf(Entry("abc"))))
 
     @Test
+    fun acceptsAnInternalAsciiHyphenAndKeepsTheRawForm() {
+        val validated = validate(PersonalDictionaryTestFixtures.build(listOf(Entry("Азык-төлек"))))
+
+        assertEquals(listOf("Азык-төлек"), validated.rawForms)
+        assertEquals(listOf("азык-төлек"), validated.normalizedForms)
+    }
+
+    @Test
+    fun rejectsHyphensOutsideTwoAlphabetLettersAndOtherDashes() {
+        val words = listOf(
+            "-азык",
+            "азык-",
+            "азык--төлек",
+            "азык–төлек",
+            "азык—төлек",
+            "азык‐төлек",
+            "азык’төлек",
+        )
+        for (word in words) {
+            assertRejected(PersonalDictionaryTestFixtures.build(listOf(Entry(word))))
+        }
+    }
+
+    @Test
     fun rejectsWordShorterThanThreeCodePoints() =
         assertRejected(PersonalDictionaryTestFixtures.build(listOf(Entry("аб"))))
 

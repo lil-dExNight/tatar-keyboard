@@ -123,6 +123,33 @@ class TsentValidatorTest {
         assertRejected(build(listOf(Entry("abc"))))
 
     @Test
+    fun acceptsAnInternalAsciiHyphenAndKeepsTheRawForm() {
+        val validated = validator.validate(
+            build(listOf(Entry("Азык-төлек"))),
+            PersonalSubtypes.TATAR_RU,
+        )
+
+        assertEquals(listOf("Азык-төлек"), validated.rawForms)
+        assertEquals(listOf("азык-төлек"), validated.normalizedForms)
+    }
+
+    @Test
+    fun rejectsHyphensOutsideTwoAlphabetLettersAndOtherDashes() {
+        val words = listOf(
+            "-азык",
+            "азык-",
+            "азык--төлек",
+            "азык–төлек",
+            "азык—төлек",
+            "азык‐төлек",
+            "азык’төлек",
+        )
+        for (word in words) {
+            assertRejected(build(listOf(Entry(word))))
+        }
+    }
+
+    @Test
     fun rejectsUnsortedRecords() =
         // «әби» sorts after «китап» (unsigned UTF-8), so this order is invalid on disk.
         assertRejected(build(listOf(Entry("әби"), Entry("китап")), sort = false))

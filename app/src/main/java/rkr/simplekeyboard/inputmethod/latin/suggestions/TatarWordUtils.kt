@@ -42,8 +42,10 @@ object TatarWordUtils {
      * Returns the maximal trailing run of word characters in [textBeforeCursor] as an EXACT span of
      * the raw text.
      *
-     * A word character is a [Character.isLetter] letter or a combining mark bound to a preceding
-     * base character. Marks have to continue the run because canonically decomposed (NFD) input
+     * A word character is a [Character.isLetter] letter, a combining mark bound to a preceding
+     * base character, or U+002D between two letters. Combining marks between the left letter and
+     * the hyphen stay attached to that letter. Every other dash and every apostrophe is a boundary.
+     * Marks have to continue the run because canonically decomposed (NFD) input
      * is accepted: in NFD "й" is "и" + U+0306 and "ё" is "е" + U+0308, and
      * those marks are not letters, so a letters-only scan would cut the word short — or return ""
      * when the decomposed letter is the last thing typed. All three mark categories continue the
@@ -68,8 +70,14 @@ object TatarWordUtils {
         val length = textBeforeCursor.length
         if (length == 0) return ""
         var start = length
-        while (start > 0 && isWordCharacter(textBeforeCursor[start - 1])) {
-            start--
+        while (start > 0) {
+            val index = start - 1
+            if (!isWordCharacterAt(
+                    textBeforeCursor, index, textBeforeCursor[index].code,
+                    allowTrailingHyphen = true,
+                )
+            ) break
+            start = index
         }
         // The scan stopped on a non-word character (or the start of the text), so marks sitting at
         // the head of the run have no base letter inside the run and are not part of the word.
@@ -160,7 +168,15 @@ object TatarWordUtils {
         if (textBeforeCursor == null) return ""
         var end = textBeforeCursor.length
         // The separator that completed the trailing word (one or more non-word characters).
-        while (end > 0 && !isWordCharacter(textBeforeCursor[end - 1])) end--
+        while (end > 0) {
+            val index = end - 1
+            if (isWordCharacterAt(
+                    textBeforeCursor, index, textBeforeCursor[index].code,
+                    allowTrailingHyphen = true,
+                )
+            ) break
+            end = index
+        }
         if (end == 0) return ""
         // The trailing completed word itself (B).
         val wordB = extractTrailingWord(textBeforeCursor.subSequence(0, end))
@@ -241,7 +257,15 @@ object TatarWordUtils {
         if (textBeforeCursor == null) return false
         var end = textBeforeCursor.length
         // The separator run that may follow the word (one or more non-word characters).
-        while (end > 0 && !isWordCharacter(textBeforeCursor[end - 1])) end--
+        while (end > 0) {
+            val index = end - 1
+            if (isWordCharacterAt(
+                    textBeforeCursor, index, textBeforeCursor[index].code,
+                    allowTrailingHyphen = true,
+                )
+            ) break
+            end = index
+        }
         val word = extractTrailingWord(textBeforeCursor.subSequence(0, end))
         if (word.isEmpty()) return false
         return isSentenceStartContext(
@@ -290,8 +314,13 @@ object TatarWordUtils {
         }
         while (index > 0) {
             val codePoint = Character.codePointBefore(textBeforeCursor, index)
-            if (!isWordDeleteCharacter(codePoint)) break
-            index -= Character.charCount(codePoint)
+            val codePointStart = index - Character.charCount(codePoint)
+            if (!isWordDeleteCharacterAt(
+                    textBeforeCursor, codePointStart, codePoint,
+                    allowTrailingHyphen = true,
+                )
+            ) break
+            index = codePointStart
         }
         if (index == 0 && textBeforeCursor.isNotEmpty() && !cacheReachedTextStart) return 0
         return textBeforeCursor.length - index
@@ -327,8 +356,9 @@ object TatarWordUtils {
      * that separator; several in a row ("сүз!.. ") are skipped, and a tail ending in a letter (the
      * cache has not caught up yet) is measured as it stands.
      *
-     * Counting matches [extractTrailingWord]: combining marks continue the run but are not letters,
-     * and letters are [Character.isLetter] code points, so a supplementary letter counts once.
+     * Counting matches [extractTrailingWord]: combining marks and internal hyphens continue the run
+     * but are not letters, and letters are [Character.isLetter] code points, so a supplementary
+     * letter counts once.
      * Letters are not narrowed to the Tatar alphabet; the active tt_RU subtype shows the intent.
      *
      * Allocates nothing and reads at most [MAX_TAIL_SCAN] code points, because this runs on the
@@ -342,16 +372,24 @@ object TatarWordUtils {
         // Step over the separators that ended the word.
         while (index > 0 && scanned < MAX_TAIL_SCAN) {
             val codePoint = Character.codePointBefore(textBeforeCursor, index)
-            if (isWordCharacter(codePoint)) break
-            index -= Character.charCount(codePoint)
+            val codePointStart = index - Character.charCount(codePoint)
+            if (isWordCharacterAt(
+                    textBeforeCursor, codePointStart, codePoint, allowTrailingHyphen = true,
+                )
+            ) break
+            index = codePointStart
             scanned++
         }
         var letters = 0
         while (index > 0 && scanned < MAX_TAIL_SCAN && letters < minLetters) {
             val codePoint = Character.codePointBefore(textBeforeCursor, index)
-            if (!isWordCharacter(codePoint)) break
+            val codePointStart = index - Character.charCount(codePoint)
+            if (!isWordCharacterAt(
+                    textBeforeCursor, codePointStart, codePoint, allowTrailingHyphen = true,
+                )
+            ) break
             if (Character.isLetter(codePoint)) letters++
-            index -= Character.charCount(codePoint)
+            index = codePointStart
             scanned++
         }
         return letters >= minLetters
@@ -365,7 +403,8 @@ object TatarWordUtils {
      * would splice the suggestion into the middle of the user's text. Any [Character.isLetter]
      * letter (Latin and Russian included) and any combining mark counts: being too wide only costs
      * a suggestion, being too narrow corrupts text. A leading combining mark means the cursor is
-     * inside a decomposed character, which is inside a word too.
+     * inside a decomposed character, which is inside a word too. U+002D followed immediately by a
+     * letter also continues the word, covering a cursor between the left side and that hyphen.
      *
      * Reads the FIRST CODE POINT, not the first char, so a supplementary letter is classified
      * correctly instead of being seen as a lone (caseless, non-letter) surrogate.
@@ -373,7 +412,10 @@ object TatarWordUtils {
     @JvmStatic
     fun startsWithWordCharacter(textAfterCursor: CharSequence?): Boolean {
         if (textAfterCursor == null || textAfterCursor.isEmpty()) return false
-        return isWordCharacter(Character.codePointAt(textAfterCursor, 0))
+        val codePoint = Character.codePointAt(textAfterCursor, 0)
+        if (isWordCharacter(codePoint)) return true
+        return codePoint == '-'.code && textAfterCursor.length > 1 &&
+            Character.isLetter(Character.codePointAt(textAfterCursor, 1))
     }
 
     /**
@@ -490,7 +532,8 @@ object TatarWordUtils {
      *
      * [Character.isSpaceChar] covers the plain and the non-breaking space; the punctuation
      * categories are those of [needsAutoSpace], so "сүз," and "сүз —" end a word here for the same
-     * reason they hug it there.
+     * reason they hug it there. U+002D is excluded because it can join two parts of a compound;
+     * other dashes remain separators.
      *
      * Enter and Tab are not separators here, although they arrive as code points ('\n', '\t')
      * listed in `symbols_word_separators` ([Character.isWhitespace] would include them). The event
@@ -502,7 +545,7 @@ object TatarWordUtils {
      */
     @JvmStatic
     fun isAutocorrectSeparator(codePoint: Int): Boolean =
-        Character.isSpaceChar(codePoint) || isHuggingPunctuation(codePoint)
+        codePoint != '-'.code && (Character.isSpaceChar(codePoint) || isHuggingPunctuation(codePoint))
 
     /** True for the punctuation categories that must stay glued to the word in front of them. */
     private fun isHuggingPunctuation(codePoint: Int): Boolean {
@@ -516,16 +559,56 @@ object TatarWordUtils {
             type == Character.OTHER_PUNCTUATION.toInt()
     }
 
+    /**
+     * True for a letter, combining mark, or U+002D at [index]. A hyphen needs a letter on its
+     * left and a letter on its right; [allowTrailingHyphen] admits the right edge, where the
+     * user is still typing the second part of a compound.
+     */
+    private fun isWordCharacterAt(
+        text: CharSequence,
+        index: Int,
+        codePoint: Int,
+        allowTrailingHyphen: Boolean = false,
+    ): Boolean =
+        isWordCharacter(codePoint) || codePoint == '-'.code &&
+            isInternalHyphenAt(text, index, allowTrailingHyphen)
+
+    /** Letters, digits, combining marks, and U+002D: one word-delete unit. */
+    private fun isWordDeleteCharacterAt(
+        text: CharSequence,
+        index: Int,
+        codePoint: Int,
+        allowTrailingHyphen: Boolean = false,
+    ): Boolean = Character.isLetterOrDigit(codePoint) ||
+        isWordCharacterAt(text, index, codePoint, allowTrailingHyphen)
+
+    /** U+002D needs a letter, possibly followed by marks, on its left and a letter on its right. */
+    private fun isInternalHyphenAt(
+        text: CharSequence,
+        index: Int,
+        allowTrailingHyphen: Boolean,
+    ): Boolean {
+        val rightIndex = index + 1
+        if (rightIndex >= text.length) {
+            if (!allowTrailingHyphen) return false
+        } else if (!Character.isLetter(Character.codePointAt(text, rightIndex))) {
+            return false
+        }
+        var leftEnd = index
+        while (leftEnd > 0) {
+            val codePoint = Character.codePointBefore(text, leftEnd)
+            if (Character.isLetter(codePoint)) return true
+            if (!isCombiningMark(codePoint)) return false
+            leftEnd -= Character.charCount(codePoint)
+        }
+        return false
+    }
+
     /** True for letters and for the non-standalone combining marks that attach to them. */
-    private fun isWordCharacter(ch: Char): Boolean = isWordCharacter(ch.code)
+    private fun isWordCharacter(codePoint: Int): Boolean =
+        Character.isLetter(codePoint) || isCombiningMark(codePoint)
 
-    /** Letters, digits and combining marks: what the word-delete flick eats as one word. */
-    private fun isWordDeleteCharacter(codePoint: Int): Boolean =
-        Character.isLetterOrDigit(codePoint) || isWordCharacter(codePoint)
-
-    /** Code-point flavour of [isWordCharacter]; the char flavour delegates here. */
-    private fun isWordCharacter(codePoint: Int): Boolean {
-        if (Character.isLetter(codePoint)) return true
+    private fun isCombiningMark(codePoint: Int): Boolean {
         val type = Character.getType(codePoint)
         return type == Character.NON_SPACING_MARK.toInt() ||
             type == Character.COMBINING_SPACING_MARK.toInt() ||

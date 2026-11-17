@@ -62,8 +62,9 @@ class GlideIndexMemoryScalingTest {
         val full = GlideWordIndex.build(inventory, geometry)
         val half = GlideWordIndex.build(LimitedInventory(inventory, dictionary.entryCount / 2), geometry)
 
-        assertEquals(dictionary.entryCount, full.wordCount)
-        assertEquals(dictionary.entryCount / 2, half.wordCount)
+        // A hyphenated compound has no key for U+002D, so the glide index skips it.
+        assertEquals(dictionary.entryCount, full.wordCount + full.skippedWordCount)
+        assertEquals(dictionary.entryCount / 2, half.wordCount + half.skippedWordCount)
         // The pair-offset table is fixed by the layout; all other retained arrays scale by entry.
         val fixedBytes = geometry.keyCount * geometry.keyCount * 4L
         val fullVariable = full.retainedByteEstimate - fixedBytes

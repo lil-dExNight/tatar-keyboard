@@ -79,7 +79,7 @@ object AutocorrectPolicy {
      * `AutocorrectFloorPinTest` pins it against the shipped asset; a rebuilt dictionary that moves
      * the rank-10 000 frequency fails that test until this constant is re-derived the same way.
      */
-    const val MIN_CANDIDATE_FREQUENCY_TT: Long = 3_283L
+    const val MIN_CANDIDATE_FREQUENCY_TT: Long = 3_284L
 
     /**
      * Minimum candidate frequency of the Russian engine: the frequency of the rank-10 000 word of

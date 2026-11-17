@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 import bigram_asset_pack  # noqa: E402
 import dict_accept  # noqa: E402
 import dictionary_pack  # noqa: E402
+import proper_name_pack  # noqa: E402
 import rebuild_assets  # noqa: E402
 import wordform_gen  # noqa: E402
 
@@ -260,7 +261,9 @@ class FakeTreeTest(unittest.TestCase):
 
     def run_check(self, known_drift=None) -> tuple[int, dict]:
         stream = io.StringIO()
-        code = rebuild_assets.run_check(self.root, known_drift, stream)
+        code = rebuild_assets.run_check(
+            self.root, known_drift, stream, check_proper_names=False
+        )
         return code, json.loads(stream.getvalue())
 
     def write_known_drift(self, data) -> Path:
@@ -526,7 +529,8 @@ class CheckTest(FakeTreeTest):
     def test_missing_contract_is_an_input_error(self):
         (self.root / rebuild_assets.BIGRAM_CONTRACT).unlink()
         stream = io.StringIO()
-        code = rebuild_assets.run_check(self.root, None, stream)
+        code = rebuild_assets.run_check(
+            self.root, None, stream, check_proper_names=False)
         self.assertEqual(2, code)
 
     def test_unparseable_dict_contract_is_an_input_error(self):
@@ -537,7 +541,8 @@ class CheckTest(FakeTreeTest):
         contract.write_text(text.replace("expectedCompressedSize", "expectedGone"),
                             encoding="utf-8")
         stream = io.StringIO()
-        code = rebuild_assets.run_check(self.root, None, stream)
+        code = rebuild_assets.run_check(
+            self.root, None, stream, check_proper_names=False)
         self.assertEqual(2, code)
 
     def test_unparseable_bigram_contract_is_an_input_error(self):
@@ -546,7 +551,8 @@ class CheckTest(FakeTreeTest):
         contract.write_text(text.replace("expectedHeadCount", "expectedGone"),
                             encoding="utf-8")
         stream = io.StringIO()
-        code = rebuild_assets.run_check(self.root, None, stream)
+        code = rebuild_assets.run_check(
+            self.root, None, stream, check_proper_names=False)
         self.assertEqual(2, code)
 
 
@@ -674,6 +680,18 @@ class TwoSideTreeTest(unittest.TestCase):
                 asset="app/src/main/assets/dictionaries/russian_companion_v1.tcomp.zlib",
                 dictionary="rus", top=3),
         )
+        review_dir = self.root / "data/dictionary"
+        review_dir.mkdir(parents=True)
+        (review_dir / "tatar-compound-review.tsv").write_text(
+            "\t".join(proper_name_pack.COMPOUND_REVIEW_HEADER) + "\n"
+            + "\t".join([WORDS[0] + "-" + WORDS[1], "10", "coordinated", "test=10", "",
+                           "yes", "operator", "2026-11-18", "test compound"]) + "\n",
+            encoding="utf-8")
+        (review_dir / "tatar-proper-name-review.tsv").write_text(
+            "\t".join(proper_name_pack.PROPER_NAME_REVIEW_HEADER) + "\n"
+            + "\t".join([WORDS[0], WORDS[0].capitalize(), "10", "9", "1", "0.9",
+                           "test=10", "yes", "operator", "2026-11-18", "test name"]) + "\n",
+            encoding="utf-8")
         self.addCleanup(self._restore)
         self.baseline = self.root / "baseline"
         self.baseline.mkdir()
@@ -870,7 +888,8 @@ class CorpusManifestCheckTest(FakeTreeTest):
 
     def run_check(self, corpus_dir=None) -> tuple[int, dict]:
         stream = io.StringIO()
-        code = rebuild_assets.run_check(self.root, None, stream, corpus_dir=corpus_dir)
+        code = rebuild_assets.run_check(
+            self.root, None, stream, corpus_dir=corpus_dir, check_proper_names=False)
         return code, json.loads(stream.getvalue())
 
     def test_without_a_corpus_dir_the_files_are_not_checked(self):
@@ -903,7 +922,8 @@ class CorpusManifestCheckTest(FakeTreeTest):
     def test_a_broken_manifest_is_an_input_error(self):
         (self.root / rebuild_assets.CORPUS_MANIFEST).write_text("{", encoding="utf-8")
         stream = io.StringIO()
-        self.assertEqual(2, rebuild_assets.run_check(self.root, None, stream))
+        self.assertEqual(2, rebuild_assets.run_check(
+            self.root, None, stream, check_proper_names=False))
 
 
 class WordformStageTest(unittest.TestCase):

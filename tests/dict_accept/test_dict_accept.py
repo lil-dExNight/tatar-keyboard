@@ -522,8 +522,8 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         # tat: conversational cutoff weighting, the bonus-frequency rerank and word forms
         # promote entries above the old cutoff and displace entries from the tail. Explicitly
         # approved forms then ship even when they remain below the new cutoff.
-        self.assertEqual(self.report["tat"]["entries_after"], 110_006)
-        self.assertEqual(self.report["tat"]["words_added"], 21_078)
+        self.assertEqual(self.report["tat"]["entries_after"], 110_088)
+        self.assertEqual(self.report["tat"]["words_added"], 21_160)
         self.assertEqual(self.report["tat"]["words_displaced"], 11_072)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
@@ -534,5 +534,40 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         self.assertIn("можно", top3)
 
 
+class RepeatedEntriesTest(unittest.TestCase):
+    """Repeated --extra-entries/--require-entries files merge and reject duplicates."""
+
+    def test_extra_files_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "first.tsv"
+            second = Path(tmp) / "second.tsv"
+            first.write_text("азык-төлек\t10\n", encoding="utf-8")
+            second.write_text("санкт-петербург\t5\n", encoding="utf-8")
+            self.assertEqual(
+                da.read_extra_entries_many([first, second], "tat"),
+                {"азык-төлек": 10, "санкт-петербург": 5},
+            )
+
+    def test_a_word_repeated_across_files_stops_the_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "first.tsv"
+            second = Path(tmp) / "second.tsv"
+            first.write_text("азык-төлек\t10\n", encoding="utf-8")
+            second.write_text("азык-төлек\t5\n", encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                da.read_extra_entries_many([first, second], "tat")
+
+    def test_required_files_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = Path(tmp) / "first.txt"
+            second = Path(tmp) / "second.txt"
+            first.write_text("азык-төлек\n", encoding="utf-8")
+            second.write_text("санкт-петербург\n", encoding="utf-8")
+            self.assertEqual(
+                da.read_required_words_many([first, second], "tat"),
+                frozenset({"азык-төлек", "санкт-петербург"}),
+            )
+
 if __name__ == "__main__":
     unittest.main()
+
