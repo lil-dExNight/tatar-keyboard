@@ -10,6 +10,7 @@ described in [ASSET-FORMATS.md](ASSET-FORMATS.md).
 | `dictionaries/*.tdict.zlib` | `scripts/rebuild_assets.py` (runs `dict_accept.py pack`) | release 1.8.4 baseline dictionaries, `data/dictionary/dict-accept/`, Tatar word forms |
 | `dictionaries/*_companion_v1.tcomp.zlib` | `scripts/rebuild_assets.py` (runs `companion_list_pack.py build`) | the committed dictionary of the same language |
 | `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the conversational training files, the bundled dictionary |
+| `dictionaries/tatar_proper_names_v1.txt` | `scripts/rebuild_assets.py` (runs `proper_name_pack.py`) | `data/dictionary/tatar-proper-name-review.tsv`, `data/dictionary/tatar-compound-review.tsv` |
 | `emoji/emoji_set_v1.txt`, `emoji_skin_v1.txt` | `scripts/emoji_pack.py`, `scripts/emoji_skin_pack.py` | Unicode Emoji 15.1 `emoji-test.txt` |
 | `emoji/emoji_search_v1.txt` | `scripts/emoji_search_pack.py` | CLDR 44 annotations (ru, en), `scripts/emoji_search_tt_extra.txt`, `scripts/emoji_search_tt_names.txt` |
 | `emoji/emoji_suggest_v1.txt` | `scripts/emoji_suggest_pack.py` | `scripts/emoji_suggest_data.tsv` |
@@ -203,6 +204,15 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    it. The rebuild then reads the complete `operator-widened` approvals from
    `tatar-wordform-review.tsv`, merges their evidence-backed frequencies, and writes their words
    to `<work-dir>/wordforms-required-tt.txt`.
+   Reviewed compound words come from `data/dictionary/tatar-compound-review.tsv`: the rebuild
+   writes their frequencies and the required list, and passes them as additional
+   `--extra-entries`/`--require-entries` files. Only that file admits a hyphenated word; corpus
+   tokenization keeps rejecting a hyphen outside the reviewed dictionary vocabulary. A compound
+   is stored lowercase with U+002D only between letters; a proper compound carries its display
+   form in the proper-name asset instead. The apostrophe review admits no word: U+0027 and
+   U+2019 stay word boundaries in tokenization and never enter a dictionary, bigram, personal
+   store or display asset.
+
 2. **Dictionaries.** `dict_accept.py pack --write` merges the baseline, the accepted words and
    (for Tatar) the admitted forms. Frequencies are written plus conversational plus the bonus
    file, when it exists. The Tatar cutoff ranks entries by their stored frequency plus nine times
@@ -217,6 +227,11 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
 3. **Bigram tables.** `bigram_asset_pack.py pack --schema 3` is run against the new
    dictionaries with the `BIGRAMS` parameters (head count, successors per head, extra heads,
    training corpora). Change these parameters only together with a rebuild.
+3b. **Proper-name display.** `proper_name_pack.py build` writes
+   `dictionaries/tatar_proper_names_v1.txt` from the proper-name review and the proper-display rows
+   of the compound review. Every key must be in the rebuilt Tatar dictionary; a key that does not
+   ship fails the rebuild. The asset is plain text: a `#` header, then `key<TAB>display` rows
+   sorted by key.
 4. **Cold-companion lists.** `companion_list_pack.py build` derives each selected language's
    list from the dictionary of step 2 alone: the top 20 000 words by stored frequency, no corpus
    and no baseline input. The words are an exact list, never a probabilistic filter, because a
@@ -232,7 +247,8 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    `TtFullSubstitutionCalibrationTest`, `GlideRecoveryCalibrationTest`, `GlideGoldenExportTest`).
    Only this step writes them; `tests/rebuild_assets/` computes the same pins and compares
    them with the tree (`calibration_pin_updates`) without writing.
-7. **Check.** The `--check` procedure runs over all six assets.
+7. **Check.** The `--check` procedure runs over every shipped asset, including the proper-name
+   asset and every reviewed compound against the dictionary.
 
 Both bigram rebuilds pass `--recover-punctuation`: Unicode punctuation is stripped at token
 edges before word normalization, punctuation left inside a token still rejects it, and

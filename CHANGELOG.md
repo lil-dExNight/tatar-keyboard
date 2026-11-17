@@ -14,8 +14,19 @@ These hold for every release:
 
 ## [Unreleased]
 
+### Added
+
+- Reviewed Tatar compound words are suggested as whole words with their internal hyphen
+  (`азык-төлек`, `санкт-петербург`). The personal dictionary, learned word pairs, the
+  word-delete flick and the commit span treat the whole compound as one word.
+- Reviewed proper names are shown with their approved display form: next-word prediction keeps
+  the name's capitals, and a capitalized prefix keeps internal capitals such as
+  `Санкт-Петербург`. Ordinary words keep their existing casing.
+
 ### Changed
 
+- Apostrophe words stay out of the dictionary. Typing a straight or curly apostrophe does not
+  merge or split words in tokenization, commit, deletion, learning or suggestions.
 - Cold-companion validation computes the list checksum without a whole-list copy.
 - The generated-profile check requires critical startup, suggestion and glide methods to appear
   as method rules.

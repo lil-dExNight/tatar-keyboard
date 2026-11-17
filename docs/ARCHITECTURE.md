@@ -207,6 +207,24 @@ legacy-spelling preview and the autocorrect preview all own the whole band, and 
 already shows the typed word first, where a tap refuses the coming correction instead of
 committing.
 
+Reviewed proper names. `dictionaries/tatar_proper_names_v1.txt` maps a lowercase dictionary key to
+the display form approved for it. Prefix completion with a capitalized typed prefix uses that
+display form instead of first-letter capitalization, so internal capitals survive
+(`Санкт-Петербург`); a lowercase prefix keeps the dictionary key, and an all-caps prefix uppercases
+the display form. Next-word prediction replaces every all-lowercase reviewed key in the active
+language's cells with its display form. A personal raw spelling is never overridden, and the
+companion language and glide paths keep their existing casing. The table loads per language off the
+UI thread when its engine is published; a late arrival repaints a still-bound PREFIX or NEXT_WORD
+strip. Ordinary dictionary words are never capitalized by it.
+
+Reviewed compounds. Bundled dictionary words may contain U+002D only between two letters
+(`азык-төлек`, `санкт-петербург`); other dashes and apostrophes never enter a stored word. The
+same grammar applies to personal-dictionary words, learned pairs, emoji keys and refused
+corrections. Tokenization treats such a hyphen as part of the word, so completion, next-word
+context, autocorrection spans, the word-delete flick, case cycling and commit replace the whole
+compound. A trailing hyphen keeps the word unfinished until the second part is typed, so it is not
+mistaken for a separator; a leading, doubled or non-ASCII dash stays a boundary.
+
 Typo recovery (`TdictPrefixIndex.collectFuzzy`, configured per engine by `FuzzyEditPolicy`) runs
 edit class #1 (long-press partner, from the layout's `moreKeys` via `KeyNeighborTable`) for every
 language. When the exact pass is empty and the prefix has at least four code points, both shipped

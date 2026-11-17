@@ -17,7 +17,8 @@ paths below are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/la
   the last) that fits in u32. Readers accept only the minimal encoding: an overlong varint, or a
   fifth byte above `0x0f`, is an error.
 - Words are UTF-8, NFC, lowercase (`Locale.ROOT`). Word order is unsigned byte order of the UTF-8
-  encoding, which is the same as code-point order.
+  encoding, which is the same as code-point order. A stored word may contain U+002D only
+  between two alphabet letters; U+2010, U+2013, U+2014 and apostrophes are never part of a word.
 - The checksum field holds the SHA-256 of the whole file, computed with the field itself set to
   zero. `checksumAlgorithm = 1` means SHA-256, and no other value is accepted.
 - Every header begins with the same 16 bytes: magic (8 bytes of ASCII) at offset 0, then the
@@ -83,8 +84,9 @@ match authenticates the embedded checksum, so that field is not re-verified ther
 The full tier, `validateRaw`, additionally walks the file: the first block offset equals
 blocksOffset, block offsets strictly increase within the file; `firstLength` is 1..128,
 `prefixLength` ≤ `firstLength`, `suffixLength` ≥ 1, prefix + suffix ≤ 128 bytes, and every
-varint is minimal; every word is strict UTF-8, 1..64 code points, NFC lowercase, and in the
-Tatar alphabet (a superset of the Russian alphabet, so the Russian file passes the same check);
+varint is minimal; every word is strict UTF-8, 1..64 code points, NFC lowercase, in the Tatar
+alphabet (a superset of the Russian alphabet, so the Russian file passes the same check), and its
+only non-letters are U+002D characters that each sit between two alphabet letters;
 words strictly increase, so there are no duplicates, and every frequency is > 0; each block ends
 exactly where the next one starts, and the last block ends at end of file. A file whose size and
 SHA-256 match the pinned artifact is exactly the file the full walk accepted at publication, so
@@ -225,7 +227,8 @@ by usage, then frequency, then key.
 - every word is strict UTF-8. A stored normalized form must already be NFC lowercase. A stored
   original form (the `.tpers` word or the `.tpersb` successor) may not have mixed casing;
 - the normalized length is 3..24 code points in `.tpers` and 1..24 in the other two files, no
-  combining mark remains after NFC, and every code point is in the language's alphabet
+  combining mark remains after NFC, and every code point is in the language's alphabet or is a
+  U+002D between two alphabet letters;
   (`PersonalSubtypes`);
 - records strictly increase by key (the normalized word, the (context, successor) pair, or the
   (word, emoji) pair, compared as unsigned UTF-8 bytes), so there are no duplicates;
@@ -320,6 +323,7 @@ skipped, and an unreadable file gives an empty table. They have no storage contr
 | `emoji/emoji_search_v1.txt` | `sequence<TAB>Russian name<TAB>keywords (space-separated, ru/en/tt)<TAB>Tatar name` | `scripts/emoji_search_pack.py` | `emoji/EmojiSearchIndex.kt` |
 | `emoji/emoji_suggest_v1.txt` | `language<TAB>normalized word<TAB>emoji`, sorted by (language, word) | `scripts/emoji_suggest_pack.py` | `emoji/EmojiSuggestIndex.kt` |
 | `dictionaries/*_sentstart_v1.txt` | `#` header, then `word<TAB>count`, count descending, then word | `scripts/sentstart_pack.py` | `suggestions/SentStartIndex.kt` |
+| `dictionaries/tatar_proper_names_v1.txt` | `#` header, then `key<TAB>display` sorted by key; the key is the NFC lowercase dictionary word, the display lowers to it | `scripts/proper_name_pack.py` | `suggestions/ProperNameIndex.kt` |
 
 The skin, search and suggest tables may only use sequences from `emoji_set_v1.txt`. Each
 sentence-start word is in the bundled dictionary of its language. Sources and licenses are listed
