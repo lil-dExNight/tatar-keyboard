@@ -103,6 +103,7 @@
       <button id="canceltrace">save active trace as canceled</button>
     </div>
     <div id="prompt"></div>
+    <div id="hint" class="muted" style="text-align:center"></div>
     <div id="statusline" class="muted">swipe the word through its letters, in one motion</div>
     <div id="board"><canvas id="trace"></canvas></div>
     <div class="row">
@@ -409,12 +410,86 @@ if (typeof document !== 'undefined') (function () {
     statusEl.className = cls || 'muted';
   }
 
+  /* Guided session plan: per layout and session, every pool word once per speed (slow, then
+   * normal, then fast), doubled-letter words twice (plain and with a loop), and on Tatar five
+   * negative trials per speed. The plan only sets the trial and speed selectors and the prompt;
+   * the record schema is unchanged. A failed ordinary trace keeps the same item for a retry. */
+  var DOUBLED = /(.)\1/;
+  var NEGATIVES = ['tap', 'tremor', 'canceled', 'short_drag', 'unintended_start'];
+  var NEGATIVE_HINTS = {
+    tap: 'плохой жест: просто коснитесь доски и отпустите',
+    tremor: 'плохой жест: подрожите пальцем на месте',
+    canceled: 'плохой жест: начните след и вторым пальцем нажмите «save active trace as canceled»',
+    short_drag: 'плохой жест: короткий рывок пальцем, слово не ведите',
+    unintended_start: 'плохой жест: случайное касание между клавишами',
+  };
+  var SPEED_NAMES = { slow: 'медленно', normal: 'обычно', fast: 'быстро' };
+  var hintEl = document.getElementById('hint');
+
+  function shuffled(list) {
+    var a = list.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function buildPlan(lang) {
+    var pool = LAYOUTS[lang].prompts;
+    var items = [];
+    ['slow', 'normal', 'fast'].forEach(function (speed) {
+      var block = [];
+      pool.forEach(function (word) {
+        if (DOUBLED.test(word)) {
+          block.push({ word: word, speed: speed, trial: 'ordinary', hint: 'двойная буква: без петли' });
+          block.push({ word: word, speed: speed, trial: 'ordinary',
+                       hint: 'двойная буква: с петлёй на двойной букве' });
+        } else {
+          block.push({ word: word, speed: speed, trial: 'ordinary', hint: '' });
+        }
+      });
+      block = shuffled(block);
+      if (lang === 'tt') {
+        NEGATIVES.forEach(function (kind) {
+          block.push({ word: pool[Math.floor(Math.random() * pool.length)], speed: speed,
+                       trial: kind, hint: NEGATIVE_HINTS[kind] });
+        });
+      }
+      items = items.concat(block);
+    });
+    return { session: state.sessionId, items: items, pos: 0 };
+  }
+  function planKey() { return 'ggc.plan.' + state.lang; }
+  function currentPlan() {
+    var plan = null;
+    try { plan = JSON.parse(sessionStorage.getItem(planKey()) || 'null'); } catch (e) {}
+    if (!plan || plan.session !== state.sessionId) {
+      plan = buildPlan(state.lang);
+      sessionStorage.setItem(planKey(), JSON.stringify(plan));
+    }
+    return plan;
+  }
+  function showPrompt() {
+    var plan = currentPlan();
+    if (plan.pos >= plan.items.length) {
+      state.prompt = LAYOUTS[state.lang].prompts[0];
+      promptEl.textContent = 'готово';
+      hintEl.textContent = 'Занятие закончено: нажмите «download records (JSONL)».';
+      return;
+    }
+    var item = plan.items[plan.pos];
+    state.prompt = item.word;
+    document.getElementById('trial-kind').value = item.trial;
+    document.getElementById('speed-condition').value = item.speed;
+    promptEl.textContent = item.word;
+    hintEl.textContent = (plan.pos + 1) + ' из ' + plan.items.length + ' · ' +
+      SPEED_NAMES[item.speed] + (item.hint ? ' · ' + item.hint : '');
+  }
   function nextPrompt() {
-    var pool = LAYOUTS[state.lang].prompts;
-    // Every pool word traces on the layout's keys, alias letters riding their base key on
-    // the Russian layout; on Tatar every letter has its own key.
-    state.prompt = pool[Math.floor(Math.random() * pool.length)];
-    promptEl.textContent = state.prompt;
+    var plan = currentPlan();
+    if (plan.pos < plan.items.length) plan.pos++;
+    sessionStorage.setItem(planKey(), JSON.stringify(plan));
+    showPrompt();
   }
 
   function renderBoard() {
@@ -614,7 +689,7 @@ if (typeof document !== 'undefined') (function () {
     document.getElementById('lang-ru').className = lang === 'ru' ? 'current' : '';
     state.trace = null;
     renderBoard();
-    nextPrompt();
+    showPrompt();
     setStatus('swipe the word through its letters, in one motion', 'muted');
   }
 
@@ -657,7 +732,7 @@ if (typeof document !== 'undefined') (function () {
     sessionStorage.setItem(SESSION_ID, state.sessionId);
     sessionStorage.setItem(SESSION_SEQUENCE, '0');
     document.getElementById('sid').textContent = state.sessionId;
-    nextPrompt();
+    showPrompt();
   });
   document.getElementById('canceltrace').addEventListener('click', function () {
     finishTrace('manual_cancel');
