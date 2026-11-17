@@ -50,6 +50,7 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureSink
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -140,9 +141,9 @@ class SuggestionsController internal constructor(
     private val executorFactory: () -> ExecutorService?,
     private val preparationFactory: (ExecutorService, String) -> DictionaryPreparation?,
     initialDictionaryReady: Boolean,
-    // Trailing defaults (bigram, emoji, sentence-start, tracer, clip timer): the test constructors
-    // pass none of them, which is also how a missing asset behaves; only production passes all
-    // real wiring.
+    // Trailing defaults (bigram, emoji, sentence-start, proper-name, tracer, clip timer): the
+    // test constructors pass none of them, which is also how a missing asset behaves; only
+    // production passes all real wiring.
     private val bigramPreparationFactory: (ExecutorService, String) -> BigramPreparation? =
         { _, _ -> null },
     private val emojiSuggestPreparationFactory: (ExecutorService) -> EmojiSuggestPreparation? =
@@ -161,6 +162,9 @@ class SuggestionsController internal constructor(
     // The recent-clip cell's spoken label, resolved from resources at publication time. Default
     // none: the cell then exposes no raw text, and the automatic announcement stays silent.
     private val clipCellSpokenLabel: () -> String? = { null },
+    // Per language: the production factory resolves the table through the artifact registry.
+    private val properNamePreparationFactory: (ExecutorService, String) -> ProperNamePreparation? =
+        { _, _ -> null },
 ) {
     /** Production entry point. */
     constructor(
@@ -206,6 +210,13 @@ class SuggestionsController internal constructor(
         true,
         // Resolved at each publication, so a locale change between sessions is picked up.
         { context.getString(R.string.spoken_recent_clip_cell) },
+        properNamePreparationFactory = { executor, subtypeId ->
+            // The artifact registry decides which language ships a proper-name table; a language
+            // absent from it keeps the ordinary display casing.
+            DictionaryArtifactSpec.properNameAssetForSubtype(subtypeId)?.let { assetPath ->
+                AssetProperNamePreparation(context, executor, assetPath)
+            }
+        },
     )
 
     /** Test entry point: injects a synchronous poster + executor and pre-marks the dictionary. */
@@ -581,6 +592,14 @@ class SuggestionsController internal constructor(
 
     /** The languages whose one-per-process load was requested; a failure is not retried. */
     private val sentStartPreparationRequested = HashSet<String>()
+
+    // --- Proper-name display tables, per language. Loaded at engine publication, never persisted,
+    // and absent or empty means the ordinary casing path.
+    /** The loaded display tables by language; a language absent here has never finished loading. */
+    private val properNameIndexes = HashMap<String, ProperNameIndex>()
+
+    /** The languages whose one-per-process load was requested; a failure is not retried. */
+    private val properNamePreparationRequested = HashSet<String>()
 
     // --- Cold-companion word lists, per language: the autocorrect guard's answer while the
     // other language's engine is still cold. Loaded once per process, off the UI thread, only
@@ -1680,6 +1699,9 @@ class SuggestionsController internal constructor(
             if (spec.languageTag == slot.subtypeId) continue
             maybePrepareColdCompanion(spec.languageTag)
         }
+        // The display table is per language and starts with its engine, before any lookup can
+        // paint without it; a late answer repaints only a still-bound word strip.
+        maybePrepareProperName(slot.subtypeId)
         // Regardless of `eligible`: the engine stays warm across an ineligible editor, and the
         // deferred attach has no visible effect.
         maybePrepareBigramTable(slot, handle)
@@ -2633,6 +2655,105 @@ class SuggestionsController internal constructor(
         showBand(nbest.subList(1, nbest.size))
     }
 
+    // --- Proper-name display ---------------------------------------------------------------------
+
+    /**
+     * Starts [language]'s one-per-process proper-name table load. A missing factory answer, a
+     * factory failure and a preparation failure are all silent and terminal for the process.
+     */
+    private fun maybePrepareProperName(language: String) {
+        if (destroyed || language in properNamePreparationRequested) return
+        val backgroundExecutor = backgroundExecutor() ?: return
+        properNamePreparationRequested.add(language)
+        val preparation = try {
+            properNamePreparationFactory(backgroundExecutor, language)
+        } catch (_: Throwable) {
+            null
+        } ?: return
+        try {
+            preparation.prepare { index ->
+                // Same marshal-onto-UI rule as the sentence-start load below.
+                uiPoster.post { onProperNameReady(language, index) }
+            }
+        } catch (_: Throwable) {
+            // Silent: the strip keeps the ordinary casing path.
+        }
+    }
+
+    /**
+     * [language]'s proper-name table finished loading. Store it even after a language switch, then
+     * repaint only the still-live PREFIX or NEXT_WORD strip of the active language. Every guard
+     * leaves an unbound or text-stale strip untouched.
+     */
+    private fun onProperNameReady(language: String, index: ProperNameIndex?) {
+        if (destroyed) return
+        val loaded = index ?: return
+        if (loaded.isEmpty) return
+        properNameIndexes[language] = loaded
+        if (!eligible || keyguardGate.isLocked()) return
+        if (language != activeLanguage) return
+        if (usableEngine() == null) return
+        if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
+        if (revertCellDisplayed || isShowingRecentClip()) return
+
+        val boundPrefix = displayedPrefix
+        if (boundPrefix != null) {
+            if (displayedSessionId != sessionId) return
+            if (editor.cachedWordBeforeCursor() != boundPrefix) return
+            displayedPrefix = null
+            unbindPaintedBand()
+            requestCurrentPrefix()
+            return
+        }
+
+        val boundContext = displayedContextWord ?: return
+        if (displayedSessionId != sessionId) return
+        if (boundContext == SENTENCE_START_CONTEXT) {
+            if (editor.cachedWordBeforeCursor().isNotEmpty()) return
+            if (editor.cachedNextWordContext().isNotEmpty()) return
+            if (!editor.isAtSentenceStart()) return
+        } else {
+            if (editor.cachedWordBeforeCursor().isNotEmpty()) return
+            if (editor.cachedNextWordContext() != boundContext) return
+        }
+        displayedContextWord = null
+        unbindPaintedBand()
+        requestCurrentPrefix()
+    }
+
+    /** The PREFIX display rule with a loaded table; absent/empty is exactly [applyCasing]. */
+    private fun properNamePrefixDisplay(
+        candidate: String,
+        casing: TatarWordUtils.PrefixCasing,
+        index: ProperNameIndex?,
+    ): String {
+        if (index == null || index.isEmpty || !isAllLowercaseCandidate(candidate)) {
+            return TatarWordUtils.applyCasing(candidate, casing)
+        }
+        val display = index.displayFor(candidate)
+            ?: return TatarWordUtils.applyCasing(candidate, casing)
+        return when (casing) {
+            TatarWordUtils.PrefixCasing.LOWER -> candidate
+            TatarWordUtils.PrefixCasing.INITIAL_CAPS -> display
+            TatarWordUtils.PrefixCasing.ALL_CAPS -> display.uppercase(Locale.ROOT)
+            TatarWordUtils.PrefixCasing.MIXED -> TatarWordUtils.applyCasing(candidate, casing)
+        }
+    }
+
+    /** The NEXT_WORD display rule with a loaded table; absent/empty leaves the word unchanged. */
+    private fun properNameNextWordDisplay(candidate: String, index: ProperNameIndex?): String {
+        if (index == null || index.isEmpty || !isAllLowercaseCandidate(candidate)) return candidate
+        return index.displayFor(candidate) ?: candidate
+    }
+
+    /** A personal word's raw spelling carries uppercase letters and is never map-overridden. */
+    private fun isAllLowercaseCandidate(candidate: String): Boolean {
+        for (ch in candidate) {
+            if (Character.isUpperCase(ch) || Character.isTitleCase(ch)) return false
+        }
+        return true
+    }
+
     // --- Sentence start ------------------------------------------------------------------------
 
     /**
@@ -2682,12 +2803,15 @@ class SuggestionsController internal constructor(
             bandCapacity,
         )
         if (words.isEmpty()) return false
-        // A sentence start takes a capital, so the cells are shown capitalized (display-time
-        // casing, as in applyPrefixResult), and the tap commits the displayed string. The table
-        // and every lookup stay lowercase.
+        // A sentence start takes a capital: reviewed keys show their approved display form, and
+        // every other word gets the ordinary initial-capital display. The tap commits the
+        // displayed string; the table and every lookup stay lowercase.
         val cells = ArrayList<String>(words.size)
+        val properNames = properNameIndexes[language]
         for (word in words) {
-            cells.add(TatarWordUtils.applyCasing(word, TatarWordUtils.PrefixCasing.INITIAL_CAPS))
+            cells.add(
+                properNamePrefixDisplay(word, TatarWordUtils.PrefixCasing.INITIAL_CAPS, properNames),
+            )
         }
         displayedPrefix = null
         displayedGlideAlternativesFor = null
@@ -3005,6 +3129,7 @@ class SuggestionsController internal constructor(
 
     private fun applyPrefixResult(suggestions: List<String>) {
         syncAutocorrectAdviceState()
+        val properNames = activeLanguage?.let { properNameIndexes[it] }
         // Only the ordinary completion band below may carry the keep-typed cell. The special
         // strips that return early — a shortcut expansion, the legacy spelling, the autocorrect
         // preview — own their documented cells.
@@ -3039,7 +3164,7 @@ class SuggestionsController internal constructor(
             val cells = ArrayList<String>(bandCapacity)
             cells.add(expansion)
             for (candidate in suggestions) {
-                val shown = TatarWordUtils.applyCasing(candidate, casing)
+                val shown = properNamePrefixDisplay(candidate, casing, properNames)
                 if (cells.contains(shown)) continue
                 cells.add(shown)
                 if (cells.size >= bandCapacity) break
@@ -3119,7 +3244,7 @@ class SuggestionsController internal constructor(
         val casing = TatarWordUtils.classifyCasing(pendingPrefix)
         val cells = ArrayList<String>(bandCapacity)
         for (candidate in suggestions) {
-            cells.add(TatarWordUtils.applyCasing(candidate, casing))
+            cells.add(properNamePrefixDisplay(candidate, casing, properNames))
             if (cells.size >= bandCapacity) break
         }
         showBand(prefixBand(cells))
@@ -3172,8 +3297,9 @@ class SuggestionsController internal constructor(
             bandCapacity - 1
         }
         val cells = ArrayList<String>(bandCapacity)
+        val properNames = activeLanguage?.let { properNameIndexes[it] }
         for (candidate in suggestions) {
-            cells.add(candidate)
+            cells.add(properNameNextWordDisplay(candidate, properNames))
             if (cells.size >= wordCap) break
         }
         if (emoji != null && !cells.contains(emoji)) cells.add(emoji)
