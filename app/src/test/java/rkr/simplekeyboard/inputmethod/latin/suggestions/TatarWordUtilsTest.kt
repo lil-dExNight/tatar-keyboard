@@ -853,6 +853,8 @@ class TatarWordUtilsTest {
         assertEquals(10, TatarWordUtils.wordDeleteLengthBeforeCursor("азык-төлек", true))
         assertEquals(12, TatarWordUtils.wordDeleteLengthBeforeCursor("азык-төлек  ", true))
         assertEquals(4, TatarWordUtils.wordDeleteLengthBeforeCursor("Бу сүз-", true))
+        assertEquals(5, TatarWordUtils.wordDeleteLengthBeforeCursor("Бу сүз- ", true))
+        assertEquals(6, TatarWordUtils.wordDeleteLengthBeforeCursor("Бу сүз-  ", true))
         assertEquals(10, TatarWordUtils.wordDeleteLengthBeforeCursor("Бу азык-төлек", false))
         val nfdCompound = nfd("сәй") + "-төлек"
         assertEquals(10, TatarWordUtils.wordDeleteLengthBeforeCursor(nfdCompound, true))

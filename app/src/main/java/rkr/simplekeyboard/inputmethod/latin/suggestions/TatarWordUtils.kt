@@ -74,7 +74,7 @@ object TatarWordUtils {
             val index = start - 1
             if (!isWordCharacterAt(
                     textBeforeCursor, index, textBeforeCursor[index].code,
-                    allowTrailingHyphen = true,
+                    allowTrailingHyphen = true, trailingEnd = length,
                 )
             ) break
             start = index
@@ -172,7 +172,7 @@ object TatarWordUtils {
             val index = end - 1
             if (isWordCharacterAt(
                     textBeforeCursor, index, textBeforeCursor[index].code,
-                    allowTrailingHyphen = true,
+                    allowTrailingHyphen = true, trailingEnd = end,
                 )
             ) break
             end = index
@@ -261,7 +261,7 @@ object TatarWordUtils {
             val index = end - 1
             if (isWordCharacterAt(
                     textBeforeCursor, index, textBeforeCursor[index].code,
-                    allowTrailingHyphen = true,
+                    allowTrailingHyphen = true, trailingEnd = end,
                 )
             ) break
             end = index
@@ -317,7 +317,7 @@ object TatarWordUtils {
             val codePointStart = index - Character.charCount(codePoint)
             if (!isWordDeleteCharacterAt(
                     textBeforeCursor, codePointStart, codePoint,
-                    allowTrailingHyphen = true,
+                    allowTrailingHyphen = true, trailingEnd = index,
                 )
             ) break
             index = codePointStart
@@ -374,7 +374,8 @@ object TatarWordUtils {
             val codePoint = Character.codePointBefore(textBeforeCursor, index)
             val codePointStart = index - Character.charCount(codePoint)
             if (isWordCharacterAt(
-                    textBeforeCursor, codePointStart, codePoint, allowTrailingHyphen = true,
+                    textBeforeCursor, codePointStart, codePoint,
+                    allowTrailingHyphen = true, trailingEnd = index,
                 )
             ) break
             index = codePointStart
@@ -385,7 +386,8 @@ object TatarWordUtils {
             val codePoint = Character.codePointBefore(textBeforeCursor, index)
             val codePointStart = index - Character.charCount(codePoint)
             if (!isWordCharacterAt(
-                    textBeforeCursor, codePointStart, codePoint, allowTrailingHyphen = true,
+                    textBeforeCursor, codePointStart, codePoint,
+                    allowTrailingHyphen = true, trailingEnd = index,
                 )
             ) break
             if (Character.isLetter(codePoint)) letters++
@@ -569,9 +571,10 @@ object TatarWordUtils {
         index: Int,
         codePoint: Int,
         allowTrailingHyphen: Boolean = false,
+        trailingEnd: Int = text.length,
     ): Boolean =
         isWordCharacter(codePoint) || codePoint == '-'.code &&
-            isInternalHyphenAt(text, index, allowTrailingHyphen)
+            isInternalHyphenAt(text, index, allowTrailingHyphen, trailingEnd)
 
     /** Letters, digits, combining marks, and U+002D: one word-delete unit. */
     private fun isWordDeleteCharacterAt(
@@ -579,17 +582,19 @@ object TatarWordUtils {
         index: Int,
         codePoint: Int,
         allowTrailingHyphen: Boolean = false,
+        trailingEnd: Int = text.length,
     ): Boolean = Character.isLetterOrDigit(codePoint) ||
-        isWordCharacterAt(text, index, codePoint, allowTrailingHyphen)
+        isWordCharacterAt(text, index, codePoint, allowTrailingHyphen, trailingEnd)
 
     /** U+002D needs a letter, possibly followed by marks, on its left and a letter on its right. */
     private fun isInternalHyphenAt(
         text: CharSequence,
         index: Int,
         allowTrailingHyphen: Boolean,
+        trailingEnd: Int,
     ): Boolean {
         val rightIndex = index + 1
-        if (rightIndex >= text.length) {
+        if (rightIndex >= trailingEnd) {
             if (!allowTrailingHyphen) return false
         } else if (!Character.isLetter(Character.codePointAt(text, rightIndex))) {
             return false
