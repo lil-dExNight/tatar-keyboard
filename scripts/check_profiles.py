@@ -7,7 +7,9 @@ rule silently becomes a dead rule; (2) split: the generator collects the two fil
 (a minimal startup journey with includeInStartupProfile=true, then the full journey set for the
 baseline profile only), so the files must differ and the startup rule set must be a subset of the
 baseline rule set — rule identity ignores the H/S/P flags, which legitimately differ between the
-passes; (3) resolve the class rules against the release APK: each rule is translated through the
+passes; (3) critical startup, suggestion and glide methods must each appear as a method rule, so
+a regeneration cannot keep the class while dropping the hot method; (4) resolve the class rules
+against the release APK: each rule is translated through the
 R8 mapping of the same build (the tracked profile names pre-R8 classes) and looked up in the
 class descriptors of the APK's classes*.dex, read by a minimal DEX parser (header, string_ids,
 type_ids, class_defs) — the baseline profile's resolved ratio is gated against
@@ -46,6 +48,34 @@ DEFAULT_MAPPING = ROOT / "app/build/outputs/mapping/release/mapping.txt"
 # set is small, so a ratio floor on it is brittle, and the differ/subset legs already pin its
 # shape; if a regeneration shows a stable startup level, pin it here as a second floor.
 RESOLVED_RATIO_FLOOR = 0.35
+
+# Method-level coverage of the startup, suggestion and glide paths. The class rules alone can
+# survive a regeneration that drops the hot method, so each name must appear as a method rule.
+# Signatures are not compared: the tracked files name pre-R8 code, and an overload change is
+# ordinary churn, while losing the method entirely is the regression this gate exists for.
+CRITICAL_METHODS = {
+    "startup": (
+        ("Lrkr/simplekeyboard/inputmethod/latin/LatinIME;", "onCreate"),
+        ("Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController;", "<init>"),
+        ("Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/MappedDictionaryEngine$Companion;",
+         "start$default"),
+        ("Lrkr/simplekeyboard/inputmethod/latin/dictionary/storage/AtomicDictionaryStore;",
+         "acquireLatestForActivation"),
+    ),
+    "suggestion": (
+        ("Lrkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController;",
+         "onTextChanged"),
+        ("Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/TdictPrefixIndex;", "lookup"),
+        ("Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/TatBigrPrefixIndex;", "predict"),
+    ),
+    "glide": (
+        ("Lrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder;", "decode"),
+        ("Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;", "<init>"),
+        ("Lrkr/simplekeyboard/inputmethod/latin/dictionary/engine/GlideDecoderHost;",
+         "decodeGlide"),
+    ),
+}
+STARTUP_CRITICAL_METHODS = CRITICAL_METHODS["startup"]
 
 DEX_ENTRY_RE = re.compile(r"classes\d*\.dex")
 WILDCARD_CHARS = "*?"
@@ -256,6 +286,48 @@ def split_report(baseline_rules: list[Rule], startup_rules: list[Rule],
     return legs
 
 
+def critical_method_report(baseline_rules: list[Rule],
+                           startup_rules: list[Rule]) -> list[tuple[str, str, str]]:
+    """Checks that each critical path is present as a method rule, not only as a class."""
+    def method_names(rules: list[Rule]) -> set[tuple[str, str]]:
+        return {(rule.class_descriptor, rule.method_name)
+                for rule in rules if not rule.is_class_rule}
+
+    baseline = method_names(baseline_rules)
+    startup = method_names(startup_rules)
+    legs = []
+    missing_startup = [
+        f"{class_descriptor}->{method}"
+        for class_descriptor, method in STARTUP_CRITICAL_METHODS
+        if (class_descriptor, method) not in startup
+    ]
+    if missing_startup:
+        legs.append(("FAIL", "startup-methods",
+                     f"critical startup methods absent from startup-prof.txt: "
+                     f"{len(missing_startup)} (first: {missing_startup[0]}) — regenerate both"
+                     " profiles with ./gradlew :app:generateBaselineProfile"))
+    else:
+        legs.append(("PASS", "startup-methods",
+                     f"all {len(STARTUP_CRITICAL_METHODS)} critical startup methods are profiled"))
+    for group in ("suggestion", "glide"):
+        missing = [
+            f"{class_descriptor}->{method}"
+            for class_descriptor, method in CRITICAL_METHODS[group]
+            if (class_descriptor, method) not in baseline
+        ]
+        name = f"{group}-methods"
+        if missing:
+            legs.append(("FAIL", name,
+                         f"critical {group} methods absent from baseline-prof.txt:"
+                         f" {len(missing)} (first: {missing[0]}) — regenerate both profiles"
+                         " with ./gradlew :app:generateBaselineProfile"))
+        else:
+            legs.append(("PASS", name,
+                         f"all {len(CRITICAL_METHODS[group])} critical {group} methods are"
+                         " profiled"))
+    return legs
+
+
 # ----------------------------------------------------------------------------------------------
 # Minimal DEX reader. Only the structures needed to list the class descriptors, all u32 fields
 # little-endian: the header (magic "dex\n0NN\0", file_size at 0x20, header_size 0x70 at 0x24,
@@ -455,6 +527,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     byte_identical = BASELINE_PROFILE.read_bytes() == STARTUP_PROFILE.read_bytes()
     for status, name, detail in split_report(parsed_by_path[BASELINE_PROFILE],
                                              parsed_by_path[STARTUP_PROFILE], byte_identical):
+        report(status, name, detail)
+        if status == "FAIL":
+            failures += 1
+
+    for status, name, detail in critical_method_report(
+        parsed_by_path[BASELINE_PROFILE], parsed_by_path[STARTUP_PROFILE]
+    ):
         report(status, name, detail)
         if status == "FAIL":
             failures += 1

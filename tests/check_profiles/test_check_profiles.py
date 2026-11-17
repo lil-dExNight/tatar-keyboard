@@ -268,6 +268,76 @@ class SplitReportTest(unittest.TestCase):
         self.assertEqual(cp.rule_identity(clazz), "Lfoo/Bar;")
 
 
+class CriticalMethodReportTest(unittest.TestCase):
+    @staticmethod
+    def method_rule(class_descriptor: str, method: str) -> str:
+        return f"HSP{class_descriptor}->{method}()V"
+
+    def test_all_required_methods_pass(self) -> None:
+        baseline = rules_of([
+            self.method_rule(class_descriptor, method)
+            for group in cp.CRITICAL_METHODS.values()
+            for class_descriptor, method in group
+        ])
+        startup = rules_of([
+            self.method_rule(class_descriptor, method)
+            for class_descriptor, method in cp.STARTUP_CRITICAL_METHODS
+        ])
+        legs = legs_by_name(cp.critical_method_report(baseline, startup))
+        self.assertEqual(legs["startup-methods"][0], "PASS")
+        self.assertEqual(legs["suggestion-methods"][0], "PASS")
+        self.assertEqual(legs["glide-methods"][0], "PASS")
+
+    def test_missing_suggestion_method_fails(self) -> None:
+        class_descriptor, method = cp.CRITICAL_METHODS["suggestion"][0]
+        baseline = rules_of([
+            self.method_rule(other_class, other_method)
+            for group in cp.CRITICAL_METHODS.values()
+            for other_class, other_method in group
+            if (other_class, other_method) != (class_descriptor, method)
+        ])
+        startup = rules_of([
+            self.method_rule(other_class, other_method)
+            for other_class, other_method in cp.STARTUP_CRITICAL_METHODS
+        ])
+        legs = legs_by_name(cp.critical_method_report(baseline, startup))
+        status, detail = legs["suggestion-methods"]
+        self.assertEqual(status, "FAIL")
+        self.assertIn(f"{class_descriptor}->{method}", detail)
+
+    def test_startup_method_missing_from_startup_profile_fails(self) -> None:
+        class_descriptor, method = cp.STARTUP_CRITICAL_METHODS[0]
+        baseline = rules_of([
+            self.method_rule(other_class, other_method)
+            for group in cp.CRITICAL_METHODS.values()
+            for other_class, other_method in group
+        ])
+        startup = rules_of([
+            self.method_rule(other_class, other_method)
+            for other_class, other_method in cp.STARTUP_CRITICAL_METHODS
+            if (other_class, other_method) != (class_descriptor, method)
+        ])
+        legs = legs_by_name(cp.critical_method_report(baseline, startup))
+        status, detail = legs["startup-methods"]
+        self.assertEqual(status, "FAIL")
+        self.assertIn(f"{class_descriptor}->{method}", detail)
+
+    def test_class_rule_alone_does_not_satisfy_method_gate(self) -> None:
+        class_descriptor, method = cp.CRITICAL_METHODS["glide"][0]
+        baseline = rules_of([
+            self.method_rule(other_class, other_method)
+            for group in cp.CRITICAL_METHODS.values()
+            for other_class, other_method in group
+            if (other_class, other_method) != (class_descriptor, method)
+        ] + [class_descriptor])
+        startup = rules_of([
+            self.method_rule(other_class, other_method)
+            for other_class, other_method in cp.STARTUP_CRITICAL_METHODS
+        ])
+        legs = legs_by_name(cp.critical_method_report(baseline, startup))
+        self.assertEqual(legs["glide-methods"][0], "FAIL")
+
+
 class ClassRuleSetsTest(unittest.TestCase):
     def test_exact_and_fuzzy_partition(self) -> None:
         rules = rules_of([
