@@ -1,8 +1,8 @@
 {
   "id": "asset-emoji-search-v1",
   "revision": "emoji-search/cldr44/v1",
-  "size_bytes": 226018,
-  "sha256": "f2d986e2fd8743ec7d5b488eb91d497c1fca2e272ad5292d777c72ea68b8c798",
+  "size_bytes": 228747,
+  "sha256": "c5b137fecde40503e92a0983163c6d59c618ba8cc6a7137648e96f64f4a82b5e",
   "license": "Unicode-DFS-2016 AND Apache-2.0",
   "source_role": "generated_emoji_search_index",
   "split_rule": "not-applicable",

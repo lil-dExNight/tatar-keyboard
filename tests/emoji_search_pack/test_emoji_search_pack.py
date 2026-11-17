@@ -30,10 +30,10 @@ SEARCH_ASSET = ROOT / "app" / "src" / "main" / "assets" / "emoji" / "emoji_searc
 # Pins for the committed asset, in the emoji_pack pattern: a rebuild that
 # changes the shipped index must update these together with the asset.
 COMMITTED_LINE_COUNT = 1389
-COMMITTED_TATAR_NAME_COUNT = 604
-COMMITTED_TATAR_UNNAMED_COUNT = 785
+COMMITTED_TATAR_NAME_COUNT = 704
+COMMITTED_TATAR_UNNAMED_COUNT = 685
 COMMITTED_ASSET_SHA256 = (
-    "f2d986e2fd8743ec7d5b488eb91d497c1fca2e272ad5292d777c72ea68b8c798"
+    "c5b137fecde40503e92a0983163c6d59c618ba8cc6a7137648e96f64f4a82b5e"
 )
 
 
@@ -768,7 +768,9 @@ class CommittedAssetTest(unittest.TestCase):
         self.assertEqual(COMMITTED_TATAR_UNNAMED_COUNT, len(unnamed))
         ambiguous = {sequence for sequence in unnamed
                      if len(owners[extra[sequence][0]]) > 1}
-        self.assertEqual(unnamed, ambiguous)
+        # 🦹 keeps the unique alias «див»; it stays unnamed until a native review
+        # approves a spoken name.
+        self.assertEqual(ambiguous, unnamed - {"🦹"})
         self.assertEqual("баскетбол", names["🏀"])
 
     def test_index_never_offers_what_the_panel_cannot_draw(self) -> None:

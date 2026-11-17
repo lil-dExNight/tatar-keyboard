@@ -277,7 +277,7 @@ class EmojiSearchTest {
         // A new Tatar-name prefix collision must be resolved or explicitly documented, just as for
         // the Russian-name sweep above; the current curated names have none.
         assertEquals(emptyList<String>(), misses)
-        assertEquals("the pinned Tatar naming coverage changed", 604, namedCount)
+        assertEquals("the pinned Tatar naming coverage changed", 704, namedCount)
     }
 
     @Test
