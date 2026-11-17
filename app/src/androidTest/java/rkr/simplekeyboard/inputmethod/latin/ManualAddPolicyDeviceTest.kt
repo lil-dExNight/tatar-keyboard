@@ -251,6 +251,31 @@ class ManualAddPolicyDeviceTest : InstrumentationTestCase() {
         assertTrue("the requested field never became active", waitFor(5_000L) {
             fieldIsReady(field, postalAddress)
         })
+        awaitKeyboardGeometrySettled()
+    }
+
+    /**
+     * restartInput re-lays out the IME window (suggestion strip, keyboard
+     * height). A touch injected mid-resize lands on a different key than the
+     * coordinates computed before it, so typing waits for the keyboard origin
+     * to hold still.
+     */
+    private fun awaitKeyboardGeometrySettled() {
+        var origin: IntArray? = null
+        var stableSince = 0L
+        assertTrue("the keyboard geometry never settled", waitFor(5_000L) {
+            val view = KeyboardSwitcher.getInstance().mainKeyboardView ?: return@waitFor false
+            val current = IntArray(2)
+            view.getLocationOnScreen(current)
+            val now = SystemClock.uptimeMillis()
+            val previous = origin
+            if (previous == null || previous[0] != current[0] || previous[1] != current[1]) {
+                origin = current
+                stableSince = now
+                return@waitFor false
+            }
+            view.isLaidOut && now - stableSince >= 400L
+        })
     }
 
     /** Must run on the main thread. */
