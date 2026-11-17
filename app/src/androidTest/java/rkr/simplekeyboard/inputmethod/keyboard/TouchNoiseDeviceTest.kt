@@ -87,7 +87,10 @@ class TouchNoiseDeviceTest : InstrumentationTestCase() {
         Settings.init(context)
         Settings.getInstance().loadSettings(InputAttributes(EditorInfo()))
         val themed = ContextThemeWrapper(context, R.style.KeyboardTheme_Tatar)
-        val attributes = themed.theme.obtainStyledAttributes(R.styleable.MainKeyboardView)
+        val attributes = themed.obtainStyledAttributes(
+            null, R.styleable.MainKeyboardView, R.attr.mainKeyboardViewStyle,
+            R.style.MainKeyboardView,
+        )
         try {
             PointerTracker.init(attributes, timerProxy, drawingProxy)
         } finally {
