@@ -2,9 +2,9 @@
 
 ## Scope and evidence
 
-This protocol prepares later recordings. It does not add human coverage by itself. The only local human-recorded input in this wave is `research/glide-evaluation/datasets/session-1.jsonl`: 101 collector-passed traces, 35 prompts, one participant, Tatar layout, 360×155 board, density bucket 480. Its session/device ids, orientation and instructed speeds were not recorded; the evaluator marks the conservative legacy fallbacks and `unspecified` values. It is a frozen development set, never a final test set. `fixtures/synthetic.jsonl` is generator output, not human evidence.
+This protocol prepares later recordings. It does not add human coverage by itself. Human-recorded evidence has two frozen splits. `datasets/session-1.jsonl` is the development set: one participant, Tatar layout, one board geometry; its session/device ids, orientation and instructed speeds were not recorded, so the evaluator marks the conservative legacy fallbacks and `unspecified` values. `session-1-development.json` pins it alone, and it is never a final test set. `datasets/session-2-*.jsonl` is the final set from one final-only device: Tatar portrait and landscape, Russian portrait, schema 2 session/device/geometry/orientation fields and instructed slow, normal and fast speeds. The Tatar sessions include taps, tremor, canceled, short-drag and unintended-start negative trials; the Russian session has ordinary traces only. `datasets/tatar-gestures-v1.json` pins both splits; its final split is the only final benchmark input and must stay immutable. `fixtures/synthetic.jsonl` is generator output, not human evidence.
 
-Use `research/glide-collector/index.html` for the next sessions. The debug Android recorder currently receives only committed glides and its privacy-frozen schema has no session/device/geometry fields, so it cannot supply the required taps, canceled gestures and unintended starts. Do not represent Android-recorder-only collection as negative-case coverage.
+Use `research/glide-collector/index.html` for further sessions. The debug Android recorder currently receives only committed glides and its privacy-frozen schema has no session/device/geometry fields, so it cannot supply the required taps, canceled gestures and unintended starts. Do not represent Android-recorder-only collection as negative-case coverage.
 
 ## Before recording
 
@@ -44,7 +44,7 @@ python3 scripts/glide-benchmark.py evaluate \
 
 Both commands use the offline JVM bridge and production `GlideDecoder`; no Android device or Python decoder mirror is involved. The bridge source is wired into the host test classpath only by `glide-benchmark.init.gradle` and is absent from the APK.
 
-Freeze development inputs immediately after collection. Existing example:
+Freeze development inputs immediately after collection. The development-only manifest keeps the first session's pin:
 
 ```sh
 python3 scripts/glide-benchmark.py freeze \
@@ -52,12 +52,14 @@ python3 scripts/glide-benchmark.py freeze \
   --output research/glide-evaluation/datasets/session-1-development.json
 ```
 
-Before any decoder tuning, collect the reserved final device/session files and freeze both sides together:
+The final manifest freezes the same development input with every session from the final-only device, so no session or device identity crosses the splits:
 
 ```sh
 python3 scripts/glide-benchmark.py freeze \
-  --development-input /path/to/development-session.jsonl \
-  --final-input /path/to/final-session.jsonl \
+  --development-input research/glide-evaluation/datasets/session-1.jsonl \
+  --final-input research/glide-evaluation/datasets/session-2-tt-portrait.jsonl \
+  --final-input research/glide-evaluation/datasets/session-2-tt-landscape.jsonl \
+  --final-input research/glide-evaluation/datasets/session-2-ru-portrait.jsonl \
   --output research/glide-evaluation/datasets/tatar-gestures-v1.json
 ```
 
@@ -82,4 +84,4 @@ Visible top-3 is the user-facing metric; engine top-4 is diagnostic only. Endpoi
 
 ## Required future human coverage
 
-No existing record proves orientation, multiple device geometries, instructed speeds or negative-case behavior. Those strata remain unmeasured until the protocol above is run on real devices. Do not tune decoder weights against the synthetic fixture or this single development session.
+The final set comes from one participant on one device. Future collection must add a second final-only device with another board geometry and density/board-size stratum, and Russian negative controls. The development session still lacks explicit identity, orientation and instructed-speed metadata and cannot replace final evidence. Do not tune decoder weights against the synthetic fixture or reuse final records for tuning.
