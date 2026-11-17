@@ -431,8 +431,9 @@ class EdgeGoldenExportTest {
     // controller records: the SuggestionsController PREFIX decision for a RAW typed word —
     // requestCurrentPrefix's casing gate (MIXED -> no request, empty strip reserved), the lookup
     // bytes it would send, and what applyPrefixResult paints: the autocorrect preview
-    // (computeAutocorrectPreview, gate on) when it fires, else the first four candidates re-cased
-    // with applyCasing. Pure composition of the production functions, in the controller's order.
+    // (computeAutocorrectPreview, gate on) when it fires, else the keep-typed cell of an empty
+    // exact pass followed by the first four candidates re-cased with applyCasing. Pure
+    // composition of the production functions, in the controller's order.
 
     private fun exportControllerEdges(w: Writer, e: Engine, evalWords: List<String>) {
         val plain = if (e.lang == "tt") {
@@ -482,10 +483,14 @@ class EdgeGoldenExportTest {
             val requested = casing != TatarWordUtils.PrefixCasing.MIXED
             val preview = computeAutocorrectPreview(gate, raw, null) { advice }
             val cells = if (!requested) emptyList() else results.take(4).map { TatarWordUtils.applyCasing(it, casing) }
+            // An empty exact pass makes the typed word itself the first cell; the candidates fill
+            // the cells after it, without a duplicate of the shown form.
+            val keepTyped = if (requested && e.computer.lastExactCount == 0) raw else null
             val band = when {
                 !requested -> emptyList()
                 preview != null -> listOf(preview.typedShown, preview.correctionShown)
-                else -> cells
+                keepTyped == null -> cells
+                else -> (listOf(keepTyped) + cells.filter { it != keepTyped }).take(4)
             }
             w.record(
                 "kind" to "controller", "lang" to e.lang, "raw" to raw, "casing" to casing.name,

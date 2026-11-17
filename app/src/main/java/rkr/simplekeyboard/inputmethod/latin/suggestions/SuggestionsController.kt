@@ -468,6 +468,13 @@ class SuggestionsController internal constructor(
      */
     private var companionLeadArmed: Boolean = false
 
+    /**
+     * The typed word of an empty active exact pass, shown as the strip's first cell; null when the
+     * first cell is not that offer. Written only by [applyPrefixResult], read by [prefixBand] and
+     * [applyCompanionResult]; showing the cell neither learns nor saves anything.
+     */
+    private var typedWordCell: String? = null
+
     /** The clean-run machines for completed words and completed pairs; see [CleanRunMachine]. */
     private val runMachine = CleanRunMachine(editor)
 
@@ -1898,9 +1905,9 @@ class SuggestionsController internal constructor(
         val casing = if (kind == LookupKind.PREFIX) TatarWordUtils.classifyCasing(query) else null
         // The companion exact-lead rule, armed at the request by an empty active exact pass: the
         // companion's exact candidates lead and the active typo-recovery candidates fill the
-        // cells they leave. With an empty companion exact pass the rule does not engage and the
-        // ordinary fill below runs unchanged. The exact count belongs to the newest lookup of an
-        // engine that serves only this fill, so it describes this answer.
+        // cells they leave, after the keep-typed cell the arm painted. An empty companion exact
+        // pass leaves the ordinary fill below running unchanged. The exact count belongs to the
+        // newest lookup of an engine that serves only this fill, so it describes this answer.
         if (leadArmed && casing != null) {
             val leadExactCount = engine.lastExactCount().coerceIn(0, suggestions.size)
             if (leadExactCount > 0) {
@@ -1917,12 +1924,12 @@ class SuggestionsController internal constructor(
                     if (cells.contains(candidate)) continue
                     cells.add(candidate)
                 }
+                val band = prefixBand(cells, room)
                 // A lead that reproduces the painted strip exactly repaints nothing.
-                if (cells != wordBase) {
-                    if (emojiTail != null) cells.add(emojiTail)
+                if (band != wordBase) {
                     displayedPrefix = query
                     displayedSessionId = sessionId
-                    showBand(cells)
+                    showBand(if (emojiTail == null) band else band + emojiTail)
                 }
                 return
             }
@@ -1948,6 +1955,23 @@ class SuggestionsController internal constructor(
         }
         displayedSessionId = sessionId
         showBand(cells)
+    }
+
+    /**
+     * The band a PREFIX composition publishes: the armed keep-typed cell first, then [cells] in
+     * their order without a duplicate of it, at most [room] words; unarmed, [cells] pass through
+     * untouched, so the ordinary strip allocates nothing here.
+     */
+    private fun prefixBand(cells: List<String>, room: Int = bandCapacity): List<String> {
+        val typed = typedWordCell ?: return cells
+        val band = ArrayList<String>(room)
+        band.add(typed)
+        for (cell in cells) {
+            if (band.size >= room) break
+            if (cell == typed) continue
+            band.add(cell)
+        }
+        return band
     }
 
     /** The single call into the strip that paints words, and the only writer of [bandBaseCells]. */
@@ -2981,6 +3005,10 @@ class SuggestionsController internal constructor(
 
     private fun applyPrefixResult(suggestions: List<String>) {
         syncAutocorrectAdviceState()
+        // Only the ordinary completion band below may carry the keep-typed cell. The special
+        // strips that return early — a shortcut expansion, the legacy spelling, the autocorrect
+        // preview — own their documented cells.
+        typedWordCell = null
         // A result computed for a request issued BEFORE the last observed setting change still
         // carries the old verdict: only a request issued after the change clears the reset.
         if (prefixRequestAdviceResetSerial == adviceResetSerial) {
@@ -3055,12 +3083,27 @@ class SuggestionsController internal constructor(
             )
             return
         }
+        // The active language's exact pass for this prefix was empty, so the typed word itself
+        // leads the strip: a word no dictionary holds can be kept with one tap and offered to the
+        // personal dictionary by a long press. Nothing is learned or saved by showing it.
+        val keepTyped = if (exactPassEmpty) pendingPrefix else null
+        typedWordCell = keepTyped
         if (suggestions.isEmpty()) {
-            displayedPrefix = null
-            bandBaseCells = emptyList()
-            strip.reserve()
+            if (keepTyped != null) {
+                // Nothing else to show, but the offer stands: the unknown word keeps a tappable
+                // cell instead of an empty strip. The shown and the inserted form are one string.
+                displayedGlideAlternativesFor = null
+                displayedPrefix = pendingPrefix
+                displayedSessionId = sessionId
+                showBand(listOf(keepTyped))
+            } else {
+                displayedPrefix = null
+                bandBaseCells = emptyList()
+                strip.reserve()
+            }
             // An empty strip displaces nothing of the active language, so the companion may fill
-            // it from the first cell; the one case where its candidate leads.
+            // it from the first cell — or from the cell after the keep-typed one; the one case
+            // where its candidate leads.
             requestCompanionFill(LookupKind.PREFIX, pendingPrefix)
             return
         }
@@ -3079,10 +3122,10 @@ class SuggestionsController internal constructor(
             cells.add(TatarWordUtils.applyCasing(candidate, casing))
             if (cells.size >= bandCapacity) break
         }
-        showBand(cells)
-        // With an empty exact pass the companion is asked even when its cells are already full of
-        // typo-recovery candidates: a non-empty companion exact pass takes the lead
-        // (applyCompanionResult). Without one the fill stays lazy, as before.
+        showBand(prefixBand(cells))
+        // With an empty exact pass the companion is asked even when the cells are already full of
+        // typo-recovery candidates: a non-empty companion exact pass takes the cells after the
+        // keep-typed one (applyCompanionResult). Without one the fill stays lazy, as before.
         if (exactPassEmpty || cells.size < bandCapacity) {
             requestCompanionFill(LookupKind.PREFIX, pendingPrefix, exactLeadEligible = exactPassEmpty)
         }

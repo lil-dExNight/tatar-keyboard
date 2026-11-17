@@ -73,6 +73,12 @@ These hold for every release:
   from the layout resources and pinned against them, including the eight keys of the Tatar extra
   row.
 
+### Fixed
+
+- A word the dictionary does not hold keeps the first cell of the suggestion strip: a tap commits
+  exactly the typed form, and a long press offers to save it to the personal dictionary. The
+  completion, typo-recovery and companion candidates fill the cells after it.
+
 ## [3.14.2] — 2026-11-13
 
 ### Fixed

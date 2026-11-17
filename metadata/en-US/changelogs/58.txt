@@ -4,3 +4,4 @@
 • Privacy policy now exists in Tatar
 • Suggestions know the forms -абыз/-әбез and -мы/-ме
 • Safer backup restore, cleaner deletions, lighter dictionaries
+• A word the dictionary does not know leads the suggestion strip: tap to keep it as typed, long-press to save it

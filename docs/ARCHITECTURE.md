@@ -155,14 +155,15 @@ order. Drawing, hit testing and accessibility use `SuggestionStripState`'s share
 commits the word with a space; a long press on a word cell offers to forget the word when the
 personal dictionary holds it and to add it when the manual-add filter accepts it, and answers
 with an explanation otherwise (`LatinIME.onStripWordLongPress`). The filter rejects manual
-addition from postal-address fields and while Pause learning is on. A punctuation mark that
-attaches to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ",
-"сүз?! "), tracked by the cursor position in `InputLogic`. A space typed there is swallowed and
-counts as the first space of a double-space period. Two quick spaces give a period only in a
-general text field (`InputTypeUtils.isGeneralTextInputType`: the text class without the email,
-URI, password, phonetic and filter variations). Cursor moves by the keyboard itself (space
-slide, delete swipe, word-delete flick, the edit menu's arrows) drop this state
-(`InputLogic.onKeyboardCursorMove`).
+addition from postal-address fields and while Pause learning is on. A cell may show the typed
+word itself (see Word completion); it is a word cell like any other, so both gestures apply
+unchanged. A punctuation mark that attaches to a word (`. , ; : ! ? ) ] }`) typed right after
+takes that space's place ("сүз, ", "сүз?! "), tracked by the cursor position in `InputLogic`.
+A space typed there is swallowed and counts as the first space of a double-space period. Two
+quick spaces give a period only in a general text field
+(`InputTypeUtils.isGeneralTextInputType`: the text class without the email, URI, password,
+phonetic and filter variations). Cursor moves by the keyboard itself (space slide, delete swipe,
+word-delete flick, the edit menu's arrows) drop this state (`InputLogic.onKeyboardCursorMove`).
 
 Inline autofill (API 30+, advertised in `method.xml`). A field that supports inline
 suggestions takes the strip over: `LatinIME.onCreateInlineSuggestionsRequest` answers with one
@@ -189,11 +190,22 @@ over without decoding strings), then same-stem forms (Tatar only, when the typed
 a word of at least four code points; the boost's suffix table `TatarSuffixRules` covers plural,
 case, possessive and tense suffixes — the present-tense 1pl `-абыз`/`-әбез` included — plus the
 interrogative clitic `-мы`/`-ме` and the derivational set, mirrored by the Python chain), then the rest. With exact candidates the personal word
-takes the second cell (`[exact0, personal, exact1, exact2]`). It takes the first cell when the
-exact pass is empty, or when it is promoted: its usage is at least
-`CompositePrefixComputer.PROMOTION_MIN_USAGE` and the dictionary's top exact candidate is below
-`PROMOTION_TOP_FREQUENCY_GATE`. A personal word that duplicates a dictionary candidate only
-changes how that cell is spelled.
+takes the second cell (`[exact0, personal, exact1, exact2]`). It takes the cell after the
+keep-typed one when the exact pass is empty (see below), or the first cell when it is promoted:
+its usage is at least `CompositePrefixComputer.PROMOTION_MIN_USAGE` and the dictionary's top
+exact candidate is below `PROMOTION_TOP_FREQUENCY_GATE`. A personal word that duplicates a
+dictionary candidate only changes how that cell is spelled.
+
+An empty exact pass means no bundled dictionary holds the typed word. The strip then leads with
+the typed word itself, the keep-typed cell: the shown form is the typed form verbatim, a tap
+commits exactly that form (the ordinary accepted-suggestion commit, auto-space included), and
+the personal word and the typo-recovery candidates fill the cells after it, without repeating
+the shown form. The cell is only painted — showing it learns nothing and saves nothing — and an
+empty answer with no candidates at all still leaves this one tappable cell. A strip whose exact
+pass found candidates keeps its cells, and so does every special strip: a shortcut expansion, the
+legacy-spelling preview and the autocorrect preview all own the whole band, and the preview
+already shows the typed word first, where a tap refuses the coming correction instead of
+committing.
 
 Typo recovery (`TdictPrefixIndex.collectFuzzy`, configured per engine by `FuzzyEditPolicy`) runs
 edit class #1 (long-press partner, from the layout's `moreKeys` via `KeyNeighborTable`) for every
@@ -234,9 +246,10 @@ language of `DictionaryArtifactSpec.ALL` whose engine is warm and not pending re
 what the active language left. A companion engine is never prepared for this, so it answers only
 for a language already used since the keyboard started. For PREFIX the companion is asked after
 the active answer, when that answer's exact pass was empty or cells are free. Its candidates fill
-the free cells from the end of the active ones, or from the first cell after an empty active
-answer. After an empty active exact pass the lead rule is armed: a non-empty companion exact pass
-leads and the active typo-recovery candidates fill the cells it leaves; an empty one only fills
+the free cells from the end of the active ones, or from the first free cell after an empty active
+answer — the first cell, unless the keep-typed cell holds it. After an empty active exact pass
+the lead rule is armed: a non-empty companion exact pass takes the cells after the keep-typed
+cell and the active typo-recovery candidates fill the cells it leaves; an empty one only fills
 free cells. For NEXT_WORD the companion is asked when cells are free and its words go before the
 emoji cell. Companion PREFIX cells take the typed casing, duplicates are dropped by shown form,
 and the companion gets no previous-word context; its typo recovery uses the active layout's
