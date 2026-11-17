@@ -587,8 +587,31 @@ def read_extra_entries(path: Path, tag: str) -> dict[str, int]:
 TATAR_CONV_SELECTION_WEIGHT = 9
 
 
+def read_required_words(path: Path, tag: str) -> frozenset[str]:
+    """Read one canonical word per line; each word must also be in the extra entries."""
+    import dictionary_coverage as cov
+    language = cov.language_for(tag)
+    words: set[str] = set()
+    with path.open(encoding="utf-8", newline="") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            word = line.rstrip("\n")
+            if not word or word.startswith("#"):
+                continue
+            normalized, reason = cov.normalize_word(word, language.alphabet)
+            if reason is not None or normalized != word:
+                raise SystemExit(
+                    f"{path}:{line_number}: word {word!r} is not canonical "
+                    f"({reason or 'not NFC/lowercase'})"
+                )
+            if word in words:
+                raise SystemExit(f"{path}:{line_number}: duplicate word {word!r}")
+            words.add(word)
+    return frozenset(words)
+
+
 def merged_entries(tag: str, baseline: Path, top: int = 100_000,
-                   extra: dict[str, int] | None = None):
+                   extra: dict[str, int] | None = None,
+                   required: frozenset[str] = frozenset()):
     """Composition and frequencies of the new asset.
 
     Composition: shipped plus accepted words plus `extra`, nothing else. Frequency: written plus
@@ -597,6 +620,8 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     exists, adds its per-word integers on top without changing the composition. The Tatar cutoff
     adds nine times the conversational frequency to the selection score only; stored frequencies
     remain unchanged. Other languages use the stored frequency as their selection score.
+    `required` words are appended after the cutoff, so an explicit review approval ships
+    regardless of its corpus frequency.
     """
     shipped, _asset = load_baseline(tag, baseline)
     accepted = read_accepted(tag)
@@ -610,12 +635,18 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     for word, extra_frequency in bonus.items():
         if word in merged:
             merged[word] += extra_frequency
+    absent = sorted(required - set(merged))
+    if absent:
+        raise SystemExit(f"required entries are outside the composition: {', '.join(absent)}")
     selection_weight = TATAR_CONV_SELECTION_WEIGHT if tag == "tat" else 0
     top_entries = sorted(
         merged.items(),
         key=lambda kv: (-(kv[1] + selection_weight * conv.get(kv[0], 0)), kv[0]),
     )[:top]
-    return shipped, accepted, sorted(top_entries, key=lambda kv: kv[0])
+    selected = dict(top_entries)
+    for word in required - set(selected):
+        selected[word] = merged[word]
+    return shipped, accepted, sorted(selected.items(), key=lambda kv: kv[0])
 
 
 def pack(args) -> int:
@@ -633,9 +664,15 @@ def pack(args) -> int:
             # --extra-entries/--top require --only: they are per language, and without --only
             # both languages would get the same extra entries.
             extra = read_extra_entries(Path(args.extra_entries), tag)
+        required = (
+            read_required_words(Path(args.require_entries), tag)
+            if args.require_entries is not None else frozenset()
+        )
+        if not required <= set(extra or {}):
+            raise SystemExit("required entries must also be in --extra-entries")
         shipped, before = load_baseline(tag, baseline)
         _shipped, accepted, entries = merged_entries(
-            tag, baseline, top=args.top, extra=extra)
+            tag, baseline, top=args.top, extra=extra, required=required)
         raw = dp.serialize_entries(entries, schema=dp.SCHEMA_ID_V2)
         asset = dp.compress_raw(raw)
         target = CL.SHIPPED[tag]
@@ -661,6 +698,9 @@ def pack(args) -> int:
         if extra is not None:
             result[tag]["extra_entries_offered"] = len(extra)
             result[tag]["extra_entries_that_entered"] = len(words & set(extra))
+        if required:
+            result[tag]["required_entries_offered"] = len(required)
+            result[tag]["required_entries_that_entered"] = len(words & required)
         if args.write:
             dp.validate_asset(asset, language=language)
             _atomic_write(target, asset)
@@ -720,6 +760,10 @@ def main(argv=None) -> int:
                     help="extra word<TAB>frequency entries merged into the composition "
                          "(the admitted Tatar word forms); requires --only, because the "
                          "entries are per language")
+    pk.add_argument("--require-entries", default=None, metavar="FILE",
+                    help="one word per line that must ship even below the composition cutoff "
+                         "(explicit operator approvals); each word must also be in "
+                         "--extra-entries and this requires --only")
     pk.add_argument("--top", type=int, default=100_000,
                     help="composition cutoff size (default %(default)s); requires --only "
                          "when it differs from the default")
@@ -728,6 +772,8 @@ def main(argv=None) -> int:
     if args.command == "pack":
         if args.extra_entries is not None and args.only is None:
             parser.error("--extra-entries requires --only (the entries are per language)")
+        if args.require_entries is not None and args.only is None:
+            parser.error("--require-entries requires --only (the entries are per language)")
         if args.top != 100_000 and args.only is None:
             parser.error("--top other than the default requires --only")
     return args.func(args)

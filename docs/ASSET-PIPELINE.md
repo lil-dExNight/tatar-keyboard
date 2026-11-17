@@ -200,13 +200,16 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    the accepted words. A form is admitted when it occurs in the frequency sources (the two
    Leipzig `*-words.txt` files plus `conv-freq-tt.tsv`), and its count becomes its frequency.
    The result is written to `<work-dir>/wordforms-admitted-tt.tsv`, with a JSON report next to
-   it.
+   it. The rebuild then reads the complete `operator-widened` approvals from
+   `tatar-wordform-review.tsv`, merges their evidence-backed frequencies, and writes their words
+   to `<work-dir>/wordforms-required-tt.txt`.
 2. **Dictionaries.** `dict_accept.py pack --write` merges the baseline, the accepted words and
    (for Tatar) the admitted forms. Frequencies are written plus conversational plus the bonus
    file, when it exists. The Tatar cutoff ranks entries by their stored frequency plus nine times
    their conversational frequency; this weight does not change the stored frequencies. Russian
    uses the stored frequency for cutoff selection. The packer keeps the top entries
-   (`TATAR_DICTIONARY_TOP` for Tatar, 100 000 for Russian) and writes schema 2.
+   (`TATAR_DICTIONARY_TOP` for Tatar, 100 000 for Russian), then appends any reviewed required form
+   still below that cutoff, and writes schema 2.
    The release APK size limit is the only limit on the dictionary size, so run
    `scripts/release_check.sh` after you change `TATAR_DICTIONARY_TOP`. The packer's raw size
    bound (`MAX_UNCOMPRESSED_BYTES`) equals the reader's safety bound `TdictFormat.MAX_RAW_SIZE`
@@ -327,7 +330,9 @@ A rebuild leaves the following to you. Each one fails its test until it is updat
   over the dictionary. Regenerate the committed sets in `app/src/test/resources/` and update
   their row, byte and class counts and SHA-256 in `tests/typo_eval_pack/`,
   `TypoMutatedEvalTest`, `TtDl1TierCalibrationTest`, `RuTypoMutatedEvalTest` and
-  `AutocorrectWideningCalibrationTest`.
+  `AutocorrectWideningCalibrationTest`. A reviewed safety word admitted to the dictionary must
+  leave `PROPOSED_VALID_OOV_WORDS`; the correctly typed-word and whole-dictionary suites then
+  check that it is never replaced.
 - Measured results. Hit, coverage, recall and probe counts measured on the committed assets
   are pinned in `TtSuggestEvalTest`, `RuSuggestEvalTest`, `PersonalizationEvalTest`,
   `tests/personalization_eval/`, `TypoMutatedEvalTest`, `RuTypoMutatedEvalTest`,

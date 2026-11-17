@@ -1013,7 +1013,7 @@ class RealTreeTest(unittest.TestCase):
         # The remaining heads come from the generator rule, not from a drift: a head with
         # no in-dictionary pair is dropped, not stored empty (the reason text of
         # scripts/known_asset_drift.json names them).
-        self.assertEqual(12, report["bigrams"]["tat"]["drift"]["missing_top_heads"])
+        self.assertEqual(8, report["bigrams"]["tat"]["drift"]["missing_top_heads"])
         self.assertEqual(0, report["bigrams"]["tat"]["drift"]["unexpected_heads"])
         # The Russian table keeps all 10,000 heads since the 2023/2024 news corpora and
         # the edge-punctuation recovery joined the training input, so its strict verdict

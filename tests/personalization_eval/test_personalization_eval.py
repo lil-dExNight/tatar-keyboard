@@ -57,7 +57,7 @@ PIN_CONTROL_TOP1 = 345
 PIN_CONTROL_VISIBLE_TOP3 = 652
 PIN_CONTROL_ENGINE_TOP4 = 741
 PIN_REP_CTRL_KS_BASELINE = 34_196
-PIN_REP_CTRL_KS_SIMULATED = 21_089
+PIN_REP_CTRL_KS_SIMULATED = 21_102
 PIN_REP_CTRL_KS_ORACLE = 8_451
 
 # Graduation-counter pins per split and arm; PersonalizationEvalTest.kt pins the same
@@ -66,7 +66,7 @@ PIN_REP_CTRL_KS_ORACLE = 8_451
 PIN_GRAD_WORDS = {
     ("hash", "oracle"): 0, ("hash", "realistic"): 0, ("hash", "fixed"): 0,
     ("chrono", "oracle"): 1, ("chrono", "realistic"): 1, ("chrono", "fixed"): 1,
-    ("rep", "oracle"): 192, ("rep", "realistic"): 192, ("rep", "fixed"): 192,
+    ("rep", "oracle"): 195, ("rep", "realistic"): 195, ("rep", "fixed"): 195,
 }
 PIN_GRAD_PAIRS = {
     ("hash", "oracle"): 33, ("hash", "realistic"): 33, ("hash", "fixed"): 33,
@@ -79,12 +79,12 @@ PIN_OBSERVED_LOOKUPS = {
     ("rep", "oracle"): 89_169, ("rep", "realistic"): 89_169, ("rep", "fixed"): 89_169,
 }
 PIN_EMPTY_OBSERVATIONS = {
-    ("hash", "oracle"): 788, ("hash", "realistic"): 788, ("hash", "fixed"): 788,
-    ("chrono", "oracle"): 808, ("chrono", "realistic"): 808, ("chrono", "fixed"): 808,
-    ("rep", "oracle"): 5_010, ("rep", "realistic"): 5_010, ("rep", "fixed"): 5_010,
+    ("hash", "oracle"): 795, ("hash", "realistic"): 795, ("hash", "fixed"): 795,
+    ("chrono", "oracle"): 810, ("chrono", "realistic"): 810, ("chrono", "fixed"): 810,
+    ("rep", "oracle"): 5_028, ("rep", "realistic"): 5_028, ("rep", "fixed"): 5_028,
 }
 PIN_WORD_COMPLETIONS = {
-    "hash": 93, "chrono": 87, "rep": 591,
+    "hash": 95, "chrono": 88, "rep": 600,
 }
 PIN_PAIR_OBSERVATIONS = {
     "hash": 2_224, "chrono": 2_173, "rep": 13_419,
@@ -92,37 +92,37 @@ PIN_PAIR_OBSERVATIONS = {
 PIN_PAIRS_DROPPED_UNKNOWN_CONTEXT = {"hash": 0, "chrono": 0, "rep": 0}
 PIN_WORD_PENDING_EVICTIONS = {"hash": 0, "chrono": 0, "rep": 0}
 PIN_PAIR_PENDING_EVICTIONS = {"hash": 1_887, "chrono": 1_798, "rep": 12_400}
-PIN_FIX_PROBES = {"hash": 54, "chrono": 38, "rep": 369}
-PIN_PRIME_UNSEEN_TOKENS = {"hash": 60, "chrono": 55, "rep": 381}
-PIN_UNSEEN_STEM = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (330, 330, 330)}
+PIN_FIX_PROBES = {"hash": 58, "chrono": 43, "rep": 405}
+PIN_PRIME_UNSEEN_TOKENS = {"hash": 61, "chrono": 54, "rep": 393}
+PIN_UNSEEN_STEM = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (336, 336, 336)}
 # The realistic-arm sweep on the repetition split: the timeline parity channel.
 PIN_REP_SWEEP = {
-    100: (155, 72_173, 0, 19_578),  # (grad_words, observed, dropped, staled)
+    100: (157, 72_173, 0, 19_578),  # (grad_words, observed, dropped, staled)
     200: (0, 0, 29_009, 73_579),
 }
 # Measure-side pins of the repetition split (oracle arm). The completion top-1 and
 # accept-top-1 pins moved when the harness started modeling the production promotion
 # (PROMOTION_MIN_USAGE, PROMOTION_TOP_FREQUENCY_GATE); the disp_* pins moved when the
 # precedence arm started mirroring the production frequency-threshold rule.
-PIN_REP_COMP_ACCEPT = 196
-PIN_REP_COMP_ACCEPT_TOP1 = 54
+PIN_REP_COMP_ACCEPT = 199
+PIN_REP_COMP_ACCEPT_TOP1 = 57
 PIN_REP_COMP_CP1_TOP1 = 0
-PIN_REP_COMP_CP2_TOP1 = 7
-PIN_REP_COMP_CP2_VISIBLE_TOP3 = 70
-PIN_REP_COMP_CP2_ENGINE_TOP4 = 70
-PIN_REP_COMP_CP3_TOP1 = 24
-PIN_REP_COMP_CP4_TOP1 = 9
+PIN_REP_COMP_CP2_TOP1 = 9
+PIN_REP_COMP_CP2_VISIBLE_TOP3 = 71
+PIN_REP_COMP_CP2_ENGINE_TOP4 = 71
+PIN_REP_COMP_CP3_TOP1 = 26
+PIN_REP_COMP_CP4_TOP1 = 8
 PIN_REP_NW_PERS_VISIBLE_TOP3 = 652
 PIN_REP_NW_PERS_ENGINE_TOP4 = 741
 PIN_REP_NW_DISP_VISIBLE_TOP3 = 698
 PIN_REP_NW_DISP_ENGINE_TOP4 = 778
 PIN_REP_NW_DISP_GAINED = 47
-PIN_REP_KS_PERS_KEYS = 20_173
-PIN_REP_REORD_PROMO_1 = 197
+PIN_REP_KS_PERS_KEYS = 20_167
+PIN_REP_REORD_PROMO_1 = 200
 # Pollution pins: personal cells shown and hit, per measure walk (the hash/chrono halves
 # graduate no word, so only the next-word pair cells appear there).
-PIN_REP_COMP_PERSONAL_SHOWN = 8_571
-PIN_REP_COMP_PERSONAL_HIT = 197
+PIN_REP_COMP_PERSONAL_SHOWN = 8_594
+PIN_REP_COMP_PERSONAL_HIT = 200
 PIN_REP_NW_PERSONAL_SHOWN = 1_523
 PIN_REP_NW_PERSONAL_HIT = 145
 PIN_HASH_NW_PERSONAL_SHOWN = 511
@@ -132,9 +132,9 @@ PIN_HASH_NW_PERSONAL_HIT = 25
 # stream — the pending tables churn fully within a pass — so all three sweep cells match
 # the one-session graduation counters.
 PIN_REP_SESSIONS = {
-    500: (192, 81, 330, 0, 0),
-    2_000: (192, 81, 330, 0, 0),
-    None: (192, 81, 330, 0, 0),
+    500: (195, 81, 336, 0, 0),
+    2_000: (195, 81, 336, 0, 0),
+    None: (195, 81, 336, 0, 0),
 }
 
 # Russian mirror pins (see RuSuggestEvalTest): the same harness over the committed Russian

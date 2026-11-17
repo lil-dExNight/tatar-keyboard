@@ -192,6 +192,147 @@ WORDFORM_FREQUENCY_SOURCES = (
     "tat_mixed_2015_1M-words.txt",
     "tat_web_2018_1M-words.txt",
 )
+WORDFORM_REVIEW = Path("data/dictionary/tatar-wordform-review.tsv")
+WORDFORM_REVIEW_HEADER = [
+    "word", "lemma", "paradigm_cell", "corpus_evidence", "attestation_status",
+    "admission_decision", "approved", "reviewer", "review_date", "note",
+]
+
+
+@dataclass(frozen=True)
+class ReviewedWordform:
+    word: str
+    frequency: int
+    approved: str
+    reviewer: str
+    review_date: str
+    note: str
+
+
+def read_reviewed_wordforms(path: Path) -> dict[str, int]:
+    """Read complete widened approvals and their minimum positive frequencies."""
+    language = coverage.language_for("tat")
+    reviewed: dict[str, int] = {}
+    seen: set[str] = set()
+    header_seen = False
+    try:
+        handle = path.open(encoding="utf-8", newline="")
+    except OSError as error:
+        raise wordform_gen.WordformError(f"cannot read review table {path}: {error}") from error
+    with handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if not header_seen:
+                if fields != WORDFORM_REVIEW_HEADER:
+                    raise wordform_gen.WordformError(
+                        f"{path}:{line_number}: unexpected review columns {fields}"
+                    )
+                header_seen = True
+                continue
+            if len(fields) != len(WORDFORM_REVIEW_HEADER):
+                raise wordform_gen.WordformError(
+                    f"{path}:{line_number}: expected {len(WORDFORM_REVIEW_HEADER)} columns, "
+                    f"got {len(fields)}"
+                )
+            row = dict(zip(WORDFORM_REVIEW_HEADER, fields))
+            word = row["word"]
+            if word in seen:
+                raise wordform_gen.WordformError(
+                    f"{path}:{line_number}: duplicate word {word!r}"
+                )
+            seen.add(word)
+            normalized, reason = coverage.normalize_word(word, language.alphabet)
+            if reason is not None or normalized != word:
+                raise wordform_gen.WordformError(
+                    f"{path}:{line_number}: word {word!r} is not canonical "
+                    f"({reason or 'not NFC/lowercase'})"
+                )
+            if row["admission_decision"] != "operator-widened":
+                continue
+
+            evidence: dict[str, str] = {}
+            try:
+                for item in row["corpus_evidence"].split(";"):
+                    key, value = item.split("=", 1)
+                    if key in evidence:
+                        raise ValueError(f"duplicate evidence source {key!r}")
+                    evidence[key] = value
+                if set(evidence) != {"Tatoeba", "OpenSubtitles", "extra"}:
+                    raise ValueError(f"unexpected evidence sources {sorted(evidence)}")
+                if evidence["extra"] not in ("absent", "present"):
+                    raise ValueError("extra must be absent or present")
+                evidence_frequency = int(evidence["Tatoeba"]) + int(evidence["OpenSubtitles"])
+                if evidence_frequency < 0:
+                    raise ValueError("negative corpus count")
+            except ValueError as error:
+                raise wordform_gen.WordformError(
+                    f"{path}:{line_number}: invalid corpus_evidence: {error}"
+                ) from error
+            admission = ReviewedWordform(
+                word=word,
+                # An approved unattested stem still needs a positive stored frequency.
+                frequency=max(1, evidence_frequency),
+                approved=row["approved"].strip(),
+                reviewer=row["reviewer"].strip(),
+                review_date=row["review_date"].strip(),
+                note=row["note"].strip(),
+            )
+            review_reason = dict_accept.review_metadata_reason(admission)  # type: ignore[arg-type]
+            if review_reason:
+                raise wordform_gen.WordformError(f"{path}:{line_number}: {review_reason}")
+            reviewed[word] = admission.frequency
+    if not header_seen:
+        raise wordform_gen.WordformError(f"{path}: review header is missing")
+    return reviewed
+
+
+def merge_reviewed_wordforms(root: Path, out: Path) -> Path:
+    """Merge explicit approvals into the generated admissions and refresh their report."""
+    reviewed = read_reviewed_wordforms(root / WORDFORM_REVIEW)
+    admitted = dict_accept.read_extra_entries(out, "tat")
+    generated = dict(admitted)
+    for word, frequency in reviewed.items():
+        admitted[word] = max(frequency, admitted.get(word, 0))
+    data = "".join(f"{word}\t{admitted[word]}\n" for word in sorted(admitted)).encode("utf-8")
+    wordform_gen.write_atomic(out, data)
+    required_path = out.with_name("wordforms-required-tt.txt")
+    required_data = "".join(f"{word}\n" for word in sorted(reviewed)).encode("utf-8")
+    wordform_gen.write_atomic(required_path, required_data)
+
+    report_path = out.with_suffix(".json")
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise wordform_gen.WordformError(
+            f"cannot read wordform report {report_path}: {error}"
+        ) from error
+    report.update({
+        "admitted_forms": len(admitted),
+        "output_bytes": len(data),
+        "output_sha256": hashlib.sha256(data).hexdigest(),
+        "review_source": str(WORDFORM_REVIEW),
+        "reviewed_forms": len(reviewed),
+        "reviewed_forms_already_generated": len(set(reviewed) & set(generated)),
+        "reviewed_forms_new": len(set(reviewed) - set(generated)),
+        "required_output": str(required_path),
+        "required_output_sha256": hashlib.sha256(required_data).hexdigest(),
+    })
+    sources = report["frequency_sources"]
+    review_source = str(WORDFORM_REVIEW)
+    if review_source not in sources:
+        sources.append(review_source)
+    wordform_gen.write_atomic(
+        report_path,
+        (json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
+    print(
+        f"wordform review: {len(reviewed)} approved forms, "
+        f"{len(set(reviewed) - set(generated))} new",
+        file=sys.stderr,
+    )
+    return out
 
 
 # --- corpus manifest --------------------------------------------------------------------------
@@ -1261,6 +1402,7 @@ def dict_accept_argv(
     work_dir: Path,
     dictionary: DictionaryAsset,
     extra_entries: Path | None,
+    required_entries: Path | None = None,
 ) -> list[str]:
     """Command line that rebuilds one dictionary; a separate function so tests can inspect it."""
     argv = [
@@ -1279,6 +1421,8 @@ def dict_accept_argv(
     ]
     if extra_entries is not None:
         argv += ["--extra-entries", str(extra_entries)]
+    if required_entries is not None:
+        argv += ["--require-entries", str(required_entries)]
     return argv
 
 
@@ -1403,6 +1547,7 @@ def run_rebuild(
     wordforms: Path | None = None
     if "tat" in selected:
         wordforms = build_admitted_wordforms(root, baseline, corpus_dir, work_dir)
+        wordforms = merge_reviewed_wordforms(root, wordforms)
     for dictionary in DICTIONARIES:
         if dictionary.tag not in selected:
             continue
@@ -1410,6 +1555,8 @@ def run_rebuild(
             dict_accept_argv(
                 root, baseline, work_dir, dictionary,
                 wordforms if dictionary.tag == "tat" else None,
+                wordforms.with_name("wordforms-required-tt.txt")
+                if dictionary.tag == "tat" and wordforms is not None else None,
             ),
             cwd=root,
         )

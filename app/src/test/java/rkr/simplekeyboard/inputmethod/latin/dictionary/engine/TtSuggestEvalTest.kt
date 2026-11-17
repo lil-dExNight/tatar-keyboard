@@ -402,10 +402,10 @@ class TtSuggestEvalTest {
         assertEquals(PIN_BIGRAM_ENGINE_TOP4_HITS, engineHits)
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
         assertEquals("7.6012", format(ratePct(top1Hits, pairs)))
-        assertEquals("85.2224", format(ratePct(covered, pairs)))
+        assertEquals("85.2001", format(ratePct(covered, pairs)))
         assertEquals("13.7939", format(ratePct(visibleHits, pairs)))
         assertEquals("15.7389", format(ratePct(engineHits, pairs)))
-        assertEquals("18.4680", format(ratePct(engineHits, covered)))
+        assertEquals("18.4728", format(ratePct(engineHits, covered)))
     }
 
     /**
@@ -537,7 +537,7 @@ class TtSuggestEvalTest {
         assertEquals(PIN_PAIRS, nextwordMoments)
         assertEquals(0, nextwordEmpty)
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
-        assertEquals("1.9835", format(prefixEmpty * 100.0 / prefixMoments))
+        assertEquals("2.0000", format(prefixEmpty * 100.0 / prefixMoments))
         assertEquals("0.0000", format(nextwordEmpty * 100.0 / nextwordMoments))
     }
 
@@ -711,12 +711,12 @@ class TtSuggestEvalTest {
             PIN_STRATUM_UNSEEN_STEM_WORDS, stratumCount(stratumByWord, STRATUM_UNSEEN_STEM)
         )
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
-        assertEquals("15.0513", visiblePctByStratum[STRATUM_SEEN_FORM])
-        assertEquals("2.3810", visiblePctByStratum[STRATUM_NEW_FORM])
-        assertEquals("4.1237", visiblePctByStratum[STRATUM_UNSEEN_STEM])
-        assertEquals("17.1016", enginePctByStratum[STRATUM_SEEN_FORM])
-        assertEquals("3.5714", enginePctByStratum[STRATUM_NEW_FORM])
-        assertEquals("4.1237", enginePctByStratum[STRATUM_UNSEEN_STEM])
+        assertEquals("15.0420", visiblePctByStratum[STRATUM_SEEN_FORM])
+        assertEquals("3.4884", visiblePctByStratum[STRATUM_NEW_FORM])
+        assertEquals("4.0404", visiblePctByStratum[STRATUM_UNSEEN_STEM])
+        assertEquals("17.0942", enginePctByStratum[STRATUM_SEEN_FORM])
+        assertEquals("4.6512", enginePctByStratum[STRATUM_NEW_FORM])
+        assertEquals("4.0404", enginePctByStratum[STRATUM_UNSEEN_STEM])
     }
 
     /**
@@ -846,8 +846,8 @@ class TtSuggestEvalTest {
                 (PIN_KS_BASELINE_KEYS - PIN_KS_SIMULATED_KEYS_CELLS4) * QUALITY_FLOOR,
         )
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
-        assertEquals("35.9750", format(savedPct))
-        assertEquals("38.3290", format(savedPctCells4))
+        assertEquals("35.9428", format(savedPct))
+        assertEquals("38.2910", format(savedPctCells4))
         assertEquals("75.2866", format(oraclePct))
     }
 
@@ -981,7 +981,7 @@ class TtSuggestEvalTest {
         private const val PIN_EVAL_LINES = 1_000
         private const val PIN_UNIQUE_WORDS = 2_656
         private const val PIN_PAIRS = 4_473
-        private const val PIN_COVERED = 3_812
+        private const val PIN_COVERED = 3_811
         private const val PIN_BIGRAM_VISIBLE_TOP3_HITS = 617
         private const val PIN_BIGRAM_ENGINE_TOP4_HITS = 704
         private const val PIN_CP1_WORDS = 2_656
@@ -991,58 +991,58 @@ class TtSuggestEvalTest {
         // counters are unaffected by it.
         private const val PIN_CP1_VISIBLE_TOP3_HITS = 74
         private const val PIN_CP2_VISIBLE_TOP3_HITS = 342
-        private const val PIN_CP3_VISIBLE_TOP3_HITS = 776
+        private const val PIN_CP3_VISIBLE_TOP3_HITS = 775
         private const val PIN_CP1_ENGINE_TOP4_HITS = 93
         private const val PIN_CP2_ENGINE_TOP4_HITS = 415
-        private const val PIN_CP3_ENGINE_TOP4_HITS = 887
+        private const val PIN_CP3_ENGINE_TOP4_HITS = 886
         private const val PIN_CP1_TOP1_HITS = 26
         private const val PIN_CP2_TOP1_HITS = 142
         private const val PIN_CP3_TOP1_HITS = 414
         private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 24_250
-        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 481
-        private const val PIN_SAMESTEM_WORDS = 1_827
-        private const val PIN_SAMESTEM_TOP1_HITS = 792
-        private const val PIN_SAMESTEM_VISIBLE_TOP3_HITS = 1_241
-        private const val PIN_SAMESTEM_ENGINE_TOP4_HITS = 1_342
-        private const val PIN_SAMESTEM_VISIBLE_TOP3_HITS_BOOST_OFF = 1_146
-        private const val PIN_SAMESTEM_ENGINE_TOP4_HITS_BOOST_OFF = 1_244
+        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 485
+        private const val PIN_SAMESTEM_WORDS = 1_821
+        private const val PIN_SAMESTEM_TOP1_HITS = 787
+        private const val PIN_SAMESTEM_VISIBLE_TOP3_HITS = 1_236
+        private const val PIN_SAMESTEM_ENGINE_TOP4_HITS = 1_337
+        private const val PIN_SAMESTEM_VISIBLE_TOP3_HITS_BOOST_OFF = 1_142
+        private const val PIN_SAMESTEM_ENGINE_TOP4_HITS_BOOST_OFF = 1_240
         private const val PIN_SENTSTART_TOP1_HITS = 54
         private const val PIN_SENTSTART_VISIBLE_TOP3_HITS = 232
         private const val PIN_SENTSTART_ENGINE_TOP4_HITS = 275
         // Unique eval words whose committed-word strip is empty WITHOUT the top-frequency
         // fallback; with the fallback the count is asserted to be 0.
-        private const val PIN_NEXTWORD_EMPTY_BEFORE = 814
+        private const val PIN_NEXTWORD_EMPTY_BEFORE = 815
         private const val PIN_TOP1_HITS = 340
         private const val PIN_CHAIN_TOP1_HITS = 345
         private const val PIN_CHAIN_VISIBLE_TOP3_HITS = 652
         private const val PIN_CHAIN_ENGINE_TOP4_HITS = 741
-        private const val PIN_STRATUM_SEEN_FORM_WORDS = 2_424
-        private const val PIN_STRATUM_NEW_FORM_WORDS = 106
-        private const val PIN_STRATUM_UNSEEN_STEM_WORDS = 126
+        private const val PIN_STRATUM_SEEN_FORM_WORDS = 2_417
+        private const val PIN_STRATUM_NEW_FORM_WORDS = 109
+        private const val PIN_STRATUM_UNSEEN_STEM_WORDS = 130
         private const val PIN_KS_BASELINE_KEYS = 34_196
-        private const val PIN_KS_SIMULATED_KEYS = 21_894
-        private const val PIN_KS_SIMULATED_KEYS_CELLS4 = 21_089
+        private const val PIN_KS_SIMULATED_KEYS = 21_905
+        private const val PIN_KS_SIMULATED_KEYS_CELLS4 = 21_102
         private const val PIN_KS_ORACLE_KEYS = 8_451
         // The context boost over the cp>=2 prefix moments, cross-pinned with the ctxboost_* rows
         // of scripts/suggest_eval.py; the CI95 is the paired sentence-level bootstrap.
         private const val PIN_CTXBOOST_CP2PLUS_MOMENTS = 18_789
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 6_542
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 7_100
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_629
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 10_054
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS = 10_400
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 10_768
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "34.8182"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "37.7881"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+2.9698"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+2.5397"
-        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+3.4434"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "51.2481"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "53.5100"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+2.2620"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT = "55.3515"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "57.3101"
-        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA = "+1.9586"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 6_534
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 7_090
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_617
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 10_040
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS = 10_387
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 10_752
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "34.7757"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_PCT = "37.7348"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+2.9592"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+2.5297"
+        private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+3.4156"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "51.1842"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "53.4355"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+2.2513"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT = "55.2823"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "57.2250"
+        private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_DELTA = "+1.9426"
 
         // Lemma-stratum ids, and the stratum completion metric's prefix length ("cp3"): fixed
         // at three code points by the metric's definition, independent of the strip width.

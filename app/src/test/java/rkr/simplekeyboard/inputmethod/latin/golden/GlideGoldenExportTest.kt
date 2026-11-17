@@ -133,9 +133,9 @@ class GlideGoldenExportTest {
         if (geo.id == "fixture-tt") {
             // The generator mirror must reproduce the pinned calibration set byte for byte;
             // the asset rebuild rewrites the pins (scripts/rebuild_assets.py).
-            assertEquals(5110, words.size)
-            assertEquals(14006869, bytes.size)
-            assertEquals("ad22bb0fb8a75bfb14a8d07b97dddc4da5baefef66c47fe72f9a4e5df7f0df76", sha)
+            assertEquals(5113, words.size)
+            assertEquals(14028552, bytes.size)
+            assertEquals("6cec501e22a5da64a63bb7c641ed803ee6e81d5e425cec8ac0ceb2502b7a4ebc", sha)
         }
         w.write("{\"kind\":\"set\",\"id\":${json(geo.id)},\"words\":${words.size},\"rows\":${paths.size}," +
             "\"bytes\":${bytes.size},\"sha256\":${json(sha)}}\n")

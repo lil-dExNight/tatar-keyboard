@@ -242,9 +242,9 @@ class LongPressRecoveryCalibrationTest {
         // Independently produced by `python3 scripts/typo_pack.py build ...` on the same committed
         // asset; equality with the JVM-built set shows both implementations build the same set.
         // The asset rebuild rewrites these pins (scripts/rebuild_assets.py).
-        private const val GENERATOR_SET_SIZE = 96_083
+        private const val GENERATOR_SET_SIZE = 96_105
         private const val GENERATOR_SET_SHA256 =
-            "6809bf5bcc878da11614e1161a333bf40edd7a6e3c742899835a6d942530d84a"
+            "d2060ae16d6ea24cd2d80d50067578a70787d0629047603e0c34b3b7b7a94746"
 
         // Target recovery and the chosen tolerance, in percentage points.
         private const val CONTRACT_RECOVERY_PP = 14.2
