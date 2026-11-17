@@ -285,6 +285,36 @@ class ContinuationCountsTest(unittest.TestCase):
         self.assertEqual({"әни": 1}, heads)
         self.assertEqual(1, total)
 
+    def test_recover_punctuation_counts_recovered_pairs_without_crossing_boundaries(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            train = directory / "train-sentences.txt"
+            train.write_text(
+                "1\tәни, өйгә «кайтты»\n"
+                "2\tкитап. әни өйгә\n",
+                encoding="utf-8",
+            )
+            rejected, rejected_heads, rejected_total = bigram_pack.count_continuations(
+                [train], self.VOCABULARY
+            )
+            recovered, recovered_heads, recovered_total = (
+                bigram_pack.count_continuations(
+                    [train], self.VOCABULARY, recover_punctuation=True
+                )
+            )
+
+        # Without recovery only the adjacent clean tokens of line 2 make a pair.
+        self.assertEqual({"өйгә": 1}, rejected)
+        self.assertEqual({"әни": 1}, rejected_heads)
+        self.assertEqual(1, rejected_total)
+        # Recovery adds әни→өйгә and өйгә→кайтты from line 1; the sentence terminal after
+        # китап keeps китап→әни out, and the repeated әни→өйгә is one distinct pair.
+        self.assertEqual({"өйгә": 1, "кайтты": 1}, recovered)
+        self.assertEqual({"әни": 1, "өйгә": 1}, recovered_heads)
+        self.assertEqual(2, recovered_total)
+
 
 class EndToEndMatrixTest(unittest.TestCase):
     """A whole run on a corpus of a few sentences, through the real shipped-asset reader."""

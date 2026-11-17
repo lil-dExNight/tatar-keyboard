@@ -393,6 +393,7 @@ def count_continuations(
     paths: Sequence[Path],
     vocabulary: frozenset[str],
     alphabet: frozenset[str] = coverage.TATAR_ALPHABET,
+    recover_punctuation: bool = False,
 ) -> tuple[dict[str, int], dict[str, int], int]:
     """Kneser-Ney continuation counts: one pass over the training sentences.
 
@@ -400,9 +401,9 @@ def count_continuations(
     ``successor_continuations[w]`` is the number of distinct in-vocabulary words that [w]
     follows (N₁₊(•,w)), ``head_continuations[h]`` the number of distinct in-vocabulary
     successors of [h] (N₁₊(h,•)), and the total is the number of distinct in-vocabulary
-    pairs. Pair eligibility is the ``count_pairs`` rule. Distinctness makes the counts
-    invariant to a corpus file listed more than once (a count weight), so callers
-    deduplicate the paths.
+    pairs. Pair eligibility is the ``count_pairs`` rule, including the same
+    ``recover_punctuation`` tokenization. Distinctness makes the counts invariant to a
+    corpus file listed more than once (a count weight), so callers deduplicate the paths.
     """
     words = sorted(vocabulary)
     index = {word: position for position, word in enumerate(words)}
@@ -410,7 +411,7 @@ def count_continuations(
     pairs: set[int] = set()
     for path in paths:
         for sentence in iter_sentences(path):
-            tokens = normalized_tokens(sentence, alphabet)
+            tokens = normalized_tokens(sentence, alphabet, recover_punctuation)
             for head, success in iter_pairs(tokens, vocabulary):
                 pairs.add(index[head] * width + index[success])
     successor_continuations: dict[str, int] = {}
