@@ -316,36 +316,25 @@ class BackupArchiveTest {
 
     @Test
     fun rejectsAnArchiveBeyondTheEntryCap() {
-        // The entry-count gate runs on the stream, before any path or content check of the entry
-        // that trips it. The distinct known paths number fewer than the cap, so the filler entries
-        // here trip an earlier stream gate; the pin is that an archive past the cap never imports.
-        val settings = BackupPreferencesXml.serialize(preferences)
-        val entries = ArrayList<Pair<String, ByteArray>>()
-        entries += "manifest.json" to manifestBytes(listOf("settings/preferences.xml" to settings))
-        entries += "settings/preferences.xml" to settings
-        repeat(BackupFormat.MAX_ENTRIES) { index ->
-            entries += "personal/filler$index.tpers" to ByteArray(0)
-        }
-        assertRejected(zipOf(*entries.toTypedArray()))
+        // Every valid personal path is unique, and the format has fewer of them than the
+        // production cap, so a tight injected limit exercises the same stream guard without
+        // relying on an unknown-path rejection.
+        val archive = BackupArchive.create(45, preferences, allPersonalFiles())
+        assertRejectedWithLimits(archive, BackupArchive.Limits(
+            maxEntries = 10,
+            maxTotalUncompressedBytes = Long.MAX_VALUE,
+        ))
     }
 
     @Test
     fun rejectsAnArchiveBeyondTheTotalUncompressedCap() {
-        // Zero-filled entries compress to nearly nothing, so the archive stays tiny while the
-        // uncompressed total passes the cap. Same reachability note as the entry-cap test.
-        val settings = BackupPreferencesXml.serialize(preferences)
-        val entries = ArrayList<Pair<String, ByteArray>>()
-        entries += "manifest.json" to manifestBytes(listOf("settings/preferences.xml" to settings))
-        entries += "settings/preferences.xml" to settings
-        val chunk = ByteArray(256 * 1024)
-        var total = settings.size
-        var index = 0
-        while (total <= BackupFormat.MAX_TOTAL_UNCOMPRESSED_BYTES) {
-            entries += "personal/filler$index.tpers" to chunk
-            total += chunk.size
-            index++
-        }
-        assertRejected(zipOf(*entries.toTypedArray()))
+        // Same reachability rule as the entry cap: the production total sits above the largest
+        // archive the format can describe. A zero injected total reaches the same guard.
+        val archive = BackupArchive.create(45, preferences, allPersonalFiles())
+        assertRejectedWithLimits(archive, BackupArchive.Limits(
+            maxEntries = Int.MAX_VALUE,
+            maxTotalUncompressedBytes = 0,
+        ))
     }
 
     // ---- helpers --------------------------------------------------------------------------------
@@ -366,6 +355,39 @@ class BackupArchiveTest {
             fail("must reject the archive")
         } catch (expected: BackupValidationException) {
         }
+    }
+
+    private fun assertRejectedWithLimits(archive: ByteArray, limits: BackupArchive.Limits) {
+        try {
+            BackupArchive.readAndVerifyWithLimits(archive, limits)
+            fail("must reject the archive")
+        } catch (expected: BackupValidationException) {
+        }
+    }
+
+    /** One valid file of every kind and subtype, so every archive path is a real store path. */
+    private fun allPersonalFiles(): List<VerifiedPersonalFile> {
+        val directory = temporaryFolder.newFolder()
+        return listOf(
+            VerifiedPersonalFile(BackupFormat.PersonalKind.WORDS, "tt_RU",
+                BackupTestStores.writeWords(directory, "tt_RU", listOf("абыйлар"))),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.WORDS, "ru",
+                BackupTestStores.writeWords(directory, "ru", listOf("китап"))),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.PAIRS, "tt_RU",
+                BackupTestStores.writePairs(directory, "tt_RU", "мин" to "ашыйм")),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.PAIRS, "ru",
+                BackupTestStores.writePairs(directory, "ru", "книга" to "читаю")),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.EMOJI, "tt_RU",
+                BackupTestStores.writeEmoji(directory, "tt_RU", "бәйрәм" to "🎉")),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.EMOJI, "ru",
+                BackupTestStores.writeEmoji(directory, "ru", "праздник" to "🎉")),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.REFUSED, "tt_RU",
+                BackupTestStores.writeRefused(directory, "tt_RU", "китәп" to "китап")),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.REFUSED, "ru",
+                BackupTestStores.writeRefused(directory, "ru", "книга" to "книги")),
+            VerifiedPersonalFile(BackupFormat.PersonalKind.SHORTCUTS, "",
+                BackupTestStores.writeShortcuts(directory, "бб", "бик булды")),
+        )
     }
 
     private fun manifestBytes(entries: List<Pair<String, ByteArray>>): ByteArray =

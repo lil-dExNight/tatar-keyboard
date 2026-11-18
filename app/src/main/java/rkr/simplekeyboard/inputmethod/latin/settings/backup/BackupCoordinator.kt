@@ -38,7 +38,9 @@ import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -85,6 +87,22 @@ internal fun runOnMainAndWait(
 }
 
 /**
+ * Submits [task] and reports whether it was accepted. A rejected task never runs, so the supplied
+ * password is wiped here; an accepted task owns the password and clears it on every path.
+ */
+internal fun submitBackupTask(
+    executor: Executor,
+    password: CharArray?,
+    task: () -> Unit,
+): Boolean = try {
+    executor.execute(task)
+    true
+} catch (_: RejectedExecutionException) {
+    password?.fill('\u0000')
+    false
+}
+
+/**
  * The Android side of the backup: reads and writes the user-picked document (SAF needs no
  * permission), wires [BackupTransfer] to the live stores, and answers on the UI thread.
  *
@@ -113,7 +131,7 @@ internal class BackupCoordinator(
 
     /** Writes the archive to [uri], encrypted when [password] is supplied; answers on the UI thread. */
     fun exportTo(uri: Uri, password: CharArray? = null, onFinished: (Boolean) -> Unit) {
-        executor.execute {
+        val accepted = submitBackupTask(executor, password) {
             var documentTouched = false
             val written = try {
                 if (!userUnlocked) {
@@ -140,11 +158,12 @@ internal class BackupCoordinator(
             }
             uiPoster { onFinished(written) }
         }
+        if (!accepted) uiPoster { onFinished(false) }
     }
 
     /** Restores [uri], asking for a password through PASSWORD_REQUIRED when encrypted. */
     fun importFrom(uri: Uri, password: CharArray? = null, onFinished: (BackupImportResult) -> Unit) {
-        executor.execute {
+        val accepted = submitBackupTask(executor, password) {
             val result = try {
                 if (!userUnlocked) {
                     BackupImportResult.WRITE_FAILED
@@ -162,6 +181,7 @@ internal class BackupCoordinator(
             password?.fill('\u0000')
             uiPoster { onFinished(result) }
         }
+        if (!accepted) uiPoster { onFinished(BackupImportResult.WRITE_FAILED) }
     }
 
     /** The document's bytes, or null when it is unreadable or over the archive cap. */

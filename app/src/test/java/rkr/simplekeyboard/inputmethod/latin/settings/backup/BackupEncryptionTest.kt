@@ -100,23 +100,24 @@ class BackupEncryptionTest {
     }
 
     @Test
-    fun truncatedTrailingAndOversizedContainersAreRejected() {
-        val plain = plainArchive()
-        val encrypted = BackupEncryption.encrypt(plain, PASSWORD.toCharArray())
-        val variants = listOf(
-            encrypted.copyOf(5),
-            encrypted.copyOf(encrypted.size - 1),
-            encrypted + byteArrayOf(0),
-            ByteArray(BackupFormat.MAX_ENCRYPTED_ARCHIVE_BYTES.toInt() + 1),
-        )
-        for (variant in variants) {
-            assertValidationFailure {
-                if (BackupEncryption.isEncrypted(variant)) {
-                    BackupEncryption.decrypt(variant, PASSWORD.toCharArray())
-                } else {
-                    BackupArchive.readAndVerify(variant)
-                }
-            }
+    fun truncatedTrailingAndOversizedEncryptedContainersAreRejected() {
+        val encrypted = BackupEncryption.encrypt(plainArchive(), PASSWORD.toCharArray())
+        val minimum = encrypted.copyOf(BackupEncryption.HEADER_BYTES + 16 - 1)
+        val maximum = ByteArray(BackupFormat.MAX_ENCRYPTED_ARCHIVE_BYTES.toInt() + 1)
+        encrypted.copyInto(maximum, 0, 0, 8)
+
+        assertTrue("the minimum case must reach the container guard",
+            BackupEncryption.isEncrypted(minimum))
+        assertValidationMessage("encrypted backup size is invalid") {
+            BackupEncryption.decrypt(minimum, PASSWORD.toCharArray())
+        }
+        assertTrue("the maximum case must reach the container guard",
+            BackupEncryption.isEncrypted(maximum))
+        assertValidationMessage("encrypted backup size is invalid") {
+            BackupEncryption.decrypt(maximum, PASSWORD.toCharArray())
+        }
+        assertValidationMessage("encrypted backup payload size is invalid") {
+            BackupEncryption.decrypt(encrypted + byteArrayOf(0), PASSWORD.toCharArray())
         }
     }
 
@@ -186,6 +187,15 @@ class BackupEncryptionTest {
                 action()
                 fail("$message: expected BackupValidationException")
             } catch (_: BackupValidationException) {
+            }
+        }
+
+        private fun assertValidationMessage(expected: String, action: () -> Unit) {
+            try {
+                action()
+                fail("expected BackupValidationException: $expected")
+            } catch (failure: BackupValidationException) {
+                assertEquals(expected, failure.message)
             }
         }
     }

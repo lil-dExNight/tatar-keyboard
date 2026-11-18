@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.settings.backup
 
 import java.io.File
+import java.util.concurrent.Executor
+import java.util.concurrent.RejectedExecutionException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,14 +64,47 @@ class BackupPasswordSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
         val export = coordinator.substringAfter("fun exportTo(")
             .substringBefore("fun importFrom(")
-        assertTrue(export.contains("executor.execute"))
+        assertTrue(export.contains("submitBackupTask(executor, password)"))
         assertTrue(export.contains("BackupTransfer.export(target, password)"))
         assertTrue(export.contains("password?.fill('\\u0000')"))
+        assertTrue(export.contains("if (!accepted) uiPoster { onFinished(false) }"))
         val import = coordinator.substringAfter("fun importFrom(")
             .substringBefore("private fun readBounded(")
-        assertTrue(import.contains("executor.execute"))
+        assertTrue(import.contains("submitBackupTask(executor, password)"))
         assertTrue(import.contains("BackupTransfer.import(target, bytes, password)"))
         assertTrue(import.contains("password?.fill('\\u0000')"))
+        assertTrue(import.contains(
+            "if (!accepted) uiPoster { onFinished(BackupImportResult.WRITE_FAILED) }"))
+    }
+
+    @Test
+    fun aRejectedBackupTaskWipesThePasswordWithoutRunning() {
+        val password = "secret".toCharArray()
+        var ran = false
+
+        val accepted = submitBackupTask(
+            Executor { throw RejectedExecutionException("shut down") },
+            password,
+        ) { ran = true }
+
+        assertFalse(accepted)
+        assertFalse("a rejected task never runs", ran)
+        assertTrue("rejection must still wipe the password", password.all { it == '\u0000' })
+    }
+
+    @Test
+    fun anAcceptedBackupTaskOwnsPasswordCleanup() {
+        val password = "secret".toCharArray()
+        var sawPassword = false
+
+        val accepted = submitBackupTask(Executor { it.run() }, password) {
+            sawPassword = password.any { it != '\u0000' }
+            password.fill('\u0000')
+        }
+
+        assertTrue(accepted)
+        assertTrue("the task receives the password", sawPassword)
+        assertTrue(password.all { it == '\u0000' })
     }
 
     @Test

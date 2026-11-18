@@ -61,6 +61,14 @@ class VerifiedBackup(
  */
 object BackupArchive {
 
+    /** Structural caps, injectable so the stream guards can be exercised independently of file content. */
+    internal class Limits(val maxEntries: Int, val maxTotalUncompressedBytes: Long)
+
+    private val PRODUCTION_LIMITS = Limits(
+        BackupFormat.MAX_ENTRIES,
+        BackupFormat.MAX_TOTAL_UNCOMPRESSED_BYTES,
+    )
+
     /** 1980-01-01T00:00:00Z, the earliest instant the zip format holds. */
     private const val FIXED_ENTRY_TIME_MILLIS = 315532800000L
 
@@ -119,12 +127,17 @@ object BackupArchive {
     internal fun readAndVerifySnapshot(archiveBytes: ByteArray): VerifiedBackup =
         readAndVerify(archiveBytes, preserveAllPreferences = true)
 
+    /** Test seam for the two structural caps; production always uses [PRODUCTION_LIMITS]. */
+    internal fun readAndVerifyWithLimits(archiveBytes: ByteArray, limits: Limits): VerifiedBackup =
+        readAndVerify(archiveBytes, preserveAllPreferences = false, limits = limits)
+
     private fun readAndVerify(
         archiveBytes: ByteArray,
         preserveAllPreferences: Boolean,
+        limits: Limits = PRODUCTION_LIMITS,
     ): VerifiedBackup {
         if (archiveBytes.size.toLong() > BackupFormat.MAX_ARCHIVE_BYTES) fail("archive too large")
-        val entries = readEntries(archiveBytes)
+        val entries = readEntries(archiveBytes, limits)
 
         val manifestBytes = entries.remove(BackupFormat.MANIFEST_PATH) ?: fail("manifest is missing")
         val manifest = try {
@@ -169,14 +182,17 @@ object BackupArchive {
     }
 
     /** Unzips [archiveBytes] with every structural gate applied; the manifest stays in the map. */
-    private fun readEntries(archiveBytes: ByteArray): LinkedHashMap<String, ByteArray> {
+    private fun readEntries(
+        archiveBytes: ByteArray,
+        limits: Limits,
+    ): LinkedHashMap<String, ByteArray> {
         val entries = LinkedHashMap<String, ByteArray>()
         var totalUncompressed = 0L
         try {
             ZipInputStream(ByteArrayInputStream(archiveBytes)).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
-                    if (entries.size >= BackupFormat.MAX_ENTRIES) fail("too many entries")
+                    if (entries.size >= limits.maxEntries) fail("too many entries")
                     val path = entry.name
                     if (!BackupFormat.isCanonicalEntryPath(path)) fail("entry path is not canonical")
                     val classified = BackupFormat.classifyEntryPath(path) ?: fail("unknown entry path")
@@ -184,7 +200,7 @@ object BackupArchive {
                     val bytes = readEntryBytes(zip, BackupFormat.maxEntryBytes(classified))
                     entries[path] = bytes
                     totalUncompressed += bytes.size
-                    if (totalUncompressed > BackupFormat.MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                    if (totalUncompressed > limits.maxTotalUncompressedBytes) {
                         fail("archive content too large")
                     }
                 }

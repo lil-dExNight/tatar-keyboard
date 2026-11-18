@@ -200,30 +200,47 @@ internal object BackupEncryption {
         iterations: Int,
     ): ByteArray {
         val passwordBytes = Charsets.UTF_8.encode(CharBuffer.wrap(password))
-        val passwordArray = ByteArray(passwordBytes.remaining())
-        passwordBytes.get(passwordArray)
-        val salted = salt.copyOf(salt.size + 4)
-        salted[salt.size + 3] = 1
-        var u: ByteArray? = null
         try {
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(passwordArray, "HmacSHA256"))
-            u = mac.doFinal(salted)
-            val result = u.copyOf()
-            for (round in 1 until iterations) {
-                // HMAC consumes update() input immediately, so input and output can share the
-                // buffer.
-                mac.update(u)
-                mac.doFinal(u, 0)
-                for (index in result.indices) result[index] = (result[index].toInt() xor
-                    u[index].toInt()).toByte()
+            val passwordArray = ByteArray(passwordBytes.remaining())
+            try {
+                passwordBytes.get(passwordArray)
+                val salted = salt.copyOf(salt.size + 4)
+                try {
+                    salted[salt.size + 3] = 1
+                    var u: ByteArray? = null
+                    try {
+                        val mac = Mac.getInstance("HmacSHA256")
+                        mac.init(SecretKeySpec(passwordArray, "HmacSHA256"))
+                        u = mac.doFinal(salted)
+                        val result = u.copyOf()
+                        try {
+                            for (round in 1 until iterations) {
+                                // HMAC consumes update() input immediately, so input and output
+                                // can share the buffer.
+                                mac.update(u)
+                                mac.doFinal(u, 0)
+                                for (index in result.indices) {
+                                    result[index] = (result[index].toInt() xor
+                                        u[index].toInt()).toByte()
+                                }
+                            }
+                            return result
+                        } catch (failure: Throwable) {
+                            // A successful result belongs to the caller; every failed path wipes it.
+                            result.fill(0.toByte())
+                            throw failure
+                        }
+                    } finally {
+                        u?.fill(0.toByte())
+                    }
+                } finally {
+                    Arrays.fill(salted, 0.toByte())
+                }
+            } finally {
+                Arrays.fill(passwordArray, 0.toByte())
             }
-            return result
         } finally {
             Arrays.fill(passwordBytes.array(), 0.toByte())
-            Arrays.fill(passwordArray, 0.toByte())
-            Arrays.fill(salted, 0.toByte())
-            u?.fill(0.toByte())
         }
     }
 
