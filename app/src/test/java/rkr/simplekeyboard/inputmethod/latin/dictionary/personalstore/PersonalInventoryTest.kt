@@ -27,6 +27,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TsentValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DurableFileOps
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.SpaceProbe
 
@@ -100,6 +101,100 @@ class PersonalInventoryTest {
                 })
             }
         }
+    }
+
+    @Test
+    fun entryDeletionKeepsUnflushedPendingCountersAndFlushesThemLater() {
+        val categories = listOf(
+            PersonalInventoryCategory.WORDS,
+            PersonalInventoryCategory.PAIRS,
+            PersonalInventoryCategory.EMOJI,
+            PersonalInventoryCategory.SENTENCE_STARTS,
+        )
+        for (category in categories) {
+            val fixture = Fixture(newPersonalDir()).populate()
+            fixture.noteUnflushedPending(category)
+            assertEquals(5, fixture.snapshot().countOf(PersonalInventoryCategory.PENDING_COUNTERS))
+
+            val (cleared, after) = fixture.clear(category)
+
+            assertTrue("$category deletion", cleared)
+            assertEquals("$category keeps both unflushed and flushed counters",
+                5, after.countOf(PersonalInventoryCategory.PENDING_COUNTERS))
+            fixture.flush(category)
+            val reopened = fixture.reopenedInventory(category)
+            assertEquals("$category is deleted on disk", 0, reopened.entryCount)
+            assertEquals("$category pending counters survive a disk reopen",
+                2, reopened.pendingCount)
+        }
+    }
+
+    @Test
+    fun pendingDeletionKeepsUnflushedUsageCountersOnDisk() {
+        val fixture = Fixture(newPersonalDir()).populate()
+        val expected = fixture.bumpUsageWithoutFlush()
+
+        val (cleared, _) = fixture.clear(PersonalInventoryCategory.PENDING_COUNTERS)
+        fixture.flushAll()
+
+        assertTrue(cleared)
+        for ((category, usageCount) in expected) {
+            assertEquals("$category keeps its unflushed usage counter after a disk reopen",
+                usageCount, fixture.reopenedUsageCount(category))
+            assertEquals("$category pending file stays deleted",
+                0, fixture.reopenedInventory(category).pendingCount)
+        }
+    }
+
+    @Test
+    fun unreadableCategoryIsDeletableAndInventoryIsNotEmpty() {
+        val directory = newPersonalDir()
+        val failing = object : PersonalInventoryTarget {
+            override fun readInventoryOnWorker(): PersonalStoreInventory =
+                throw IOException("read failed")
+
+            override fun clearEntriesOnWorker(): Boolean = true
+        }
+        val engine = PersonalInventoryEngine(
+            targetsByCategory = mapOf(PersonalInventoryCategory.WORDS to listOf(failing)),
+            directoryProvider = { directory },
+            fileOps = RealOps,
+            executor = direct,
+            unlockGate = { true },
+        )
+
+        var snapshot: PersonalInventorySnapshot? = null
+        engine.snapshot { snapshot = it }
+        assertFalse(requireNotNull(snapshot).complete)
+        assertFalse("an unreadable category must not produce the empty state", snapshot.isEmpty)
+        assertTrue("an unreadable category still offers deletion",
+            snapshot.hasData(PersonalInventoryCategory.WORDS))
+
+        var cleared: Boolean? = null
+        engine.clear(PersonalInventoryCategory.WORDS) { result, _ -> cleared = result }
+        assertEquals(true, cleared)
+    }
+
+    @Test
+    fun quarantineDeletionRemovesCopiesAndNoticeFlags() {
+        val fixture = Fixture(newPersonalDir()).populate()
+        val subtype = PersonalSubtypes.TATAR_RU
+        for (name in listOf(
+            "quarantine-notice-$subtype-s1-f1.flag",
+            "quarantine-notice-$subtype-s1-f1-pending.flag",
+            "quarantine-notice-bigrams-$subtype-s1-f1.flag",
+            "quarantine-notice-emoji-$subtype-s1-f1.flag",
+            "quarantine-notice-sentstart-$subtype-s1-f1.flag",
+        )) {
+            File(fixture.directory, name).writeBytes(ByteArray(1))
+        }
+
+        val (cleared, _) = fixture.clear(PersonalInventoryCategory.QUARANTINE)
+
+        assertTrue(cleared)
+        assertFalse(fixture.directory.listFiles()!!.any {
+            it.name.endsWith(".quarantine") || it.name.startsWith("quarantine-notice-")
+        })
     }
 
     @Test
@@ -218,6 +313,85 @@ class PersonalInventoryTest {
             }
             return requireNotNull(cleared) to requireNotNull(after)
         }
+
+        fun noteUnflushedPending(category: PersonalInventoryCategory) {
+            when (category) {
+                PersonalInventoryCategory.WORDS -> words.noteCompletion("сүзләр")
+                PersonalInventoryCategory.PAIRS -> pairs.notePair("яңа", "сүз")
+                PersonalInventoryCategory.EMOJI -> emoji.noteObservation("яңа", "🌙")
+                PersonalInventoryCategory.SENTENCE_STARTS -> starts.noteSentenceStart("Яңа")
+                else -> error("not a learning category")
+            }
+        }
+
+        fun flush(category: PersonalInventoryCategory) {
+            when (category) {
+                PersonalInventoryCategory.WORDS -> words.flush()
+                PersonalInventoryCategory.PAIRS -> pairs.flush()
+                PersonalInventoryCategory.EMOJI -> emoji.flush()
+                PersonalInventoryCategory.SENTENCE_STARTS -> starts.flush()
+                else -> error("not a learning category")
+            }
+        }
+
+        fun flushAll() {
+            for (category in listOf(
+                PersonalInventoryCategory.WORDS,
+                PersonalInventoryCategory.PAIRS,
+                PersonalInventoryCategory.EMOJI,
+                PersonalInventoryCategory.SENTENCE_STARTS,
+            )) {
+                flush(category)
+            }
+        }
+
+        fun reopenedInventory(category: PersonalInventoryCategory): PersonalStoreInventory =
+            newTarget(category).readInventoryOnWorker()
+
+        fun bumpUsageWithoutFlush(): Map<PersonalInventoryCategory, Int> {
+            words.noteAcceptedSuggestion("абыйлар")
+            pairs.noteAcceptedPrediction("китап", "укыйм")
+            emoji.noteUse("сәләм", "☀️")
+            val startsFile = File(directory, "sentstart-$subtype-s1-f1.tsent")
+            val expectedStarts = TsentValidator().validate(startsFile, subtype).usageCounts[0] + 1
+            starts.noteSentenceStart("Сәлам")
+            return mapOf(
+                PersonalInventoryCategory.WORDS to words.snapshot.usageCountAt(0),
+                PersonalInventoryCategory.PAIRS to pairs.snapshot.usageCountAt(0),
+                PersonalInventoryCategory.EMOJI to emoji.snapshot.usageCountAt(0),
+                PersonalInventoryCategory.SENTENCE_STARTS to expectedStarts,
+            )
+        }
+
+        fun reopenedUsageCount(category: PersonalInventoryCategory): Int {
+            val target = newTarget(category)
+            target.readInventoryOnWorker()
+            return when (target) {
+                is PersonalDictionaryStore -> target.snapshot.usageCountAt(0)
+                is PersonalBigramStore -> target.snapshot.usageCountAt(0)
+                is PersonalEmojiStore -> target.snapshot.usageCountAt(0)
+                is SentStartOverlayStore -> TsentValidator().validate(
+                    File(directory, "sentstart-$subtype-s1-f1.tsent"), subtype).usageCounts[0]
+                else -> error("not a learning category")
+            }
+        }
+
+        private fun newTarget(category: PersonalInventoryCategory): PersonalInventoryTarget =
+            when (category) {
+                PersonalInventoryCategory.WORDS ->
+                    PersonalDictionaryStore(subtype, { directory }, RealOps, opener, roomy,
+                        { 1000L }, direct, unlockGate = gate)
+                PersonalInventoryCategory.PAIRS ->
+                    PersonalBigramStore(subtype, { directory }, RealOps, opener, roomy,
+                        { 1000L }, direct, contextMembership = { _, _ -> true }, unlockGate = gate)
+                PersonalInventoryCategory.EMOJI ->
+                    PersonalEmojiStore(subtype, { directory }, RealOps, opener, roomy,
+                        { 1000L }, direct, unlockGate = gate)
+                PersonalInventoryCategory.SENTENCE_STARTS ->
+                    SentStartOverlayStore(subtype, { directory }, RealOps, opener, roomy,
+                        { 1000L }, direct, unlockGate = gate)
+                else -> error("not a learning category")
+            }
 
         fun lock() {
             unlocked = false

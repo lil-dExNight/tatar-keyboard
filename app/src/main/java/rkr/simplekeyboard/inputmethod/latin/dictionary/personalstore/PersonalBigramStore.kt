@@ -300,6 +300,9 @@ internal class PersonalBigramStore(
 
     override fun clearEntriesOnWorker(): Boolean {
         if (!unlockGate()) return false
+        val pendingBefore = pending
+        val pendingDirtyBefore = pendingDirty
+        val saltBefore = salt
         entries = PersonalBigramEntries.empty(maxPairs)
         counterFlushPending = false
         snapshot = PersonalBigramDictionary.EMPTY
@@ -307,6 +310,9 @@ internal class PersonalBigramStore(
         loaded = false
         loadFailed = false
         val opened = open()
+        pending = pendingBefore
+        pendingDirty = pendingDirtyBefore
+        salt = saltBefore
         return storeGone && opened
     }
 
@@ -320,10 +326,15 @@ internal class PersonalBigramStore(
             deleted { deleteFile(directory, File(directory, pendingFileName())) }
         val saltGone = directory != null &&
             deleted { deleteFile(directory, File(directory, saltFileName())) }
-        loaded = false
-        loadFailed = false
-        val opened = open()
-        return countersGone && saltGone && opened
+        val cleared = countersGone && saltGone
+        if (!cleared && directory != null) {
+            try {
+                readPending(directory)
+            } catch (_: Exception) {
+                pending = PendingCounters.EMPTY
+            }
+        }
+        return cleared
     }
 
     /** Replaces the whole store from a backup. See [PersonalDictionaryStore.replaceAll]. */

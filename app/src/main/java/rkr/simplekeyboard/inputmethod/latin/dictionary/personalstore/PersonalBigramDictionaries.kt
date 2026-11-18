@@ -162,6 +162,15 @@ object PersonalBigramDictionaries {
         quarantineListener?.run()
     }
 
+    /** Drops waiting notices and clears the in-memory notice of every open store. */
+    internal fun clearQuarantineNotices() {
+        val openStores = synchronized(lock) {
+            pendingQuarantineNotices.clear()
+            stores.values.toList()
+        }
+        openStores.forEach { it.noticeDelivered() }
+    }
+
     /** Test hook: drops every cached store so an isolated test starts from nothing. */
     internal fun resetForTest() {
         synchronized(lock) {

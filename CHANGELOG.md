@@ -12,7 +12,7 @@ These hold for every release:
   `apksigner verify --print-certs <apk>`.
 
 
-## [Unreleased]
+## [4.0.0] — 2026-11-14
 
 ### Added
 
@@ -22,25 +22,6 @@ These hold for every release:
 - Reviewed proper names are shown with their approved display form: next-word prediction keeps
   the name's capitals, and a capitalized prefix keeps internal capitals such as
   `Санкт-Петербург`. Ordinary words keep their existing casing.
-
-### Changed
-
-- Apostrophe words stay out of the dictionary. Typing a straight or curly apostrophe does not
-  merge or split words in tokenization, commit, deletion, learning or suggestions.
-- Cold-companion validation computes the list checksum without a whole-list copy.
-- The generated-profile check requires critical startup, suggestion and glide methods to appear
-  as method rules.
-
-
-### Fixed
-
-- TalkBack announces the suggestions once when they appear instead of reading them again after
-  every letter.
-
-## [4.0.0] — 2026-11-14
-
-### Added
-
 - Backup export can optionally use password encryption, and encrypted backups can be restored with
   the same password. Plaintext backup export and import remain available.
 - The Tatar extra row carries ё and ъ next to ә ө ү җ ң һ, so every Tatar alphabet letter has
@@ -61,6 +42,11 @@ These hold for every release:
 
 ### Changed
 
+- Apostrophe words stay out of the dictionary. Typing a straight or curly apostrophe does not
+  merge or split words in tokenization, commit, deletion, learning or suggestions.
+- Cold-companion validation computes the list checksum without a whole-list copy.
+- The generated-profile check requires critical startup, suggestion and glide methods to appear
+  as method rules.
 - The app's own screens pick the first supported language (Tatar, Russian or English) from the
   whole system locale list instead of looking only at its first entry.
 - With autocorrect off, the keyboard skips the verdict computation and never loads the
@@ -106,6 +92,8 @@ These hold for every release:
 
 ### Fixed
 
+- TalkBack announces the suggestions once when they appear instead of reading them again after
+  every letter.
 - A word the dictionary does not hold keeps the first cell of the suggestion strip: a tap commits
   exactly the typed form, and a long press offers to save it to the personal dictionary. The
   completion, typo-recovery and companion candidates fill the cells after it.

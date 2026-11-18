@@ -92,6 +92,34 @@ class PersonalInventoryScreenSourceContractTest {
     }
 
     @Test
+    fun quarantineDeletionClearsNoticeFilesAndPendingRegistries() {
+        val inventory = File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalInventory.kt")
+            .readText()
+        assertTrue(inventory.contains("QUARANTINE_NOTICE_PREFIX"))
+        for (owner in listOf(
+            "PersonalDictionaries",
+            "PersonalBigramDictionaries",
+            "PersonalEmojiDictionaries",
+            "SentStartOverlays",
+        )) {
+            assertTrue("$owner is reset after quarantine deletion",
+                inventory.contains("$owner.clearQuarantineNotices()"))
+            val source = File(sourceRoot(),
+                "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/$owner.kt")
+                .readText()
+            assertTrue("$owner exposes notice cleanup", source.contains("fun clearQuarantineNotices()"))
+            assertTrue("$owner resets the stores' delivered flags", source.contains("noticeDelivered()"))
+        }
+        for (owner in listOf("PersonalDictionaries", "PersonalBigramDictionaries", "PersonalEmojiDictionaries")) {
+            val source = File(sourceRoot(),
+                "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/$owner.kt")
+                .readText()
+            assertTrue("$owner drops waiting notices", source.contains("pendingQuarantineNotices.clear()"))
+        }
+    }
+
+    @Test
     fun everyInventoryStringIsLocalized() {
         val strings = listOf(
             "personal_inventory_screen",

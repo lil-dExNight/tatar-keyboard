@@ -80,6 +80,12 @@ object SentStartOverlays {
         )
     }
 
+    /** Clears the in-memory notice of every open store after its copy is deleted. */
+    internal fun clearQuarantineNotices() {
+        val openStores = synchronized(lock) { stores.values.toList() }
+        openStores.forEach { it.noticeDelivered() }
+    }
+
     /** Test hook: drops every cached store so an isolated test starts from nothing. */
     internal fun resetForTest() {
         synchronized(lock) { stores.clear() }

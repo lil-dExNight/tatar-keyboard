@@ -423,9 +423,11 @@ from the settings screen, with no counters, no pending hashes and no learning.
   stores; pending counters are counted separately from their salted hashes, and quarantine by
   file. A confirmed category deletion runs on the shared worker, updates the live stores and
   immediately returns a fresh snapshot. Entry deletion leaves pending counters and quarantined
-  copies in place; pending deletion removes counters and salts but not their quarantined copies;
-  quarantine deletion removes only copies. Before the first unlock the screen shows no counts and
-  deletion does not touch the files.
+  copies in place, including counters not flushed yet. Pending deletion removes counters and salts
+  without reloading saved entries, so pending usage-counter writes survive; quarantined pending
+  copies stay in place. Quarantine deletion removes copies and their notice marks but no saved
+  entries or counters. Before the first unlock the screen shows no counts and deletion does not
+  touch the files.
 - Deletion: deleting a saved word, pair or learned emoji also purges it from the quarantined
   copy, so a later quarantine restore can never bring a reported deletion back. The purge fails
   closed: a copy that was not read to its end may still hold the entry in the unread part, so

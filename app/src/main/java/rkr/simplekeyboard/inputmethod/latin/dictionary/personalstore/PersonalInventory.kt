@@ -17,6 +17,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 import android.content.Context
 import android.os.UserManager
 import java.io.File
+import java.util.EnumSet
 import java.util.IdentityHashMap
 import java.util.concurrent.Executor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
@@ -64,15 +65,17 @@ internal class PersonalInventorySnapshot(
     val complete: Boolean,
     private val counts: Map<PersonalInventoryCategory, Int>,
     val pendingDataPresent: Boolean,
+    private val unavailableCategories: Set<PersonalInventoryCategory> = emptySet(),
 ) {
     fun countOf(category: PersonalInventoryCategory): Int = counts[category] ?: 0
 
     fun hasData(category: PersonalInventoryCategory): Boolean =
-        countOf(category) > 0 ||
+        category in unavailableCategories || countOf(category) > 0 ||
             (category == PersonalInventoryCategory.PENDING_COUNTERS && pendingDataPresent)
 
     val isEmpty: Boolean
-        get() = PersonalInventoryCategory.values().all { !hasData(it) }
+        get() = complete && !pendingDataPresent &&
+            PersonalInventoryCategory.values().all { countOf(it) == 0 }
 }
 
 /**
@@ -105,13 +108,17 @@ internal class PersonalInventoryEngine(
             return PersonalInventorySnapshot(false, false, emptyMap(), false)
         }
         var complete = true
+        val unavailableCategories = EnumSet.noneOf(PersonalInventoryCategory::class.java)
         val reads = IdentityHashMap<PersonalInventoryTarget, PersonalStoreInventory>()
         val counts = LinkedHashMap<PersonalInventoryCategory, Int>()
         for ((category, targets) in targetsByCategory) {
             var total = 0
             for (target in targets) {
                 val read = reads[target] ?: readTarget(target).also { reads[target] = it }
-                if (!read.available) complete = false
+                if (!read.available) {
+                    complete = false
+                    unavailableCategories.add(category)
+                }
                 total += if (category == PersonalInventoryCategory.PENDING_COUNTERS) {
                     read.pendingCount
                 } else {
@@ -125,8 +132,9 @@ internal class PersonalInventoryEngine(
             .any { reads[it]?.pendingDataPresent == true }
         val quarantine = scanQuarantine()
         complete = complete && quarantine.readable
+        if (!quarantine.readable) unavailableCategories.add(PersonalInventoryCategory.QUARANTINE)
         counts[PersonalInventoryCategory.QUARANTINE] = quarantine.fileCount
-        return PersonalInventorySnapshot(true, complete, counts, pendingDataPresent)
+        return PersonalInventorySnapshot(true, complete, counts, pendingDataPresent, unavailableCategories)
     }
 
     private fun readTarget(target: PersonalInventoryTarget): PersonalStoreInventory = try {
@@ -157,16 +165,21 @@ internal class PersonalInventoryEngine(
         val directory = try {
             directoryProvider.personalDirectory()
         } catch (_: Exception) {
-            return QuarantineScan(0, false)
+            return QuarantineScan(0, 0, false)
         }
-        if (!directory.exists()) return QuarantineScan(0, true)
-        if (!directory.isDirectory) return QuarantineScan(0, false)
-        val files = directory.listFiles() ?: return QuarantineScan(0, false)
+        if (!directory.exists()) return QuarantineScan(0, 0, true)
+        if (!directory.isDirectory) return QuarantineScan(0, 0, false)
+        val files = directory.listFiles() ?: return QuarantineScan(0, 0, false)
         var count = 0
+        var noticeCount = 0
         for (file in files) {
-            if (file.isFile && file.name.endsWith(QUARANTINE_SUFFIX)) count++
+            if (!file.isFile) continue
+            if (file.name.endsWith(QUARANTINE_SUFFIX)) count++
+            if (file.name.startsWith(QUARANTINE_NOTICE_PREFIX) && file.name.endsWith(FLAG_SUFFIX)) {
+                noticeCount++
+            }
         }
-        return QuarantineScan(count, true)
+        return QuarantineScan(count, noticeCount, true)
     }
 
     private fun clearQuarantineOnWorker(): Boolean {
@@ -181,7 +194,11 @@ internal class PersonalInventoryEngine(
         var attempted = false
         var cleared = true
         for (file in files) {
-            if (!file.isFile || !file.name.endsWith(QUARANTINE_SUFFIX)) continue
+            if (!file.isFile) continue
+            val copy = file.name.endsWith(QUARANTINE_SUFFIX)
+            val notice = file.name.startsWith(QUARANTINE_NOTICE_PREFIX) &&
+                file.name.endsWith(FLAG_SUFFIX)
+            if (!copy && !notice) continue
             attempted = true
             try {
                 if (!fileOps.delete(file) && file.exists()) cleared = false
@@ -197,7 +214,7 @@ internal class PersonalInventoryEngine(
             }
         }
         val after = scanQuarantine()
-        return cleared && after.readable && after.fileCount == 0
+        return cleared && after.readable && after.fileCount == 0 && after.noticeCount == 0
     }
 
     private fun answer(sink: (PersonalInventorySnapshot) -> Unit, value: PersonalInventorySnapshot) {
@@ -218,11 +235,13 @@ internal class PersonalInventoryEngine(
         }
     }
 
-    private class QuarantineScan(val fileCount: Int, val readable: Boolean)
+    private class QuarantineScan(val fileCount: Int, val noticeCount: Int, val readable: Boolean)
 
     private companion object {
         /** Only these files are damaged copies; pending-counter copies use it too. */
         const val QUARANTINE_SUFFIX = ".quarantine"
+        const val QUARANTINE_NOTICE_PREFIX = "quarantine-notice-"
+        const val FLAG_SUFFIX = ".flag"
     }
 }
 
@@ -247,7 +266,15 @@ internal object PersonalInventory {
         category: PersonalInventoryCategory,
         onFinished: (Boolean, PersonalInventorySnapshot) -> Unit,
     ) {
-        engine(context, subtypeIds).clear(category, onFinished)
+        engine(context, subtypeIds).clear(category) { cleared, snapshot ->
+            if (cleared && category == PersonalInventoryCategory.QUARANTINE) {
+                PersonalDictionaries.clearQuarantineNotices()
+                PersonalBigramDictionaries.clearQuarantineNotices()
+                PersonalEmojiDictionaries.clearQuarantineNotices()
+                SentStartOverlays.clearQuarantineNotices()
+            }
+            onFinished(cleared, snapshot)
+        }
         when (category) {
             PersonalInventoryCategory.WORDS,
             PersonalInventoryCategory.SENTENCE_STARTS,
