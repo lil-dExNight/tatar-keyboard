@@ -7,13 +7,15 @@
 # SHA-256 of this file is pinned in tests/wordform_gen/test_wordform_gen.py;
 # re-pin it after any edit.
 #
-# kind=voicing  payload: VOICED_STEM
+# kind=harmony payload: back|front
+#   Forces one suffix harmony instead of the surface-vowel heuristic. Used for
+#   stems whose spelling does not reveal their suffix harmony (министры,
+#   президенты, метрга, шрифтларга; елның, ешрак).
+# kind=possessive payload: BASE
 #   Possessive-family forms (noun.p1/p2/p3/p1pl/p2pl and the noun.p3.* case
-#   forms built on noun.p3) attach to VOICED_STEM; plural, the six cases,
-#   noun.p3pl and derivational forms attach to the plain stem. Models
-#   stem-final п→б / к→г voicing before vocalic possessive suffixes
-#   (китап→китабы but китапка). VOICED_STEM must differ from stem in the final
-#   letter only, п→б or к→г.
+#   forms built on noun.p3) attach to BASE after the regular final-consonant
+#   voicing and final-ь spelling rules; plural, case, p3pl, predicative and
+#   derivational forms stay on STEM. Used for lexical syncope (халык→халкы).
 # kind=pronoun  payload: FORM [<TAB>FORM ...]
 #   Suppletive paradigm: exactly these forms are emitted (label noun.pron) and
 #   regular noun generation for the stem is suppressed (мин → минем миңа …,
@@ -22,22 +24,30 @@
 # kind=override payload: LABEL=FORM [<TAB>LABEL=FORM ...]
 #   Replaces the generated form for LABEL (a generator label such as
 #   verb.pres.3sg or noun.p3). Overriding a person-bearing base
-#   (verb.pres.3sg, noun.p3) re-derives the forms built on it (кара → карам…;
-#   су → суын/суына/суында/суыннан). An override whose label the stem never
+#   (verb.pres.3sg, noun.p3) re-derives the forms built on it (су →
+#   суын/суына/суында/суыннан). An override whose label the stem never
 #   emits is an error when that stem is processed.
 #
-voicing	китап	китаб
-voicing	төп	төб
-voicing	балык	балыг
-override	кара	verb.pres.3sg=кара
+harmony	министр	back
+harmony	президент	back
+harmony	метр	back
+harmony	шрифт	back
+harmony	ел	back
+harmony	еш	back
+possessive	халык	халк
 # Simple future of the -ыр/-ер monosyllable class (the rule generates -ар/-әр
-# for monosyllables, -ыр/-ер for longer stems; these six are lexical
-# exceptions, attested in kaikki.org Tatar verb tables: барыр, булыр, алыр,
-# тулыр, йөрер; калыр added from standard grammar).
+# for monosyllables, -ыр/-ер for longer stems; these are lexical exceptions,
+# attested in SART and the Tatar morphology analyzer: барыр, бирер, белер,
+# булыр, алыр, әйтер, калыр, килер, торыр, тулыр, йөрер).
 override	бар	verb.fut.3sg=барыр
+override	бир	verb.fut.3sg=бирер
+override	бел	verb.fut.3sg=белер
 override	бул	verb.fut.3sg=булыр
 override	ал	verb.fut.3sg=алыр
+override	әйт	verb.fut.3sg=әйтер
 override	кал	verb.fut.3sg=калыр
+override	кил	verb.fut.3sg=килер
+override	тор	verb.fut.3sg=торыр
 override	тул	verb.fut.3sg=тулыр
 override	йөр	verb.fut.3sg=йөрер
 # уку is suppletive: укы- for present/past (укый, укыды, укыган, уку) but ук-

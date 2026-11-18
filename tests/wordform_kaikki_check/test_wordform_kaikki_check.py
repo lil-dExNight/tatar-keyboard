@@ -75,7 +75,6 @@ FIXTURE_LINES = [
         form("язмассың", "future", "indefinite", "indicative", "informal", "second-person", "singular"),
         form("язсак", "conditional", "first-person", "plural"),
         form("язганбыз", "first-person", "indefinite", "indicative", "past", "plural"),
-        # kaikki's definite-past 1pl: a cell the generator does not emit.
         form("яздык", "definite", "first-person", "indicative", "past", "plural"),
         form("язып", "error-unrecognized-form"),
         # The -рга infinitive: no generator label, out of scope.
@@ -202,10 +201,10 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(self.report["stems_compared_verb"], 1)
 
     def test_recall_counts(self):
-        # 15 kaikki forms in shared cells; only язырсың is missed.
-        self.assertEqual(self.report["kaikki_in_scope_forms"], 15)
-        self.assertEqual(self.report["kaikki_covered_forms"], 14)
-        self.assertEqual(self.report["recall_pct"], 93.33)
+        # 16 kaikki forms in shared cells; only язырсың is missed.
+        self.assertEqual(self.report["kaikki_in_scope_forms"], 16)
+        self.assertEqual(self.report["kaikki_covered_forms"], 15)
+        self.assertEqual(self.report["recall_pct"], 93.75)
         self.assertEqual(self.per_label["verb.fut.2sg"], {"kaikki": 2, "covered": 1, "extra": 0})
         self.assertEqual(self.report["missed_rows"], [("яз", "verb.fut.2sg", "язырсың")])
 
@@ -217,8 +216,8 @@ class CompareTest(unittest.TestCase):
 
     def test_out_of_scope(self):
         # татарларым (plural-possessed), язма/язмыйк (negative imperatives),
-        # яздык (definite-past 1pl), язарга (the -рга infinitive).
-        self.assertEqual(self.report["kaikki_out_of_scope_forms"], 5)
+        # язарга (the -рга infinitive).
+        self.assertEqual(self.report["kaikki_out_of_scope_forms"], 4)
 
     def test_nonfinite_attribution(self):
         self.assertEqual(self.per_label["verb.ger.ip"], {"kaikki": 1, "covered": 1, "extra": 0})

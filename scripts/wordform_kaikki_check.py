@@ -333,7 +333,7 @@ def compare(
         return True
 
     for stem in sorted(nouns):
-        variants = gen.harmony_variants(stem)
+        variants = gen.harmony_variants(stem, exceptions.harmonies.get(stem))
         if not variants:
             acc["stems_skipped_no_harmony"] += 1
             continue
@@ -345,7 +345,7 @@ def compare(
             acc["stems_compared_noun"] += 1
 
     for stem in sorted(verbs):
-        variants = gen.harmony_variants(stem)
+        variants = gen.harmony_variants(stem, exceptions.harmonies.get(stem))
         if not variants:
             acc["stems_skipped_no_harmony"] += 1
             continue

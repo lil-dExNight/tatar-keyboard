@@ -520,7 +520,7 @@ def build_admitted_wordforms(
         "rows_unattested": 0,
     }
     for stem in stems:
-        variants = wordform_gen.harmony_variants(stem)
+        variants = wordform_gen.harmony_variants(stem, exceptions.harmonies.get(stem))
         if not variants:
             stats["stems_skipped_no_harmony"] += 1
             continue

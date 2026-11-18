@@ -92,6 +92,8 @@ These hold for every release:
 
 ### Fixed
 
+- Tatar word-form generation covers first-person-plural present and past forms, final п/к
+  voicing, glide-stem and converb allomorphs, and lexical harmony and spelling exceptions.
 - TalkBack announces the suggestions once when they appear instead of reading them again after
   every letter.
 - A word the dictionary does not hold keeps the first cell of the suggestion strip: a tap commits

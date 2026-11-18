@@ -5,8 +5,8 @@ What is pinned and why:
 
 * Hand-written golden paradigms (our own data, no license issues) for the
   harmony/assimilation classes that matter: back/front, vowel/consonant-final,
-  voiceless and nasal finals, the voicing exception (китап→китабы), the 3sg
-  possessive override (су→суы), suppletive pronouns, vowel-stem present
+  voiceless and nasal finals, final-consonant voicing (китап→китабы), the
+  3sg possessive override (су→суы), suppletive pronouns, vowel-stem present
   contraction (эшлә→эшли) and the derivational set (дуслык, мөмкинлек).
 * The newer label families, cross-checked against the kaikki.org Tatar verb
   tables: person rows for the future/conditional/definite-future/recent-past
@@ -37,11 +37,12 @@ EXCEPTIONS_FILE = ROOT / "scripts" / "wordform_exceptions_tat.tsv"
 # Changing the exceptions table changes the generated candidate forms;
 # re-pin in the same commit.
 EXPECTED_EXCEPTIONS_SHA256 = (
-    "bc2810cf9593333c0caec976dd4592557965bb0fc826c429313b6d675198e8da"
+    "9d45e6d6f81367cd7c3372e44b89bec0263d5cbc1c4a61d6b28c45cc67b1c19e"
 )
-EXPECTED_VOICING_ROWS = 3
+EXPECTED_HARMONY_ROWS = 6
+EXPECTED_POSSESSIVE_BASE_ROWS = 1
 EXPECTED_PRONOUN_ROWS = 7
-EXPECTED_OVERRIDE_ROWS = 16
+EXPECTED_OVERRIDE_ROWS = 20
 
 
 def load_module(name: str, path: Path):
@@ -72,7 +73,8 @@ class ExceptionsPinTest(unittest.TestCase):
         self.assertEqual(digest, EXPECTED_EXCEPTIONS_SHA256)
 
     def test_exceptions_row_counts(self):
-        self.assertEqual(len(EXC.voicing), EXPECTED_VOICING_ROWS)
+        self.assertEqual(len(EXC.harmonies), EXPECTED_HARMONY_ROWS)
+        self.assertEqual(len(EXC.possessive_bases), EXPECTED_POSSESSIVE_BASE_ROWS)
         self.assertEqual(len(EXC.pronouns), EXPECTED_PRONOUN_ROWS)
         self.assertEqual(len(EXC.overrides), EXPECTED_OVERRIDE_ROWS)
 
@@ -110,6 +112,15 @@ class HarmonyTest(unittest.TestCase):
         self.assertEqual(gen.harmony_variants("татар"), ("back",))
         self.assertEqual(gen.harmony_variants("исем"), ("front",))
 
+    def test_lexical_harmony_override(self):
+        for stem in ("министр", "президент", "метр", "шрифт", "ел", "еш"):
+            self.assertEqual(
+                gen.harmony_variants(stem, EXC.harmonies.get(stem)), ("back",), stem
+            )
+        self.assertEqual(gen.harmony_variants("исем", EXC.harmonies.get("исем")), ("front",))
+        with self.assertRaises(gen.WordformError):
+            gen.harmony_variants("исем", "sideways")
+
 
 class ArchiphonemeTest(unittest.TestCase):
     """One unit test per archiphoneme class, both harmonies."""
@@ -143,6 +154,13 @@ class ArchiphonemeTest(unittest.TestCase):
         self.assertEqual(self.render("DA", "татар", "back"), "да")
         self.assertEqual(self.render("DA", "китап", "back"), "та")
         self.assertEqual(self.render("DI", "су", "back"), "ды")
+
+    def test_soft_sign_does_not_assimilate_suffixes(self):
+        self.assertEqual(self.render("GA", "җәмгыять", "front"), "кә")
+        self.assertEqual(self.render("DA", "җәмгыять", "front"), "тә")
+        self.assertEqual(self.render("TAн", "җәмгыять", "front"), "тән")
+        self.assertEqual(self.render("GA", "җәмгыять", "back"), "ка")
+        self.assertEqual(self.render("GA", "өй", "front"), "гә")
 
     def test_l_assimilation(self):
         self.assertEqual(self.render("LAр", "татар", "back"), "лар")
@@ -267,7 +285,7 @@ class GoldenNounParadigmTest(unittest.TestCase):
         self.assertEqual(noun_forms("урман")["noun.loc"], "урманда")
         self.assertEqual(verb_forms("мин", "front")["verb.past.3sg"], "минде")
 
-    def test_kitap_voicing_exception(self):
+    def test_kitap_voicing_rule(self):
         # Voiceless G→к in the dative, but п→б voicing in the possessives.
         forms = noun_forms("китап")
         self.assertEqual(forms["noun.pl"], "китаплар")
@@ -279,6 +297,9 @@ class GoldenNounParadigmTest(unittest.TestCase):
         self.assertEqual(forms["noun.p3pl"], "китаплары")  # no voicing: consonant suffix
         self.assertEqual(forms["noun.p3.acc"], "китабын")
         self.assertEqual(forms["noun.p3.abl"], "китабыннан")
+        generated = {form for _, form in gen.generate_all("китап", EXC)}
+        self.assertNotIn("китапы", generated)
+        self.assertNotIn("китапым", generated)
 
     def test_su_u_final_hiatus_possessives(self):
         # у-final stems take full vowel-initial possessives (kaikki: суым,
@@ -345,6 +366,8 @@ class GoldenVerbParadigmTest(unittest.TestCase):
                 ("verb.pres.2sg.q", "язасыңмы"),
                 ("verb.pres.3sg", "яза"),
                 ("verb.pres.3sg.q", "язамы"),
+                ("verb.pres.1pl", "язабыз"),
+                ("verb.pres.1pl.q", "язабызмы"),
                 ("verb.pres.2pl", "язасыз"),
                 ("verb.pres.2pl.q", "язасызмы"),
                 ("verb.pres.3pl", "язалар"),
@@ -355,6 +378,8 @@ class GoldenVerbParadigmTest(unittest.TestCase):
                 ("verb.pres.neg.2sg.q", "язмыйсыңмы"),
                 ("verb.pres.neg.3sg", "язмый"),
                 ("verb.pres.neg.3sg.q", "язмыймы"),
+                ("verb.pres.neg.1pl", "язмыйбыз"),
+                ("verb.pres.neg.1pl.q", "язмыйбызмы"),
                 ("verb.pres.neg.2pl", "язмыйсыз"),
                 ("verb.pres.neg.2pl.q", "язмыйсызмы"),
                 ("verb.pres.neg.3pl", "язмыйлар"),
@@ -365,6 +390,8 @@ class GoldenVerbParadigmTest(unittest.TestCase):
                 ("verb.past.2sg.q", "яздыңмы"),
                 ("verb.past.3sg", "язды"),
                 ("verb.past.3sg.q", "яздымы"),
+                ("verb.past.1pl", "яздык"),
+                ("verb.past.1pl.q", "яздыкмы"),
                 ("verb.past.2pl", "яздыгыз"),
                 ("verb.past.2pl.q", "яздыгызмы"),
                 ("verb.past.3pl", "яздылар"),
@@ -375,6 +402,8 @@ class GoldenVerbParadigmTest(unittest.TestCase):
                 ("verb.past.neg.2sg.q", "язмадыңмы"),
                 ("verb.past.neg.3sg", "язмады"),
                 ("verb.past.neg.3sg.q", "язмадымы"),
+                ("verb.past.neg.1pl", "язмадык"),
+                ("verb.past.neg.1pl.q", "язмадыкмы"),
                 ("verb.past.neg.2pl", "язмадыгыз"),
                 ("verb.past.neg.2pl.q", "язмадыгызмы"),
                 ("verb.past.neg.3pl", "язмадылар"),
@@ -537,12 +566,21 @@ class GoldenVerbParadigmTest(unittest.TestCase):
         self.assertEqual(verb_forms("сөйлә", "front")["verb.fut.3sg"], "сөйләр")
         self.assertEqual(verb_forms("ю", "back")["verb.fut.3sg"], "юяр")
         # The lexical -ыр/-ер monosyllable class comes from the exceptions table.
-        for stem, form in (
-            ("бар", "барыр"), ("бул", "булыр"), ("ал", "алыр"),
-            ("кал", "калыр"), ("тул", "тулыр"), ("йөр", "йөрер"),
+        for stem, form, harmony in (
+            ("бар", "барыр", "back"), ("бир", "бирер", "front"),
+            ("бел", "белер", "front"), ("бул", "булыр", "back"),
+            ("ал", "алыр", "back"), ("әйт", "әйтер", "front"),
+            ("кал", "калыр", "back"), ("кил", "килер", "front"),
+            ("тор", "торыр", "back"), ("тул", "тулыр", "back"),
+            ("йөр", "йөрер", "front"),
         ):
-            harmony = "front" if stem == "йөр" else "back"
             self.assertEqual(verb_forms(stem, harmony)["verb.fut.3sg"], form, stem)
+        for stem, wrong, harmony in (
+            ("бир", "бирәр", "front"), ("бел", "беләр", "front"),
+            ("әйт", "әйтәр", "front"), ("кил", "киләр", "front"),
+            ("тор", "торар", "back"),
+        ):
+            self.assertNotIn(wrong, {form for _, form in gen.generate_all(stem, EXC)})
 
     def test_masdar_glide_spelling(self):
         # -у/-ү after consonants and а/ә-stems; the -ю glide spelling after
@@ -563,27 +601,211 @@ class GoldenVerbParadigmTest(unittest.TestCase):
         self.assertEqual(forms["verb.masdar"], "булу")
         self.assertEqual(forms["verb.ger.ip"], "булып")
 
-    def test_kara_present_override_rederives_persons(self):
+    def test_kara_present_uses_regular_contraction(self):
         forms = verb_forms("кара", "back")
-        self.assertEqual(forms["verb.pres.3sg"], "кара")  # not *карый
-        self.assertEqual(forms["verb.pres.1sg"], "карам")
-        self.assertEqual(forms["verb.pres.2pl"], "карасыз")
+        self.assertEqual(forms["verb.pres.3sg"], "карый")
+        self.assertEqual(forms["verb.pres.1sg"], "карыйм")
+        self.assertEqual(forms["verb.pres.2sg"], "карыйсың")
+        self.assertEqual(forms["verb.pres.1pl"], "карыйбыз")
+        self.assertEqual(forms["verb.pres.2pl"], "карыйсыз")
+        self.assertEqual(forms["verb.pres.3pl"], "карыйлар")
+        present = {
+            form for label, form in gen.generate_verb_forms("кара", "back", EXC)
+            if label.startswith("verb.pres.")
+        }
+        for wrong in ("карам", "карасың", "карасыз", "каралар"):
+            self.assertNotIn(wrong, present)
+        self.assertEqual(forms["verb.imp.2sg"], "кара")
 
     def test_stale_override_fails_closed(self):
         # verb.part.asi is never emitted for a vowel-final stem, so an override
         # naming it for эшлә is a stale table row — a hard error.
-        bad = gen.Exceptions({}, {}, {("эшлә", "verb.part.asi"): "эшләәсе"})
+        bad = gen.Exceptions({}, {}, {}, {("эшлә", "verb.part.asi"): "эшләәсе"})
         with self.assertRaises(gen.WordformError):
             gen.generate_all("эшлә", bad)
         # A pronoun stem emits no regular noun labels, so a noun override on
         # мин is a stale row too.
-        bad2 = gen.Exceptions({}, {"мин": ("минем",)}, {("мин", "noun.p3"): "мине"})
+        bad2 = gen.Exceptions({}, {}, {"мин": ("минем",)}, {("мин", "noun.p3"): "мине"})
         with self.assertRaises(gen.WordformError):
             gen.generate_all("мин", bad2)
 
     def test_no_harmony_stem_fails_closed(self):
         with self.assertRaises(gen.WordformError):
             gen.generate_all("б")
+
+
+class ExternalMorphologyRegressionTest(unittest.TestCase):
+    """Normative surface forms from SART, UD Tatar-NMCTT and the analyzer."""
+
+    def assert_verb(self, stem: str, harmony: str, expected: dict[str, str]):
+        forms = verb_forms(stem, harmony)
+        for label, form in expected.items():
+            self.assertEqual(forms[label], form, f"{stem} {label}")
+
+    def test_final_consonant_voicing(self):
+        self.assertEqual(noun_forms("башлык")["noun.p3"], "башлыгы")
+        self.assertEqual(noun_forms("тәртип", "front")["noun.p3.acc"], "тәртибен")
+        self.assertEqual(noun_forms("көньяк")["noun.p3.loc"], "көньягында")
+        self.assert_verb("тап", "back", {
+            "verb.pres.3pl": "табалар",
+            "verb.ger.ip": "табып",
+            "verb.masdar": "табу",
+            "verb.deffut.3sg": "табачак",
+            "verb.part.asi": "табасы",
+        })
+        self.assert_verb("күнек", "front", {
+            "verb.pres.3sg": "күнегә",
+            "verb.fut.3sg": "күнегер",
+            "verb.ger.ip": "күнегеп",
+            "verb.masdar": "күнегү",
+        })
+        for stem, harmony, expected in (
+            ("нык", "back", "ныграк"), ("озак", "back", "озаграк"),
+            ("ерак", "back", "ераграк"), ("күп", "front", "күбрәк"),
+            ("сирәк", "front", "сирәгрәк"),
+        ):
+            self.assertEqual(
+                dict(gen.generate_deriv_forms(stem, harmony))["deriv.rak"], expected, stem
+            )
+        plain = verb_forms("тап")
+        self.assertEqual(plain["verb.past.3sg"], "тапты")
+        self.assertEqual(plain["verb.imp.1pl"], "тапыйк")
+        self.assertEqual(plain["verb.fut.3sg"], "тапар")
+        self.assertEqual(noun_forms("тап")["noun.dat"], "тапка")
+        self.assertEqual(noun_forms("халк")["noun.p3"], "халкы")
+        generated = {form for _, form in gen.generate_all("тап", EXC)}
+        for wrong in ("тапып", "тапалар", "тапу", "тапачак"):
+            self.assertNotIn(wrong, generated)
+
+    def test_first_person_plural_present_and_past(self):
+        self.assert_verb("бар", "back", {
+            "verb.pres.1pl": "барабыз",
+            "verb.pres.1pl.q": "барабызмы",
+            "verb.pres.neg.1pl": "бармыйбыз",
+            "verb.past.1pl": "бардык",
+            "verb.past.1pl.q": "бардыкмы",
+            "verb.past.neg.1pl": "бармадык",
+        })
+        self.assert_verb("кил", "front", {
+            "verb.pres.1pl": "киләбез",
+            "verb.past.1pl": "килдек",
+        })
+        self.assertEqual(verb_forms("өметлән", "front")["verb.pres.1pl"], "өметләнәбез")
+        self.assertEqual(verb_forms("исбатла")["verb.past.1pl"], "исбатладык")
+        self.assertEqual(verb_forms("үткәр", "front")["verb.past.1pl"], "үткәрдек")
+        self.assertIn("verb.pres.1pl", gen.KNOWN_LABELS)
+        self.assertIn("verb.past.1pl", gen.KNOWN_LABELS)
+
+    def test_one_syllable_glide_stems(self):
+        self.assert_verb("куй", "back", {
+            "verb.pres.1sg": "куям",
+            "verb.pres.2sg": "куясың",
+            "verb.pres.3sg": "куя",
+            "verb.pres.1pl": "куябыз",
+            "verb.pres.2pl": "куясыз",
+            "verb.pres.3pl": "куялар",
+            "verb.fut.3sg": "куяр",
+            "verb.deffut.3sg": "куячак",
+            "verb.ger.ip": "куеп",
+            "verb.masdar": "кую",
+        })
+        self.assert_verb("җый", "back", {
+            "verb.pres.3sg": "җыя",
+            "verb.pres.1pl": "җыябыз",
+            "verb.fut.3sg": "җыяр",
+            "verb.deffut.3sg": "җыячак",
+            "verb.ger.ip": "җыеп",
+            "verb.masdar": "җыю",
+        })
+        generated = {form for _, form in gen.generate_all("куй", EXC)}
+        for wrong in ("куйа", "куйасың", "куйалар", "куйячак", "куйып", "куйу"):
+            self.assertNotIn(wrong, generated)
+        self.assert_verb("сөй", "front", {
+            "verb.pres.3sg": "сөя",
+            "verb.ger.ip": "сөеп",
+            "verb.masdar": "сөю",
+        })
+
+    def test_lexical_back_harmony(self):
+        expected = {
+            "министр": {"noun.p3": "министры"},
+            "президент": {"noun.p3": "президенты", "noun.p3.dat": "президентына"},
+            "метр": {"noun.dat": "метрга"},
+            "шрифт": {"noun.pl.dat": "шрифтларга"},
+            "ел": {
+                "noun.gen": "елның", "noun.acc": "елны", "noun.loc": "елда",
+                "noun.p3": "елы",
+            },
+            "еш": {"deriv.rak": "ешрак"},
+        }
+        for stem, cells in expected.items():
+            rows = gen.generate_all(stem, EXC)
+            for label, form in cells.items():
+                self.assertIn(form, {f for lab, f in rows if lab == label}, f"{stem} {label}")
+        generated_el = {form for _, form in gen.generate_all("ел", EXC)}
+        for wrong in ("елнең", "елне", "елдә", "еле"):
+            self.assertNotIn(wrong, generated_el)
+        generated_loans = {form for stem in ("министр", "президент")
+                           for _, form in gen.generate_all(stem, EXC)}
+        self.assertNotIn("министре", generated_loans)
+        self.assertNotIn("президенте", generated_loans)
+        self.assertNotIn("ешрәк", {form for _, form in gen.generate_all("еш", EXC)})
+        self.assertEqual(noun_forms("исем", "front")["noun.gen"], "исемнең")
+
+    def test_soft_sign_stem_spelling(self):
+        expected = {
+            "автомобиль": {"noun.p3": "автомобиле"},
+            "вазгыять": {"noun.p3": "вазгыяте"},
+            "медаль": {"noun.p3.acc": "медален"},
+            "мөрәҗәгать": {"noun.p3": "мөрәҗәгате"},
+            "сентябрь": {"noun.p3.loc": "сентябрендә"},
+        }
+        for stem, cells in expected.items():
+            rows = gen.generate_all(stem, EXC)
+            for label, form in cells.items():
+                self.assertIn(form, {f for lab, f in rows if lab == label}, f"{stem} {label}")
+        generated = {form for _, form in gen.generate_all("автомобиль", EXC)}
+        self.assertNotIn("автомобилье", generated)
+        self.assertNotIn("автомобильы", generated)
+        self.assertIn("автомобильне", generated)
+
+    def test_soft_sign_assimilation(self):
+        forms = noun_forms("җәмгыять", "front")
+        self.assertEqual(forms["noun.dat"], "җәмгыятькә")
+        self.assertEqual(forms["noun.loc"], "җәмгыятьтә")
+        self.assertEqual(forms["noun.abl"], "җәмгыятьтән")
+        generated = {form for _, form in gen.generate_all("җәмгыять", EXC)}
+        for wrong in ("җәмгыятьгә", "җәмгыятьдә", "җәмгыятьдән"):
+            self.assertNotIn(wrong, generated)
+
+    def test_syncopated_possessive_base(self):
+        forms = noun_forms("халык")
+        self.assertEqual(forms["noun.p1"], "халкым")
+        self.assertEqual(forms["noun.p2"], "халкың")
+        self.assertEqual(forms["noun.p3"], "халкы")
+        self.assertEqual(forms["noun.p3.acc"], "халкын")
+        self.assertEqual(forms["noun.pl"], "халыклар")
+        self.assertEqual(forms["noun.dat"], "халыкка")
+        generated = {form for _, form in gen.generate_all("халык", EXC)}
+        for wrong in ("халыкым", "халыкың", "халыкы", "халыкын"):
+            self.assertNotIn(wrong, generated)
+
+    def test_ay_3sg_possessive_contraction(self):
+        forms = noun_forms("малай")
+        self.assertEqual(forms["noun.p1"], "малайым")
+        self.assertEqual(forms["noun.p2"], "малайың")
+        self.assertEqual(forms["noun.p3"], "малае")
+        self.assertEqual(forms["noun.p3.acc"], "малаен")
+        generated = {form for _, form in gen.generate_all("малай", EXC)}
+        self.assertNotIn("малайы", generated)
+        self.assertEqual(noun_forms("су")["noun.p3"], "суы")
+
+    def test_u_final_converb(self):
+        self.assertEqual(verb_forms("ту")["verb.ger.ip"], "туып")
+        self.assertNotIn("туп", {form for _, form in gen.generate_all("ту", EXC)})
+        self.assertEqual(verb_forms("ди", "front")["verb.ger.ip"], "дип")
+        self.assertEqual(verb_forms("эшлә", "front")["verb.ger.ip"], "эшләп")
+        self.assertEqual(verb_forms("яз")["verb.ger.ip"], "язып")
 
 
 class ImperativePersonsTest(unittest.TestCase):
@@ -706,7 +928,7 @@ class NominalPredicativeTest(unittest.TestCase):
         self.assertEqual(noun_forms("өй", "front")["noun.pred.1pl"], "өйбез")
         self.assertEqual(noun_forms("өй", "front")["noun.pred.2sg"], "өйсең")
 
-    def test_predicative_ignores_voicing_exception(self):
+    def test_predicative_uses_plain_stem(self):
         # Predicative endings start with a consonant: китапмын, not *китабымын.
         self.assertEqual(noun_forms("китап")["noun.pred.1sg"], "китапмын")
 
@@ -718,12 +940,12 @@ class NominalPredicativeTest(unittest.TestCase):
         # noun.pred rows are emitted after _apply_overrides ran, so an explicit
         # override row replaces the generated form; the question clitic stacks
         # on the overridden base, and a .q-specific override wins outright.
-        exc = gen.Exceptions({}, {}, {("татар", "noun.pred.1sg"): "татарымын"})
+        exc = gen.Exceptions({}, {}, {}, {("татар", "noun.pred.1sg"): "татарымын"})
         forms = dict(gen.generate_noun_forms("татар", "back", exc))
         self.assertEqual(forms["noun.pred.1sg"], "татарымын")
         self.assertEqual(forms["noun.pred.1sg.q"], "татарымынмы")
         self.assertEqual(forms["noun.pred.2sg"], "татарсың")  # untouched row
-        exc_q = gen.Exceptions({}, {}, {("татар", "noun.pred.3sg.q"): "татарлармы"})
+        exc_q = gen.Exceptions({}, {}, {}, {("татар", "noun.pred.3sg.q"): "татарлармы"})
         forms_q = dict(gen.generate_noun_forms("татар", "back", exc_q))
         self.assertEqual(forms_q["noun.pred.3sg.q"], "татарлармы")
         self.assertEqual(forms_q["noun.pred.3sg"], "татар")
@@ -761,8 +983,7 @@ class QuestionCliticTest(unittest.TestCase):
         self.assertEqual(noun_forms("өй", "front")["noun.pred.1pl.q"], "өйбезме")
 
     def test_over_overridden_bases(self):
-        # кара keeps its bare present; the clitic stacks on the override.
-        self.assertEqual(verb_forms("кара")["verb.pres.3sg.q"], "карамы")
+        self.assertEqual(verb_forms("кара")["verb.pres.3sg.q"], "карыймы")
         self.assertEqual(verb_forms("укы")["verb.pres.neg.1sg.q"], "укмыйммы")
         self.assertEqual(verb_forms("бар")["verb.fut.1sg.q"], "барырмынмы")
 
@@ -808,22 +1029,27 @@ class ExceptionsLoadingTest(unittest.TestCase):
             return gen.load_exceptions(path)
 
     def test_valid_minimal_file(self):
-        exc = self.load_text("# comment\n\nvoicing\tкитап\tкитаб\n")
-        self.assertEqual(exc.voicing, {"китап": "китаб"})
+        exc = self.load_text(
+            "# comment\n\nharmony\tел\tback\npossessive\tхалык\tхалк\n"
+        )
+        self.assertEqual(exc.harmonies, {"ел": "back"})
+        self.assertEqual(exc.possessive_bases, {"халык": "халк"})
 
     def test_unknown_kind(self):
         with self.assertRaises(gen.ExceptionsError):
-            self.load_text("magic\tкитап\tкитаб\n")
+            self.load_text("magic\tел\tback\n")
 
     def test_wrong_field_count(self):
         with self.assertRaises(gen.ExceptionsError):
-            self.load_text("voicing\tкитап\n")
+            self.load_text("harmony\tел\n")
         with self.assertRaises(gen.ExceptionsError):
-            self.load_text("voicing\tкитап\tкитаб\textra\n")
+            self.load_text("possessive\tхалык\tхалк\textra\n")
 
-    def test_bad_voicing_pair(self):
+    def test_bad_harmony_and_possessive_base(self):
         with self.assertRaises(gen.ExceptionsError):
-            self.load_text("voicing\tкитап\tкитас\n")  # п→с is not a voicing pair
+            self.load_text("harmony\tел\tsideways\n")
+        with self.assertRaises(gen.ExceptionsError):
+            self.load_text("possessive\tхалык\tхалык\n")
 
     def test_unknown_override_label(self):
         with self.assertRaises(gen.ExceptionsError):
@@ -835,19 +1061,19 @@ class ExceptionsLoadingTest(unittest.TestCase):
 
     def test_word_outside_alphabet(self):
         with self.assertRaises(gen.ExceptionsError):
-            self.load_text("voicing\tkitap\tкитаб\n")  # Latin stem
+            self.load_text("harmony\tel\tback\n")  # Latin stem
         with self.assertRaises(gen.ExceptionsError):
             self.load_text("override\tяз\tverb.masdar=Язу\n")  # not lowercase
 
     def test_duplicate_rows(self):
         with self.assertRaises(gen.ExceptionsError):
-            self.load_text("voicing\tкитап\tкитаб\nvoicing\tкитап\tкитаб\n")
+            self.load_text("harmony\tел\tback\nharmony\tел\tback\n")
         with self.assertRaises(gen.ExceptionsError):
             self.load_text("pronoun\tмин\tминем\tмиңа\tминем\n")  # duplicate form
 
     def test_cr_rejected(self):
         with self.assertRaises(gen.ExceptionsError):
-            self.load_text("voicing\tкитап\tкитаб\r\n")
+            self.load_text("harmony\tел\tback\r\n")
 
     def test_missing_file(self):
         with self.assertRaises(gen.ExceptionsError):
@@ -928,8 +1154,8 @@ class CandidatesTest(unittest.TestCase):
                 "noun": 299,
                 "noun.pred": 70,
                 "noun.pred.q": 82,
-                "verb": 1122,
-                "verb.q": 930,
+                "verb": 1182,
+                "verb.q": 990,
             },
         )
 
