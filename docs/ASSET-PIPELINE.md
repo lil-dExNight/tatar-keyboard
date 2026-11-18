@@ -206,7 +206,9 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    The result is written to `<work-dir>/wordforms-admitted-tt.tsv`, with a JSON report next to
    it. The rebuild then reads the complete `operator-widened` approvals from
    `tatar-wordform-review.tsv`, merges their evidence-backed frequencies, and writes their words
-   to `<work-dir>/wordforms-required-tt.txt`.
+   to `<work-dir>/wordforms-required-tt.txt`. An `operator-widened` row with `approved=no`
+   removes its word from the generated forms, so a reviewed rejection overrides a generator
+   match.
    Reviewed compound words come from `data/dictionary/tatar-compound-review.tsv`: the rebuild
    writes their frequencies and the required list, and passes them as additional
    `--extra-entries`/`--require-entries` files. Only that file admits a hyphenated word; corpus
@@ -222,7 +224,9 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    their conversational frequency; this weight does not change the stored frequencies. Russian
    uses the stored frequency for cutoff selection. The packer keeps the top entries
    (`TATAR_DICTIONARY_TOP` for Tatar, 100 000 for Russian), then appends any reviewed required form
-   still below that cutoff, and writes schema 2.
+   still below that cutoff, and writes schema 2. The rebuild also passes the words of the asset
+   being replaced, so a word that already ships is appended with its stored frequency instead of
+   being removed; a quality change never drops lexical coverage by moving a cutoff.
    The release APK size limit is the only limit on the dictionary size, so run
    `scripts/release_check.sh` after you change `TATAR_DICTIONARY_TOP`. The packer's raw size
    bound (`MAX_UNCOMPRESSED_BYTES`) equals the reader's safety bound `TdictFormat.MAX_RAW_SIZE`

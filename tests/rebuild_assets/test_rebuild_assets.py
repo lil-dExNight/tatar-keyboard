@@ -609,6 +609,7 @@ class DictAcceptArgvTest(unittest.TestCase):
         self.assertIn("--write", text)
         self.assertIn("--only tat", text)
         self.assertIn(f"--top {dictionary.top}", text)
+        self.assertIn("--preserve-existing", text)
         self.assertIn("--extra-entries /work/wordforms-admitted-tt.tsv", text)
         self.assertIn("/work/dict-accept-pack-tat.json", text)
 
@@ -1008,6 +1009,22 @@ class WordformStageTest(unittest.TestCase):
         with self.assertRaises(wordform_gen.ExceptionsError):
             rebuild_assets.build_admitted_wordforms(
                 self.root / "no-such-root", self.baseline, self.corpora, self.work)
+
+    def test_rejected_review_row_is_read_and_must_carry_metadata(self):
+        review = self.root / "wordform-review.tsv"
+        review.write_text(
+            "\t".join(rebuild_assets.WORDFORM_REVIEW_HEADER) + "\n"
+            + "\t".join(["китаплар", "китап", "noun.pl", "Tatoeba=1;OpenSubtitles=0;"
+                         "extra=absent", "single-source", "operator-widened", "no",
+                         "claude-independent", "2026-11-18", "rejected form"]) + "\n",
+            encoding="utf-8")
+        self.assertEqual(frozenset({"китаплар"}),
+                         rebuild_assets.read_rejected_wordforms(review))
+        review.write_text(
+            review.read_text(encoding="utf-8").replace("rejected form", ""),
+            encoding="utf-8")
+        with self.assertRaises(wordform_gen.WordformError):
+            rebuild_assets.read_rejected_wordforms(review)
 
 
 class RealTreeTest(unittest.TestCase):

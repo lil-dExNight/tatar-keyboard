@@ -647,7 +647,8 @@ def read_required_words_many(paths: Sequence[Path], tag: str) -> frozenset[str]:
 
 def merged_entries(tag: str, baseline: Path, top: int = 100_000,
                    extra: dict[str, int] | None = None,
-                   required: frozenset[str] = frozenset()):
+                   required: frozenset[str] = frozenset(),
+                   preserve: dict[str, int] | None = None):
     """Composition and frequencies of the new asset.
 
     Composition: shipped plus accepted words plus `extra`, nothing else. Frequency: written plus
@@ -657,7 +658,8 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     adds nine times the conversational frequency to the selection score only; stored frequencies
     remain unchanged. Other languages use the stored frequency as their selection score.
     `required` words are appended after the cutoff, so an explicit review approval ships
-    regardless of its corpus frequency.
+    regardless of its corpus frequency. `preserve` words of the previous asset are appended the
+    same way, so a rebuild never removes a word that already ships.
     """
     shipped, _asset = load_baseline(tag, baseline)
     accepted = read_accepted(tag)
@@ -682,6 +684,9 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     selected = dict(top_entries)
     for word in required - set(selected):
         selected[word] = merged[word]
+    for word, frequency in (preserve or {}).items():
+        if word not in selected:
+            selected[word] = frequency
     return shipped, accepted, sorted(selected.items(), key=lambda kv: kv[0])
 
 
@@ -711,11 +716,16 @@ def pack(args) -> int:
         if not required <= set(extra or {}):
             raise SystemExit("required entries must also be in --extra-entries")
         shipped, before = load_baseline(tag, baseline)
+        target = CL.SHIPPED[tag]
+        preserve: dict[str, int] = {}
+        if getattr(args, "preserve_existing", False) and target.is_file():
+            previous = dp.validate_asset(target.read_bytes(), language=language)
+            preserve = dict(zip(previous.words, previous.frequencies))
         _shipped, accepted, entries = merged_entries(
-            tag, baseline, top=args.top, extra=extra, required=required)
+            tag, baseline, top=args.top, extra=extra, required=required,
+            preserve=preserve)
         raw = dp.serialize_entries(entries, schema=dp.SCHEMA_ID_V2)
         asset = dp.compress_raw(raw)
-        target = CL.SHIPPED[tag]
         before_raw = dp.decompress_asset(before, language)
         words = {w for w, _ in entries}
         result[tag] = {
@@ -724,6 +734,8 @@ def pack(args) -> int:
             "accepted_offered": len(accepted),
             "accepted_that_entered": len((words & set(accepted)) - set(shipped)),
             "shipped_words_displaced": len(set(shipped) - words),
+            "previous_words_preserved": len(set(preserve) & words),
+            "previous_words_displaced": len(set(preserve) - words),
             "asset_bytes_before": len(before),
             "asset_bytes_after": len(asset),
             "asset_bytes_delta": len(asset) - len(before),
@@ -809,6 +821,9 @@ def main(argv=None) -> int:
     pk.add_argument("--top", type=int, default=100_000,
                     help="composition cutoff size (default %(default)s); requires --only "
                          "when it differs from the default")
+    pk.add_argument("--preserve-existing", action="store_true",
+                    help="keep every word of the asset being replaced, appending the ones "
+                         "that fall outside the cutoff with their stored frequency")
     pk.set_defaults(func=pack)
     args = parser.parse_args(argv)
     if args.command == "pack":

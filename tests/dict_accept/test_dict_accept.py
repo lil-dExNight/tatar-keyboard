@@ -463,6 +463,16 @@ class SelectPackContractTest(unittest.TestCase):
                 required=frozenset({"йөрөп"}))
         self.assertEqual(dict(entries), {"сәлам": 42, "йөрөп": 1})
 
+    def test_preserved_word_ships_below_the_cutoff_with_its_frequency(self) -> None:
+        code, _ = self._run_select()
+        self.assertEqual(code, 0)
+        self._write_conv_freq()
+        with patched(QUEUE=self.queues, OUT_DIR=self.out_dir,
+                     BASELINE_SHA256=self.pins):
+            _shipped, _accepted, entries = da.merged_entries(
+                "tat", self.baseline, top=1, preserve={"кит": 7})
+        self.assertEqual(dict(entries), {"сәлам": 42, "кит": 7})
+
     def test_russian_cutoff_still_uses_stored_frequency(self) -> None:
         code, _ = self._run_select()
         self.assertEqual(code, 0)
@@ -522,9 +532,9 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         # tat: conversational cutoff weighting, the bonus-frequency rerank and word forms
         # promote entries above the old cutoff and displace entries from the tail. Explicitly
         # approved forms then ship even when they remain below the new cutoff.
-        self.assertEqual(self.report["tat"]["entries_after"], 110_088)
-        self.assertEqual(self.report["tat"]["words_added"], 21_160)
-        self.assertEqual(self.report["tat"]["words_displaced"], 11_072)
+        self.assertEqual(self.report["tat"]["entries_after"], 110_446)
+        self.assertEqual(self.report["tat"]["words_added"], 21_502)
+        self.assertEqual(self.report["tat"]["words_displaced"], 11_056)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
         # On the prefix `можн` there is no `можно | можна` pair: the curator excluded

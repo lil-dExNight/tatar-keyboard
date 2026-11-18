@@ -259,6 +259,8 @@ def read_reviewed_wordforms(path: Path) -> dict[str, int]:
                 )
             if row["admission_decision"] != "operator-widened":
                 continue
+            if row["approved"].strip() == "no":
+                continue
 
             evidence: dict[str, str] = {}
             try:
@@ -296,13 +298,81 @@ def read_reviewed_wordforms(path: Path) -> dict[str, int]:
     return reviewed
 
 
+def read_rejected_wordforms(path: Path) -> frozenset[str]:
+    """Read complete widened rejections of the review table.
+
+    A rejected row removes its word from the admitted forms even when the generator emits it.
+    The row must still carry reviewer, review_date, and note, so a rejection is traceable.
+    """
+    language = coverage.language_for("tat")
+    rejected: set[str] = set()
+    seen: set[str] = set()
+    header_seen = False
+    try:
+        handle = path.open(encoding="utf-8", newline="")
+    except OSError as error:
+        raise wordform_gen.WordformError(f"cannot read review table {path}: {error}") from error
+    with handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if not header_seen:
+                if fields != WORDFORM_REVIEW_HEADER:
+                    raise wordform_gen.WordformError(
+                        f"{path}:{line_number}: unexpected review columns {fields}"
+                    )
+                header_seen = True
+                continue
+            if len(fields) != len(WORDFORM_REVIEW_HEADER):
+                raise wordform_gen.WordformError(
+                    f"{path}:{line_number}: expected {len(WORDFORM_REVIEW_HEADER)} columns, "
+                    f"got {len(fields)}"
+                )
+            row = dict(zip(WORDFORM_REVIEW_HEADER, fields))
+            word = row["word"]
+            if word in seen:
+                raise wordform_gen.WordformError(
+                    f"{path}:{line_number}: duplicate word {word!r}"
+                )
+            seen.add(word)
+            normalized, reason = coverage.normalize_word(word, language.alphabet)
+            if reason is not None or normalized != word:
+                raise wordform_gen.WordformError(
+                    f"{path}:{line_number}: word {word!r} is not canonical "
+                    f"({reason or 'not NFC/lowercase'})"
+                )
+            if row["admission_decision"] != "operator-widened":
+                continue
+            if row["approved"].strip() != "no":
+                continue
+            admission = ReviewedWordform(
+                word=word,
+                frequency=1,
+                approved="yes",
+                reviewer=row["reviewer"].strip(),
+                review_date=row["review_date"].strip(),
+                note=row["note"].strip(),
+            )
+            review_reason = dict_accept.review_metadata_reason(admission)  # type: ignore[arg-type]
+            if review_reason:
+                raise wordform_gen.WordformError(f"{path}:{line_number}: {review_reason}")
+            rejected.add(word)
+    if not header_seen:
+        raise wordform_gen.WordformError(f"{path}: review header is missing")
+    return frozenset(rejected)
+
+
 def merge_reviewed_wordforms(root: Path, out: Path) -> Path:
     """Merge explicit approvals into the generated admissions and refresh their report."""
     reviewed = read_reviewed_wordforms(root / WORDFORM_REVIEW)
+    rejected = read_rejected_wordforms(root / WORDFORM_REVIEW)
     admitted = dict_accept.read_extra_entries(out, "tat")
     generated = dict(admitted)
     for word, frequency in reviewed.items():
         admitted[word] = max(frequency, admitted.get(word, 0))
+    for word in rejected:
+        admitted.pop(word, None)
     data = "".join(f"{word}\t{admitted[word]}\n" for word in sorted(admitted)).encode("utf-8")
     wordform_gen.write_atomic(out, data)
     required_path = out.with_name("wordforms-required-tt.txt")
@@ -324,6 +394,8 @@ def merge_reviewed_wordforms(root: Path, out: Path) -> Path:
         "reviewed_forms": len(reviewed),
         "reviewed_forms_already_generated": len(set(reviewed) & set(generated)),
         "reviewed_forms_new": len(set(reviewed) - set(generated)),
+        "reviewed_forms_rejected": len(rejected),
+        "reviewed_forms_rejected_already_generated": len(rejected & set(generated)),
         "required_output": str(required_path),
         "required_output_sha256": hashlib.sha256(required_data).hexdigest(),
     })
@@ -337,7 +409,7 @@ def merge_reviewed_wordforms(root: Path, out: Path) -> Path:
     )
     print(
         f"wordform review: {len(reviewed)} approved forms, "
-        f"{len(set(reviewed) - set(generated))} new",
+        f"{len(set(reviewed) - set(generated))} new, {len(rejected)} rejected",
         file=sys.stderr,
     )
     return out
@@ -1531,6 +1603,7 @@ def dict_accept_argv(
         dictionary.tag,
         "--top",
         str(dictionary.top),
+        "--preserve-existing",
     ]
     for path in _path_list(extra_entries):
         argv += ["--extra-entries", str(path)]
