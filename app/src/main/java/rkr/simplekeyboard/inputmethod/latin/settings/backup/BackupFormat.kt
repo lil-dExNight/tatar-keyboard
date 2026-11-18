@@ -63,16 +63,20 @@ object BackupFormat {
     const val SETTINGS_PATH = "settings/preferences.xml"
     const val PERSONAL_DIRECTORY = "personal"
 
-    /** The file name the create-document picker is pre-filled with. */
+    /** File names the create-document picker is pre-filled with. */
     const val SUGGESTED_FILE_NAME = "tatar-keyboard-backup.zip"
+    const val SUGGESTED_ENCRYPTED_FILE_NAME = "tatar-keyboard-backup.zip.enc"
 
     const val MAX_MANIFEST_BYTES = 64L * 1024L
     const val MAX_SETTINGS_BYTES = 256L * 1024L
     const val MAX_ENTRIES = 64
     const val MAX_PATH_LENGTH = 128
 
-    /** Cap on the archive as picked (compressed). Far above any real backup. */
+    /** Cap on the plaintext archive as picked (compressed). Far above any real backup. */
     const val MAX_ARCHIVE_BYTES = 8L * 1024L * 1024L
+
+    /** The encryption wrapper adds only its fixed header and GCM tag. */
+    const val MAX_ENCRYPTED_ARCHIVE_BYTES = MAX_ARCHIVE_BYTES + BackupEncryption.OVERHEAD_BYTES
 
     /** Cap on the sum of uncompressed entry sizes; the zip bomb bound. */
     const val MAX_TOTAL_UNCOMPRESSED_BYTES = 4L * 1024L * 1024L

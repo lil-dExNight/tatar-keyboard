@@ -71,8 +71,14 @@ internal interface BackupTarget {
     fun clearImportJournal(): Boolean
 }
 
-/** The import verdict. The settings screen turns each into one toast; no detail leaves here. */
-internal enum class BackupImportResult { IMPORTED, IMPORTED_PRIVACY_CHANGED, INVALID_FILE, WRITE_FAILED }
+/** The import verdict. A password request opens a prompt; every other verdict maps to one toast. */
+internal enum class BackupImportResult {
+    IMPORTED,
+    IMPORTED_PRIVACY_CHANGED,
+    PASSWORD_REQUIRED,
+    INVALID_FILE,
+    WRITE_FAILED,
+}
 
 internal object BackupTransfer {
 
@@ -80,97 +86,123 @@ internal object BackupTransfer {
      * Builds the archive for [target], or null when recovery fails, a store stays not loaded or a
      * recognized personal file fails to read or validate; the caller must not write an archive then.
      * Unclassified files, recent emoji, pending counters and salts are outside the backup format.
+     * A non-null [password] selects the encrypted wrapper and is cleared before this returns.
      */
     @Synchronized
-    fun export(target: BackupTarget): ByteArray? {
-        if (!recoverPending(target)) return null
-        if (!openPersonalStores(target)) return null
-        val preferences = target.readPreferences()
-            .filterKeys { it !in BackupFormat.INTERNAL_PREFERENCE_KEYS }
-        val personal = ArrayList<VerifiedPersonalFile>()
-        for (name in target.personalFileNames().sorted()) {
-            val (kind, subtypeId) = BackupFormat.classifyPersonalFileName(name) ?: continue
-            val bytes = try {
-                target.readPersonalFile(name)
-            } catch (_: Exception) {
-                null
-            } ?: return null
-            if (!BackupFormat.contentPasses(kind, subtypeId, bytes)) return null
-            personal.add(VerifiedPersonalFile(kind, subtypeId, bytes))
+    fun export(target: BackupTarget, password: CharArray? = null): ByteArray? {
+        try {
+            if (!recoverPending(target)) return null
+            if (!openPersonalStores(target)) return null
+            val preferences = target.readPreferences()
+                .filterKeys { it !in BackupFormat.INTERNAL_PREFERENCE_KEYS }
+            val personal = ArrayList<VerifiedPersonalFile>()
+            for (name in target.personalFileNames().sorted()) {
+                val (kind, subtypeId) = BackupFormat.classifyPersonalFileName(name) ?: continue
+                val bytes = try {
+                    target.readPersonalFile(name)
+                } catch (_: Exception) {
+                    null
+                } ?: return null
+                if (!BackupFormat.contentPasses(kind, subtypeId, bytes)) return null
+                personal.add(VerifiedPersonalFile(kind, subtypeId, bytes))
+            }
+            val plain = BackupArchive.create(target.versionCode, preferences, personal)
+            return if (password == null) plain else BackupEncryption.encrypt(plain, password)
+        } finally {
+            password?.fill('\u0000')
         }
-        return BackupArchive.create(target.versionCode, preferences, personal)
     }
 
     /**
-     * Restores [archiveBytes] as one transaction. The journal holds both complete states before
-     * the first mutation; a failed apply rolls back, and a durable commit record commits the
-     * import. A store that stays not loaded refuses the import before the journal is written.
+     * Restores [archiveBytes] as one transaction. Encryption format detection is automatic: an
+     * encrypted archive without [password] returns PASSWORD_REQUIRED; a wrong password, modified
+     * header, ciphertext or tag is rejected before recovery or any store access. A supplied
+     * password is cleared before this returns. The journal holds two complete plaintext states;
+     * a failed apply rolls back, and a durable commit record commits the import.
      */
     @Synchronized
-    fun import(target: BackupTarget, archiveBytes: ByteArray): BackupImportResult {
-        if (!recoverPending(target)) return BackupImportResult.WRITE_FAILED
-        val verified = try {
-            BackupArchive.readAndVerify(archiveBytes)
-        } catch (e: BackupValidationException) {
-            return BackupImportResult.INVALID_FILE
-        }
-        if (!openPersonalStores(target)) return BackupImportResult.WRITE_FAILED
-        val before = try {
-            readCurrentState(target)
-        } catch (_: Exception) {
-            return BackupImportResult.WRITE_FAILED
-        } ?: return BackupImportResult.WRITE_FAILED
-        val names = transactionFileNames(before, verified)
-        val journal = try {
-            BackupImportJournal.create(target.versionCode, before, archiveBytes)
-        } catch (_: Exception) {
-            return BackupImportResult.WRITE_FAILED
-        }
-        val journaled = try {
-            target.writeImportJournal(journal)
-        } catch (_: Exception) {
-            false
-        }
-        if (!journaled) return BackupImportResult.WRITE_FAILED
+    fun import(
+        target: BackupTarget,
+        archiveBytes: ByteArray,
+        password: CharArray? = null,
+    ): BackupImportResult {
+        try {
+            val plainArchive = if (BackupEncryption.isEncrypted(archiveBytes)) {
+                val supplied = password ?: return BackupImportResult.PASSWORD_REQUIRED
+                try {
+                    BackupEncryption.decrypt(archiveBytes, supplied)
+                } catch (e: BackupValidationException) {
+                    return BackupImportResult.INVALID_FILE
+                }
+            } else {
+                archiveBytes
+            }
+            val verified = try {
+                BackupArchive.readAndVerify(plainArchive)
+            } catch (e: BackupValidationException) {
+                return BackupImportResult.INVALID_FILE
+            }
+            if (!recoverPending(target)) return BackupImportResult.WRITE_FAILED
+            if (!openPersonalStores(target)) return BackupImportResult.WRITE_FAILED
+            val before = try {
+                readCurrentState(target)
+            } catch (_: Exception) {
+                return BackupImportResult.WRITE_FAILED
+            } ?: return BackupImportResult.WRITE_FAILED
+            val names = transactionFileNames(before, verified)
+            val journal = try {
+                BackupImportJournal.create(target.versionCode, before, plainArchive)
+            } catch (_: Exception) {
+                return BackupImportResult.WRITE_FAILED
+            }
+            val journaled = try {
+                target.writeImportJournal(journal)
+            } catch (_: Exception) {
+                false
+            }
+            if (!journaled) return BackupImportResult.WRITE_FAILED
 
-        // Privacy switches are combined, never copied: a restore must not silently enable
-        // learning or un-pause it. Personal dictionary = current AND imported (learning only if
-        // it was already on); pause learning (incognito) = current OR imported (paused if either
-        // side paused). Every other preference is taken from the archive verbatim.
-        val effective = VerifiedBackup(
-            combinePrivacySwitches(before.preferences, verified.preferences),
-            verified.personalFiles,
-        )
-        val applied = try {
-            applyState(target, names, effective)
-        } catch (_: Exception) {
-            false
-        }
-        if (!applied) {
-            rollback(target, names, before)
-            return BackupImportResult.WRITE_FAILED
-        }
-        val committed = try {
-            target.commitImportJournal()
-        } catch (_: Exception) {
-            false
-        }
-        if (!committed) {
-            // The commit never became durable: the journal still names the exact previous state,
-            // and a reported failure cannot leave the imported state standing.
-            rollback(target, names, before)
-            return BackupImportResult.WRITE_FAILED
-        }
+            // Privacy switches are combined, never copied: a restore must not silently enable
+            // learning or un-pause it. Personal dictionary = current AND imported (learning only
+            // if it was already on); pause learning (incognito) = current OR imported (paused if
+            // either side paused). Every other preference is taken from the archive verbatim.
+            val effective = VerifiedBackup(
+                combinePrivacySwitches(before.preferences, verified.preferences),
+                verified.personalFiles,
+            )
+            val applied = try {
+                applyState(target, names, effective)
+            } catch (_: Exception) {
+                false
+            }
+            if (!applied) {
+                rollback(target, names, before)
+                return BackupImportResult.WRITE_FAILED
+            }
+            val committed = try {
+                target.commitImportJournal()
+            } catch (_: Exception) {
+                false
+            }
+            if (!committed) {
+                // The commit never became durable: the journal still names the exact previous
+                // state, and a reported failure cannot leave the imported state standing.
+                rollback(target, names, before)
+                return BackupImportResult.WRITE_FAILED
+            }
 
-        val currentPreferences = try {
-            target.readPreferences()
-        } catch (_: Exception) {
-            return BackupImportResult.WRITE_FAILED
-        }
-        return if (privacySwitchesChanged(before.preferences, currentPreferences)) {
-            BackupImportResult.IMPORTED_PRIVACY_CHANGED
-        } else {
-            BackupImportResult.IMPORTED
+            val currentPreferences = try {
+                target.readPreferences()
+            } catch (_: Exception) {
+                return BackupImportResult.WRITE_FAILED
+            }
+            return if (privacySwitchesChanged(before.preferences, currentPreferences)) {
+                BackupImportResult.IMPORTED_PRIVACY_CHANGED
+            } else {
+                BackupImportResult.IMPORTED
+            }
+        } finally {
+            password?.fill('\u0000')
         }
     }
 

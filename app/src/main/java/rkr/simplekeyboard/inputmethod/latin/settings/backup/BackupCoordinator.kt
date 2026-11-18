@@ -111,15 +111,15 @@ internal class BackupCoordinator(
     private val userUnlocked: Boolean
         get() = appContext.getSystemService(UserManager::class.java)?.isUserUnlocked ?: false
 
-    /** Writes the archive to the user-picked [uri]; [onFinished] arrives on the UI thread. */
-    fun exportTo(uri: Uri, onFinished: (Boolean) -> Unit) {
+    /** Writes the archive to [uri], encrypted when [password] is supplied; answers on the UI thread. */
+    fun exportTo(uri: Uri, password: CharArray? = null, onFinished: (Boolean) -> Unit) {
         executor.execute {
             var documentTouched = false
             val written = try {
                 if (!userUnlocked) {
                     false
                 } else {
-                    val bytes = BackupTransfer.export(target)
+                    val bytes = BackupTransfer.export(target, password)
                     if (bytes == null) {
                         false
                     } else {
@@ -132,6 +132,7 @@ internal class BackupCoordinator(
             } catch (_: Exception) {
                 false
             }
+            password?.fill('\u0000')
             if (!written && documentTouched) {
                 // A failed write may have left a partial document behind; remove it when the
                 // provider allows, so no truncated archive masquerades as a backup.
@@ -141,8 +142,8 @@ internal class BackupCoordinator(
         }
     }
 
-    /** Restores the user-picked [uri]; [onFinished] arrives on the UI thread. */
-    fun importFrom(uri: Uri, onFinished: (BackupImportResult) -> Unit) {
+    /** Restores [uri], asking for a password through PASSWORD_REQUIRED when encrypted. */
+    fun importFrom(uri: Uri, password: CharArray? = null, onFinished: (BackupImportResult) -> Unit) {
         executor.execute {
             val result = try {
                 if (!userUnlocked) {
@@ -152,12 +153,13 @@ internal class BackupCoordinator(
                     if (bytes == null) {
                         BackupImportResult.INVALID_FILE
                     } else {
-                        BackupTransfer.import(target, bytes)
+                        BackupTransfer.import(target, bytes, password)
                     }
                 }
             } catch (_: Exception) {
                 BackupImportResult.INVALID_FILE
             }
+            password?.fill('\u0000')
             uiPoster { onFinished(result) }
         }
     }
@@ -172,7 +174,7 @@ internal class BackupCoordinator(
                 val read = stream.read(buffer)
                 if (read < 0) break
                 out.write(buffer, 0, read)
-                if (out.size().toLong() > BackupFormat.MAX_ARCHIVE_BYTES) return null
+                if (out.size().toLong() > BackupFormat.MAX_ENCRYPTED_ARCHIVE_BYTES) return null
             }
             return out.toByteArray()
         }
