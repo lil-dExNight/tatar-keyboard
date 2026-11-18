@@ -502,6 +502,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 богауларда	1	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 болытсыз	1	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 букчасында	1	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+букчаңны	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 джунглидагы	1	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 дидемме	1	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 егылсаң	1	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -593,6 +594,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 берүзегез	1	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 биисең	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 бордым	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+бушатучылар	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.50	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: proper-noun-evidence (cap_ratio=0.50>=0.05)
 бушатыгыз	1	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 бүлдермәгез	1	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 бәхәсләштегез	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -600,6 +602,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 елыйсыңмы	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 кабатлыйсың	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 кайттыңмы	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+каравыңны	1	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (Tatoeba)
 кремы	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 куймам	1	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 куркытма	1	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -970,6 +973,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 киңәшемне	0	5	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 комачаулыйсың	0	5	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 котырса	0	5	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+кулчатырымны	0	5	5	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (Tatoeba)
 курыктың	0	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 кушмады	0	5	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 кылан	0	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1075,6 +1079,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 авансны	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 авырлыгың	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 авырттырды	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+акылдамы	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна (акыл+да+мы)	operator-widened	automatic rule: single-source (OpenSubtitles)
 акылымда	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 алдагыга	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 алдадык	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1120,6 +1125,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 бутадым	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 бәлли	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	колыбельное «бәлли-бәү» / уст. «действительно»	operator-widened	automatic rule: single-source (OpenSubtitles)
 бәрелсә	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+бөеремне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 вазаны	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 гаепләмәгез	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 галәмара	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1151,6 +1157,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 карамыйсыз	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 карарым	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 карын	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+кейста	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 киемнәрегезне	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 килештекме	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 килмәссең	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1163,6 +1170,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 койрыгында	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 колагым	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 комикслар	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+компьютерымны	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (Tatoeba)
 коронавирус	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	Approved by independent review as a two-source stem.	operator-widened	automatic rule: single-source (Tatoeba)
 коточыргыч	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 кофеин	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1232,6 +1240,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 теккәндә	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 теләвеңә	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 тизәккә	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+тролльне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 туганыңны	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 туегыз	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 туктадыгыз	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1302,6 +1311,8 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 җыенмадым	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 үзгәрттең	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 үлегез	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+үлемеңне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
+үлчәнешенә	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 үлүдән	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 үпкән	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 үптем	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1324,7 +1335,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 алдаганымны	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 алдаганын	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 алекстан	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
-алиби	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+алиби	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18		two-corpora	OpenSubtitles+Tatoeba
 алкышлагыз	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 алыштырдың	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 апагызны	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1389,6 +1400,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 гаҗәпләнмәс	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 гитараңны	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 гөнаһмы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+даруларыңны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 дигәнемне	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 дәртне	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 дәш	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1540,6 +1552,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 сагынды	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 сазын	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 сайларлык	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+сайлыкка	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 сайлыкта	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 салдыңмы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 салы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1558,7 +1571,9 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 сорамасаң	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 сорарбыз	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 сугышудан	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+суйдым	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна (суй- «резать, свежевать»)	operator-widened	automatic rule: single-source (OpenSubtitles)
 сукырайта	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+сумкаңа	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (Tatoeba)
 сусадыңмы	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 сыйлан	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 сынатма	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1624,6 +1639,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 төкергән	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 төнтек	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 төрем	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+төшләреңдә	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 уздымы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 узсам	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 узсаң	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
@@ -1649,6 +1665,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 чер	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 чикләвекләрне	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 чиләктә	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
+чиратыңны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна	operator-widened	automatic rule: single-source (OpenSubtitles)
 чишен	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 чолан	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba
 чыгардыңмы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no					two-corpora	OpenSubtitles+Tatoeba

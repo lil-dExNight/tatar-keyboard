@@ -392,7 +392,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 төзәттеләр	2	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 төкер	2	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 уйнама	2	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-упс	2	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+упс	2	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	no	claude-independent	2026-11-18	П6: междометие, written=0
 уятыгыз	2	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 ышандыңмы	2	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 җитештем	2	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -755,7 +755,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 тыңламадың	1	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 түтәй	1	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	Approved by independent review as a two-source stem.
 тәмамладыңмы	1	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-тәмек	1	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+тәмек	1	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	no	claude-independent	2026-11-18	П2: не опознаю (ср. тәмәке), written=1
 төзәтегез	1	5	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 төкерәм	1	5	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 төшерермен	1	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -828,7 +828,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 богауларда	1	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 болытсыз	1	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 букчасында	1	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-букчаңны	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+букчаңны	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 булмавыгызны	1	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 бункердан	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 вьет	1	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -844,7 +844,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 егылсаң	1	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 зепп	1	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 иллюзияләр	1	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-индастриз	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.75	no				
+индастриз	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.75	no	no	claude-independent	2026-11-18	П3: имя собственное (название компании)
 иренчәк	1	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	Approved by independent review as a two-source stem.
 исертә	1	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 итүең	1	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -947,7 +947,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 шалтыратмадың	1	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 шалтыраттыңмы	1	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 шартлагач	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-шеймус	1	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+шеймус	1	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 шикләнмәдем	1	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 шәрабне	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 ышанмам	1	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -1019,7 +1019,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 бозма	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 боргач	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 бордым	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-бушатучылар	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.50	no				
+бушатучылар	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.50	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 бушатыгыз	1	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 бэм	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 бүлдермәгез	1	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -1038,12 +1038,12 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 елыйсыңмы	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 зионны	1	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 ишетәсез	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-йошия	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+йошия	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 кабатлыйсың	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 казакча	1	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 кайтардың	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 кайттыңмы	1	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-каравыңны	1	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
+каравыңны	1	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 катыштырмагыз	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 кетто	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 кечкенәм	1	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -1586,7 +1586,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 пикник	0	6	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	Approved by independent review as a two-source stem.
 проблемаларым	0	6	6	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 проблемаң	0	6	6	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-роудс	0	6	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+роудс	0	6	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 рәнҗетмәс	0	6	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сайланганнар	0	6	0	OpenSubtitles	risk-accepted:no-grant	0.20	no				
 саминың	0	6	6	Tatoeba	clean:CC-BY-2.0-FR	1.00	no				
@@ -1690,7 +1690,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 буяды	0	5	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 бүлмәңдә	0	5	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 бәйләгез	0	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-вальдо	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+вальдо	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 вейли	0	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 вейлига	0	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 вормир	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
@@ -1699,7 +1699,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 гидрага	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 гораций	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 горилла	0	5	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.33	no				
-дженис	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+дженис	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 джентльмен	0	5	5	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 джокер	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 дивардан	0	5	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -1748,7 +1748,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 конденсаторы	0	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 котырса	0	5	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 креветкалар	0	5	0	OpenSubtitles	risk-accepted:no-grant	0.25	no				
-кулчатырымны	0	5	5	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
+кулчатырымны	0	5	5	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 курыкканга	0	5	5	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 курыктың	0	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 кушмады	0	5	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -1770,7 +1770,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 лампаны	0	5	4	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 лесли	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 люкны	0	5	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-моник	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+моник	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 монстр	0	5	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 муеныңны	0	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 мыгырдау	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
@@ -1797,7 +1797,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 савыгачаксың	0	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 сагынасыңмы	0	5	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сайладыңмы	0	5	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-селия	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+селия	0	5	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 селкенмәскә	0	5	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 сикерер	0	5	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 симерә	0	5	5	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -1942,7 +1942,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 авырттырды	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 адресым	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 актёрлык	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-акылдамы	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+акылдамы	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна (акыл+да+мы)
 акылымда	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 алачаксызмы	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 алачыкны	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -2040,7 +2040,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 бәрәчәк	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 бәхетеңә	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 бәхетсезлекләр	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-бөеремне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+бөеремне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 вагю	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 вазаны	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 видморның	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
@@ -2057,7 +2057,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 гладиозавр	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 гринвичка	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 гәҗәеп	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-дантист	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+дантист	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	
 дежа	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 дейтон	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 десмондның	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
@@ -2133,11 +2133,11 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 качаргамы	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 квинджет	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 квинс	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
-кейста	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+кейста	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 керне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-киборг	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.33	no				
+киборг	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.33	no	yes	claude-independent	2026-11-18	
 киемнәрегезне	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-кикерек	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.33	no				
+кикерек	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.33	no	no	claude-independent	2026-11-18	П2: written=0, только субтитры
 килештекме	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 килмәссең	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 киселдем	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -2152,8 +2152,8 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 койрыгында	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 колагым	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 комикслар	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-компьютерымны	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-корвет	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+компьютерымны	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
+корвет	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	yes	claude-independent	2026-11-18	
 корги	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 кормас	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 коронавирус	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	Approved by independent review as a two-source stem.
@@ -2249,11 +2249,11 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 пианистка	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 планыгыз	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 проблемаларыңны	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-пунш	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+пунш	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	
 пычакларны	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 пәрдәләрне	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 радары	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-ричардка	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+ричардка	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	форма имени собственного
 рәхәтме	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сагынасыз	0	4	3	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сайладыгызмы	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -2320,7 +2320,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 тили	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 торуымны	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 тотынма	0	4	4	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-тролльне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+тролльне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 трон	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 туганыңны	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 туегыз	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -2469,10 +2469,10 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 үкенәчәксең	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 үлдегез	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 үлегез	0	4	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-үлемеңне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+үлемеңне	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 үлемкылычы	0	4	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 үлчәнешендә	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-үлчәнешенә	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+үлчәнешенә	0	4	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 үлүдән	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 үпкән	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 үптем	0	4	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -2519,7 +2519,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 алдаганыңны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 алдамас	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 алекстан	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-алиби	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
+алиби	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	
 алкушымчасы	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 алкышлагыз	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 аллахның	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -2527,7 +2527,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 алперт	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 алтмышта	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 алыштырдың	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-альдо	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+альдо	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 америкалымы	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 амнезия	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 аназонның	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
@@ -2692,7 +2692,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 верандада	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 веспер	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 винберг	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
-вол	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+вол	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	no	claude-independent	2026-11-18	русское слово (по-татарски үгез); ср. волын, отклонённое ранее
 воу	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 вундагор	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 вәгъдәгезне	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -2716,7 +2716,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 гөнаһмы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 гөрҗе	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 даруларың	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-даруларыңны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+даруларыңны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 делайла	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 делорианга	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 дефенестрациясе	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -2729,7 +2729,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 джуб	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 дигәнемне	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 дияргәме	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-дог	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+дог	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	no	claude-independent	2026-11-18	обрывок «хот-дог»
 доген	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 дора	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 дотракийлар	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -2880,7 +2880,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 квинзель	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 кейсны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 кекслар	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-келәшчәсе	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+келәшчәсе	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	no	claude-independent	2026-11-18	П2: не опознаю основу, written=0
 керербез	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 керешербез	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 керләрне	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -3021,13 +3021,13 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 лабарбара	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 лабораториядән	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 лайм	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-лакей	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+лакей	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	
 ланнистерлар	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 лафлёрны	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 лашад	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 лилага	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 линд	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
-лонг	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+лонг	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	обрывок (лонг-...)
 лонгботтом	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 лыгырдады	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 маггл	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -3049,7 +3049,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 медуза	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.33	no				
 медузалар	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 мембата	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
-мемфис	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+мемфис	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 мескенне	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 метастазлар	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 миегез	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -3147,7 +3147,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 пештем	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 пешәр	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 пикникка	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-пинг	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.50	no				
+пинг	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.50	no	no	claude-independent	2026-11-18	обрывок «пинг-понг»
 пирс	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	yes	claude-independent	2026-11-18	как нариц. «пирс»; учесть, что часть вхождений — имя Пирс
 планетабыздагы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 планетасыннан	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -3171,7 +3171,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 ресторандагы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 рнк	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 розен	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-ройс	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+ройс	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 рухларны	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 рәнҗетәсең	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 рөхсәтегез	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -3184,7 +3184,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 сайланганның	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 сайларлык	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сайлыйсыз	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-сайлыкка	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+сайлыкка	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 сайлыкта	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сайонара	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 сайрамый	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -3239,12 +3239,12 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 сугам	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 сугышасым	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 сугышудан	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-суйдым	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+суйдым	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна (суй- «резать, свежевать»)
 сукеше	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 сукырайта	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сумкамда	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 сумкамны	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-сумкаңа	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
+сумкаңа	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 сунарчылар	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 супербатыры	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 суперяман	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -3298,7 +3298,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 такылдык	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 талашыр	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 талкан	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-таллахасси	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+таллахасси	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 талымлаучан	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 тамса	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 тамырында	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -3327,7 +3327,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 тезләнегез	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 телевизия	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 телеграм	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-телеметрия	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+телеметрия	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	
 телефондагы	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 телме	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 теләвегезне	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -3418,7 +3418,7 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 төрем	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 төрттем	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 төшләрең	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-төшләреңдә	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+төшләреңдә	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 төштеңме	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 убырлыдан	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.67	no				
 убырлылар	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
@@ -3499,13 +3499,13 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 чикләвекләрне	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 чиләктә	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 чипны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-чиратыңны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
+чиратыңны	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no	yes	claude-independent	2026-11-18	форма подтверждённой основы, морфология верна
 чирдә	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 чишен	0	3	2	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 чишенегез	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 чишенә	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 чолан	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-чонтык	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
+чонтык	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	0.00	no	no	claude-independent	2026-11-18	П2: не опознаю, written=0
 чыгарачакмын	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 чыгардымы	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 чыгардыңмы	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
@@ -3721,10 +3721,10 @@ word	heldout_hits	train_freq	train_freq_clean	sources	license_status	cap_ratio	e
 үтәмәдем	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
 үтәрмен	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
 үчлекле	0	3	1	OpenSubtitles+Tatoeba	clean:CC-BY-2.0-FR	0.00	no				
-һавайя	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	1.00	no				
+һавайя	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное (Гавайи)
 һаваһөҗүм	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
-һайнрих	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	1.00	no				
-һарви	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
+һайнрих	0	3	3	Tatoeba	clean:CC-BY-2.0-FR	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
+һарви	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no	no	claude-independent	2026-11-18	П3: имя собственное
 һаулның	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 һаффлпафф	0	3	0	OpenSubtitles	risk-accepted:no-grant	1.00	no				
 һерли	0	3	0	OpenSubtitles	risk-accepted:no-grant	0.00	no				
