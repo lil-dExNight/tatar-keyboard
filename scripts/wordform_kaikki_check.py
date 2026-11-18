@@ -53,23 +53,24 @@ OUR_NOUN_LABELS = frozenset(gen.NOUN_LABELS) - {"noun.pron"}
 # The verb labels the generator emits.
 OUR_VERB_LABELS = frozenset(gen.VERB_LABELS)
 
-# kaikki possessive cells also list plural-possessed forms (абаларым next to
-# абам); the generator does not produce plural+possessive combos, so those
-# forms are filtered out of the comparison. kaikki's two 3rd-person cells both
-# mix our noun.p3 and noun.p3pl (абасы/абалары), which we do generate, so
-# those cells compare against the union of the two labels.
-PLURAL_POSSESSIVE_MARKERS = ("лар", "ләр", "нар", "нәр")
-THIRD_PERSON_CELLS = {"noun.p3", "noun.p3pl"}
-
-
-def is_plural_possessed(form: str) -> bool:
-    return any(marker in form for marker in PLURAL_POSSESSIVE_MARKERS)
-
-
+# kaikki possessive cells mix plain and plural-possessed forms (абам next to
+# абаларым). Compare each cell with the union of those generator labels.
 def is_possessive_label(label: str) -> bool:
     # noun.p1/p2/p3/p1pl/p2pl/p3pl and noun.p3.* are possessive; noun.pl and
     # noun.pl.* are the plural cases, which contain лар themselves.
     return label.startswith("noun.p") and not label.startswith("noun.pl")
+
+
+def possessive_label_variants(label: str) -> tuple[str, ...]:
+    """Return the plain-base and plural-base labels of one kaikki cell."""
+    person, separator, case = label.removeprefix("noun.").partition(".")
+    if person == "p3":
+        plural = "noun.p3pl"
+    elif person in ("p1", "p2", "p1pl", "p2pl"):
+        plural = f"noun.pl.{person}"
+    else:
+        return (label,)
+    return (label, plural + separator + case)
 
 
 # kaikki person/number tag pairs -> our person slot. The informal/formal
@@ -104,7 +105,7 @@ IMPERATIVE_2SG_TAGS = frozenset(
 
 # The bare error-unrecognized-form bucket mixes the gerunds, the participles
 # and participle-shaped finite forms; a form attributes to whichever of these
-# generator labels produces it, else it is out of scope (язарга, язмак).
+# generator labels produces it, else it is out of scope (язмак).
 NONFINITE_SENTINEL = "verb.nonfinite"
 NONFINITE_LABELS = (
     "verb.ger.ip",
@@ -114,6 +115,7 @@ NONFINITE_LABELS = (
     "verb.part.gan",
     "verb.part.uci",
     "verb.part.asi",
+    "verb.inf",
 )
 
 
@@ -299,18 +301,12 @@ def compare(
         kaikki_all = {form for forms in kaikki_map.values() for form in forms}
         for label, kaikki_forms in sorted(in_scope.items()):
             cell = per_label.setdefault(label, {"kaikki": 0, "covered": 0, "extra": 0})
-            if noun_cells and label in THIRD_PERSON_CELLS:
-                reference = ours.get("noun.p3", set()) | ours.get("noun.p3pl", set())
+            if noun_cells and is_possessive_label(label):
+                reference = set().union(
+                    *(ours.get(variant, set()) for variant in possessive_label_variants(label))
+                )
             else:
                 reference = ours.get(label, set())
-                if noun_cells and is_possessive_label(label):
-                    # Drop plural-possessed forms (абаларым): the generator does
-                    # not emit them.
-                    plural_possessed = {
-                        form for form in kaikki_forms if is_plural_possessed(form)
-                    }
-                    acc["out_of_scope_forms"] += len(plural_possessed)
-                    kaikki_forms = kaikki_forms - plural_possessed
             covered = {form for form in kaikki_forms if form in reference}
             cell["kaikki"] += len(kaikki_forms)
             cell["covered"] += len(covered)

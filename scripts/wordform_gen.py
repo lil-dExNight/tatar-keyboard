@@ -13,13 +13,10 @@ Rules:
   {ә е и ө ү э}. э is front (эшләр/эшкә); я/ю are й+а/й+у, hence back (юлга,
   ярлар). A final у/ү/ю/я written right after another vowel is a diphthong
   glide and does NOT decide harmony (эшләү is front: эшләүче; дию is front:
-  диде). Stems mixing both harmony classes (most Russian loans: совет = о+е) or
-  carrying a Russian marker letter {ё ъ ь ж ц щ} are generated in BOTH harmony
-  variants: loans take back suffixes in practice (советларга) but a surface
-  rule cannot separate them from native front stems (исемгә); overgeneration
-  is safe because only attested forms are admitted. Lexical harmony rows in the
-  exceptions table pin stems whose written vowels do not show the suffix
-  harmony (министр→министры, ел→елның, еш→ешрак).
+  Lexical harmony rows in the exceptions table pin stems whose written vowels
+  do not show the suffix harmony (министр→министры, ковид→ковидка,
+  ел→елның, еш→ешрак). A terminal soft sign does not create a second harmony
+  variant: soft-sign stems stay in the front row (вазгыять→вазгыяте).
 * Suffix patterns are strings of Cyrillic literals plus archiphonemes:
   A=а/ә, I=ы/е, U=у/ү, Y=ый/и (the present-tense vowel), G=г/к (к after
   voiceless {п к с т ч ш ф х ц щ}), D=д/т (т after voiceless), L=л/н (н after
@@ -30,9 +27,13 @@ Rules:
   (әбием, суым, суыбыз), other vowel-final stems bare ones (абам, аракым);
   3sg is bare -ы/-е after у/ү (суы) and -сы/-се elsewhere (абасы, әбисе).
 * Final п/к after a vowel voices to б/г on the possessive, present, masdar,
-  -Iп converb, definite-future and -AsI bases and before the comparative -рAк
-  (тап→таба/табу/табып/табачак/табасы, нык→ныграк). The plural,
-  case, past, negative and imperative suffixes attach to the plain stem
+  -Iп converb, categorical-future and -AsI bases and before the comparative
+  -рAк (тап→таба/табу/табып/табачак/табасы, нык→ныграк, күп→күбрәк).
+  Listed Russian loans keep п/к (парк→паркы, банк→банкы, суп→супы).
+  Listed Russian loans in б/г/д/з take voiceless-assimilating suffixes by
+  pronunciation (ковид→ковидка/ковидтан, завод→заводка/заводта,
+  клуб→клубка); final в and ж do not trigger this rule. The plural, case,
+  past, negative and imperative suffixes otherwise attach to the plain stem
   (китапка, тапты, тапмый, тапыйк). A one-syllable й-stem drops й on those
   vowel-initial tense bases (куй→куя/куяр/куячак/кую; җый→җыя/җыю) and forms
   the -еп converb (куеп, җыеп). Stems in у/ү take -ып/-еп in the converb
@@ -40,28 +41,33 @@ Rules:
   (автомобиль→автомобиле).
 * The present tense of vowel-final stems contracts: the stem-final vowel is
   replaced by Y (укы→укый, эшлә→эшли, ди→ди, кара→карый).
-* The simple future is lexically split (verified against kaikki.org tables):
+* The indefinite future is lexically split (verified against kaikki.org tables):
   vowel stems take -р (эшләр; monosyllables -яр: дияр), monosyllabic consonant
-  stems take -ар/-әр (язар, китәр), longer consonant stems take -ыр/-ер
+  stems take -ар/-әр (язар, китәр, куяр), longer consonant stems take -ыр/-ер
   (әлсерер) with the final-consonant voicing above; the -ыр/-ер monosyllable
   class (барыр, бирер, белер, булыр, алыр, әйтер, калыр, килер, торыр,
-  тулыр, йөрер) and the suppletive укы/ук- cluster (укый but укар, укмый)
-  are exception rows.
+  тулыр, йөрер) and the suppletive укы/ук- cluster (укый but укыр, укмый)
+  are exception rows. The categorical future is the separate -ачак/-әчәк base
+  (куячак). The infinitive appends -GA to the resolved indefinite-future base
+  (язар→язарга, килер→килергә, укыр→укырга).
 * Person paradigms (kaikki.org tables): the present carries type I endings
   (1pl -бIз: барабыз) and the -DI past type II endings (1pl -к: яздык); the
-  future, the definite future and the -GAн recent past take the predicative
-  endings -мIн/-сIң/∅/-бIз/-сIз/-LAр
+  indefinite future, the categorical future and the -GAн recent past take the
+  predicative endings -мIн/-сIң/∅/-бIз/-сIз/-LAр
   (язармын, язачакбыз, язганнар), the conditional takes -м/-ң/∅/-к/-гIз/-LAр
   (язсам, язсак). The imperative adds 1pl -ыйк/-ик (vowel stems contract as
   in the present: эшлик, укыйк) and 3sg/3pl -сын(нар)/-сен(нәр).
+* First/second-person possessives take all five non-nominative cases, on both
+  the plain and plural stem (юлыма, адресымны, йолаларыбыз, урыннарыгызны).
+  Third-person possessives add genitive and plural-base cases likewise.
 * Nominal/adjective predicates take the predicative endings (татармын,
   өйбез; 3sg is the bare stem, 3pl coincides with the plural). The
   question clitic -мы/-ме stacks on every person form and nominal predicate
   under the ``.q`` labels (язаммы, татармы); the joined spelling is informal,
   so the attestation gate decides which of these ship.
 * Exceptions live in scripts/wordform_exceptions_tat.tsv (lexical harmony,
-  the possessive base of a syncopated stem, suppletive pronouns, explicit
-  per-label overrides).
+  reviewed Russian loans, the possessive base of a syncopated stem, suppletive
+  pronouns, explicit per-label overrides).
 
 Usage:
 
@@ -102,9 +108,8 @@ FRONT_VOWELS = frozenset("әеиөүэ")
 VOWELS = BACK_VOWELS | FRONT_VOWELS
 VOICELESS = frozenset("пкстчшфхцщ")
 NASALS = frozenset("мнң")
-# Letters that mark an unassimilated Russian loan; such stems are generated in
-# both harmony variants (see the module docstring).
-RUSSIAN_MARKERS = frozenset("ёъьжцщ")
+# Final consonants that are pronounced voiceless in reviewed Russian loans.
+LOAN_DEVOICING_FINALS = frozenset("бгдз")
 
 BACK = "back"
 FRONT = "front"
@@ -123,8 +128,10 @@ def harmony_of(word: str) -> str | None:
 
     A final у/ү/ю/я immediately preceded by another vowel is a diphthong glide
     and is skipped: the syllable nucleus decides (эшләү → ә → front; дию → и →
-    front; барау → а → back; аю → а → back).
+    front; барау → а → back; аю → а → back). A terminal ь marks the front row.
     """
+    if word.endswith("ь"):
+        return FRONT
     letters = list(word)
     for index in range(len(letters) - 1, -1, -1):
         char = letters[index]
@@ -138,29 +145,22 @@ def harmony_of(word: str) -> str | None:
 
 
 def harmony_variants(word: str, forced: str | None = None) -> tuple[str, ...]:
-    """The harmony variants to generate for [word], primary first.
+    """Return one lexical harmony variant; empty when no vowel gives one.
 
-    One variant for unambiguous stems; two for mixed-harmony stems and for
-    stems with a Russian marker letter. A lexical [forced] row replaces that
-    surface heuristic. Empty when the word carries no harmony vowel at all
-    (caller skips it; such a word can take no suffix).
+    Without an explicit [forced] row, only the last-syllable rule applies.
+    Letter-based guesses about Russian loans are deliberately not rules.
     """
     if forced is not None:
         if forced not in (BACK, FRONT):
             raise WordformError(f"unknown forced harmony: {forced!r}")
         return (forced,)
     primary = harmony_of(word)
-    if primary is None:
-        return ()
-    letters = set(word)
-    mixed = bool(letters & BACK_VOWELS) and bool(letters & FRONT_VOWELS)
-    if mixed or letters & RUSSIAN_MARKERS:
-        return (primary, FRONT if primary == BACK else BACK)
-    return (primary,)
+    return (primary,) if primary is not None else ()
 
-def _voice_final(stem: str) -> str:
-    """Voice stem-final п/к after a vowel before a vowel-initial allomorph."""
-    if len(stem) < 2 or stem[-2] not in VOWELS:
+
+def _voice_final(stem: str, voice: bool = True) -> str:
+    """Voice stem-final п/к after a vowel, except for a listed Russian loan."""
+    if not voice or len(stem) < 2 or stem[-2] not in VOWELS:
         return stem
     if stem[-1] == "п":
         return stem[:-1] + "б"
@@ -184,17 +184,20 @@ def _is_glide_stem(stem: str) -> bool:
 def _glide_base(stem: str) -> str:
     return stem[:-1] if _is_glide_stem(stem) else stem
 
-def _vowel_suffix_base(stem: str) -> str:
+def _vowel_suffix_base(stem: str, voice_final: bool = True) -> str:
     """The stem shape before the vowel-initial verbal allomorphs."""
     base = _without_final_soft_sign(stem)
     if _is_glide_stem(base):
         base = _glide_base(base)
-    return _voice_final(base)
+    return _voice_final(base, voice_final)
 
 
-def render_pattern(pattern: str, base: str, harmony: str) -> str:
+def render_pattern(
+    pattern: str, base: str, harmony: str, devoiced_final: bool = False
+) -> str:
     """Render a suffix [pattern] against [base] under [harmony].
 
+    [devoiced_final] is true only for a listed Russian loan in б/г/д/з.
     Raises ``WordformError`` on an unknown archiphoneme or a malformed
     alternation (patterns are compile-time data; a typo must not pass).
     """
@@ -206,6 +209,9 @@ def render_pattern(pattern: str, base: str, harmony: str) -> str:
     # A final soft sign is a spelling marker, not a consonant for suffix
     # assimilation: the preceding letter decides (җәмгыять+GA → җәмгыятькә).
     assimilation = base[-2] if last == "ь" and len(base) > 1 else last
+    voiceless_assimilation = assimilation in VOICELESS or (
+        devoiced_final and assimilation in LOAN_DEVOICING_FINALS
+    )
     out: list[str] = []
     index = 0
     while index < len(pattern):
@@ -220,7 +226,7 @@ def render_pattern(pattern: str, base: str, harmony: str) -> str:
                     f"alternation must have exactly one '~' in pattern: {pattern!r}"
                 )
             branch = branches[1] if last in VOWELS else branches[0]
-            out.append(render_pattern(branch, base, harmony))
+            out.append(render_pattern(branch, base, harmony, devoiced_final))
             index = end + 1
             continue
         if char == "A":
@@ -232,16 +238,16 @@ def render_pattern(pattern: str, base: str, harmony: str) -> str:
         elif char == "Y":
             out.append("ый" if harmony == BACK else "и")
         elif char == "G":
-            out.append("к" if assimilation in VOICELESS else "г")
+            out.append("к" if voiceless_assimilation else "г")
         elif char == "D":
-            out.append("т" if assimilation in VOICELESS else "д")
+            out.append("т" if voiceless_assimilation else "д")
         elif char == "L":
             out.append("н" if assimilation in NASALS else "л")
         elif char == "T":
             # Ablative initial: т after voiceless, н after nasals
             # (урманнан, таңнан, моңнан), д elsewhere.
             out.append(
-                "т" if assimilation in VOICELESS else "н" if assimilation in NASALS else "д"
+                "т" if voiceless_assimilation else "н" if assimilation in NASALS else "д"
             )
         elif char.isascii() and char.isalpha():
             raise WordformError(
@@ -253,7 +259,12 @@ def render_pattern(pattern: str, base: str, harmony: str) -> str:
     return "".join(out)
 
 
-def attach(base: str, pattern: str, harmony: str | None = None) -> str:
+def attach(
+    base: str,
+    pattern: str,
+    harmony: str | None = None,
+    devoiced_final: bool = False,
+) -> str:
     """Append [pattern] to [base]; when [harmony] is omitted, classify [base].
 
     Derived bases (a plural, a possessive, a tense stem) carry their own last
@@ -263,15 +274,15 @@ def attach(base: str, pattern: str, harmony: str | None = None) -> str:
     resolved = harmony if harmony is not None else harmony_of(base)
     if resolved is None:
         raise WordformError(f"no harmony vowel in base: {base!r}")
-    return base + render_pattern(pattern, base, resolved)
+    return base + render_pattern(pattern, base, resolved, devoiced_final)
 
 
-def present_base(stem: str, harmony: str) -> str:
+def present_base(stem: str, harmony: str, voice_final: bool = True) -> str:
     """The present-tense stem: +A after consonants (яза), vowel contraction
     to Y after vowels (укы→укый, эшлә→эшли)."""
     if _is_glide_stem(stem):
         return _glide_base(stem) + "я"
-    base = _vowel_suffix_base(stem)
+    base = _vowel_suffix_base(stem, voice_final)
     if base[-1] in VOWELS:
         return base[:-1] + render_pattern("Y", base, harmony)
     return attach(base, "A", harmony)
@@ -282,27 +293,27 @@ def syllable_count(word: str) -> int:
     return sum(1 for char in word if char in VOWELS)
 
 
-def masdar_form(stem: str, harmony: str) -> str:
+def masdar_form(stem: str, harmony: str, voice_final: bool = True) -> str:
     """The masdar (verbal noun): -у/-ү after consonants (язу, китү) and after
     stems in а/ә/о/ө (башлау, эшләү); stems in ы/и/у/ү take the й-glide
     spelling -ю (җыю, дию, сию, сую). укы→уку and ю→юу are exception rows."""
     if _is_glide_stem(stem):
         return _glide_base(stem) + "ю"
-    base = _vowel_suffix_base(stem)
+    base = _vowel_suffix_base(stem, voice_final)
     if base[-1] in VOWELS and base[-1] not in "аәоөэ":
         return base + "ю"
     return attach(base, "U", harmony)
 
 
-def future_base(stem: str, harmony: str) -> str:
-    """The simple-future stem (verified against kaikki.org Tatar tables).
+def future_base(stem: str, harmony: str, voice_final: bool = True) -> str:
+    """The indefinite-future stem (verified against kaikki.org Tatar tables).
 
     Vowel-final stems take -р (эшләр, сөйләр), monosyllabic vowel stems take
     -яр (ди→дияр, ю→юяр). Monosyllabic consonant stems take -ар/-әр (язар,
     китәр, керәр) on the plain stem, longer consonant stems take -ыр/-ер on
     the voiced stem (әлсерер, сакланыр, күнек→күнегер). The -ыр/-ер
     monosyllable class (барыр, бирер, белер, булыр, алыр, әйтер, калыр,
-    килер, торыр, тулыр, йөрер) and укы→укар are lexical exception rows.
+    килер, торыр, тулыр, йөрер) and укы→укыр are lexical exception rows.
     """
     if _is_glide_stem(stem):
         stem = _glide_base(stem)
@@ -310,17 +321,21 @@ def future_base(stem: str, harmony: str) -> str:
         return stem + "яр" if syllable_count(stem) == 1 else stem + "р"
     if syllable_count(stem) == 1:
         return attach(stem, "Aр", harmony)
-    return attach(_voice_final(_without_final_soft_sign(stem)), "Iр", harmony)
+    return attach(
+        _voice_final(_without_final_soft_sign(stem), voice_final), "Iр", harmony
+    )
 
 
-def converb_ip_form(stem: str, harmony: str) -> str:
+def converb_ip_form(stem: str, harmony: str, voice_final: bool = True) -> str:
     """The -Iп converb: -еп on a one-syllable й-stem (куеп, җыеп), -Iп on
     у/ү-final stems (туып), otherwise the consonant/vowel alternation."""
     if _is_glide_stem(stem):
         return _glide_base(stem) + "еп"
     if stem[-1] in "уү":
         return attach(stem, "Iп", harmony)
-    return attach(_voice_final(_without_final_soft_sign(stem)), "(Iп~п)", harmony)
+    return attach(
+        _voice_final(_without_final_soft_sign(stem), voice_final), "(Iп~п)", harmony
+    )
 
 # --- Paradigm tables --------------------------------------------------------
 
@@ -337,23 +352,35 @@ NOUN_CASE_PATTERNS = (
 
 # Possessives attach to the stem's vocalic-suffix shape: п/к voices after a
 # vowel (китап→китабы), final ь drops (автомобиль→автомобиле), and a listed
-# syncopated stem uses its short base (халык→халкы). 3sg is the base of the
+# syncopated stem uses its short base (халык→халкы), and the listed vowel-stem
+# alternation of ай gives аенда. 3sg is the base of the
 # post-3sg case forms below. The vowel-final
 # branch splits by the final vowel (kaikki.org tables): и/у/ү-final stems take
 # the full vowel-initial endings (әбием, суым, суыбыз), other vowel-final
 # stems the bare endings (абам, кешем, аракым); for 3sg the split differs —
 # у/ү-final stems take bare -ы/-е (суы, авыруы), everything else takes
-# -сы/-се (абасы, әбисе, аракысы). The -ай/-әй 3sg contracts to -ае/-әе
-# (малай→малае).
+# -сы/-се (абасы, әбисе, аракысы). The -ай/-әй possessive family contracts
+# to -ае/-әе plus the bare person ending (малай→малаем/малае).
 HIATUS_FINAL = frozenset("иуү")
 
 
 def _possessive_forms(stem: str, harmony: str) -> list[tuple[str, str]]:
     last = stem[-1]
     full = last not in VOWELS or last in HIATUS_FINAL
-    if stem.endswith(("ай", "әй")):
-        p3 = stem[:-1] + "е"
-    elif last not in VOWELS or last in "уү":
+    if stem.endswith(("ай", "әй")) or (
+        stem.endswith("е") and stem[:-1].endswith(("а", "ә"))
+    ):
+        # The whole possessive family contracts: малай→малаем/малаең/малае;
+        # a lexical base such as ай→ае enters already contracted.
+        p3 = stem[:-1] + "е" if stem[-1] == "й" else stem
+        return [
+            ("noun.p1", attach(p3, "м", harmony)),
+            ("noun.p2", attach(p3, "ң", harmony)),
+            ("noun.p3", p3),
+            ("noun.p1pl", attach(p3, "бIз", harmony)),
+            ("noun.p2pl", attach(p3, "гIз", harmony)),
+        ]
+    if last not in VOWELS or last in "уү":
         p3 = attach(stem, "I", harmony)
     else:
         p3 = attach(stem, "сI", harmony)
@@ -365,9 +392,21 @@ def _possessive_forms(stem: str, harmony: str) -> list[tuple[str, str]]:
         ("noun.p2pl", attach(stem, "IгIз" if full else "гIз", harmony)),
     ]
 
-# Cases after the 3sg possessive are special (баласы+н/на/нда/ыннан); they are
-# built on the p3 form, which always ends in a vowel.
+# First/second-person possessives take the regular case endings directly:
+# юл+ым+га → юлыма, адрес+ым+ны → адресымны.
+FIRST_SECOND_POSSESSIVES = ("noun.p1", "noun.p2", "noun.p1pl", "noun.p2pl")
+NOUN_POSSESSIVE_CASE_PATTERNS = (
+    ("gen", "нIң"),
+    ("dat", "GA"),
+    ("acc", "нI"),
+    ("loc", "DA"),
+    ("abl", "TAн"),
+)
+
+# Cases after the third-person possessive are special (баласы+ның/н/на/нда/ыннан);
+# they are built on the p3 form, which always ends in a vowel.
 NOUN_POST3_PATTERNS = (
+    ("noun.p3.gen", "нIң"),
     ("noun.p3.acc", "н"),
     ("noun.p3.dat", "нA"),
     ("noun.p3.loc", "нDA"),
@@ -405,8 +444,8 @@ PERSON_TYPE_II = (
     ("3pl", "LAр"),
 )
 
-# The predicative set (with 1pl -бIз) rides the future, the definite future
-# and the -GAн recent past (kaikki.org: язармын/язарбыз, язачаксыз,
+# The predicative set (with 1pl -бIз) rides the indefinite future, the
+# categorical future and the -GAн recent past (kaikki.org: язармын/язарбыз, язачаксыз,
 # язганмын/язганнар); the conditional set (1pl -к, 2pl -гIз) rides the
 # conditional (kaikki.org: язсам, язсак, язсагыз). The same predicative set
 # builds the nominal/adjective predicates (татармын, өйбез).
@@ -490,6 +529,7 @@ VERB_LABELS = (
         "verb.part.uci",
         "verb.part.asi",
         "verb.masdar",
+        "verb.inf",
         "verb.intent",
     ]
 )
@@ -497,8 +537,24 @@ VERB_LABELS = (
 NOUN_LABELS = (
     [label for label, _ in NOUN_CASE_PATTERNS]
     + ["noun.p1", "noun.p2", "noun.p3", "noun.p1pl", "noun.p2pl"]
+    + [
+        f"{possessive}.{case}"
+        for possessive in FIRST_SECOND_POSSESSIVES
+        for case, _ in NOUN_POSSESSIVE_CASE_PATTERNS
+    ]
     + ["noun.p3pl"]
     + [label for label, _ in NOUN_POST3_PATTERNS]
+    + [
+        label.replace("noun.p3.", "noun.p3pl.", 1)
+        for label, _ in NOUN_POST3_PATTERNS
+    ]
+    + [
+        f"noun.pl.{possessive.removeprefix('noun.')}{suffix}"
+        for possessive in FIRST_SECOND_POSSESSIVES
+        for suffix in ("",) + tuple(
+            f".{case}" for case, _ in NOUN_POSSESSIVE_CASE_PATTERNS
+        )
+    ]
     + [label for label, _ in NOUN_PLURAL_CASE_PATTERNS]
     + [
         f"{label}{question}"
@@ -524,6 +580,7 @@ class Exceptions:
     possessive_bases: Mapping[str, str]  # stem -> base of possessive-family forms
     pronouns: Mapping[str, tuple[str, ...]]  # stem -> suppletive noun forms
     overrides: Mapping[tuple[str, str], str]  # (stem, label) -> explicit form
+    loanwords: frozenset[str] = frozenset()  # reviewed Russian loan stems
 
 
 EMPTY_EXCEPTIONS = Exceptions({}, {}, {}, {})
@@ -546,6 +603,7 @@ def load_exceptions(path: Path) -> Exceptions:
     possessive_bases: dict[str, str] = {}
     pronouns: dict[str, tuple[str, ...]] = {}
     overrides: dict[tuple[str, str], str] = {}
+    loanwords: dict[str, str] = {}
     try:
         # Python 3.10-compatible: read bytes and decode — read_text(newline=...) needs 3.13.
         text = path.read_bytes().decode("utf-8")
@@ -573,6 +631,13 @@ def load_exceptions(path: Path) -> Exceptions:
                 )
             target: dict = harmonies
             value: object = fields[2]
+        elif kind == "loan":
+            if len(fields) != 3 or fields[2] != "yes":
+                raise ExceptionsError(
+                    f"{path}:{line_number}: loan rows carry the payload 'yes'"
+                )
+            target = loanwords
+            value = fields[2]
         elif kind == "possessive":
             if len(fields) != 3:
                 raise ExceptionsError(
@@ -634,6 +699,7 @@ def load_exceptions(path: Path) -> Exceptions:
         possessive_bases=possessive_bases,
         pronouns=pronouns,
         overrides=overrides,
+        loanwords=frozenset(loanwords),
     )
 
 
@@ -662,25 +728,58 @@ def generate_noun_forms(
         return [("noun.pron", form) for form in pronoun]
 
     forms: list[tuple[str, str]] = []
-    # An override of the plural re-derives the plural+case forms built on it.
+    voice_final = stem not in exceptions.loanwords
+    devoiced_final = stem in exceptions.loanwords and stem[-1] in LOAN_DEVOICING_FINALS
+    # An override of the plural re-derives every form built on the plural.
     plural = exceptions.overrides.get((stem, "noun.pl")) or attach(stem, "LAр", harmony)
     for label, pattern in NOUN_CASE_PATTERNS:
-        forms.append((label, plural if label == "noun.pl" else attach(stem, pattern, harmony)))
+        forms.append(
+            (
+                label,
+                plural
+                if label == "noun.pl"
+                else attach(stem, pattern, harmony, devoiced_final),
+            )
+        )
 
-    # Possessives use the stem's vocalic-suffix shape; the plural, case and
-    # predicative forms below stay on the plain stem (китапка, китаплары).
+    # Possessives use the stem's vocalic-suffix shape; plural-case and
+    # predicative forms stay on the plain stem (китапка, китаплары).
     poss_stem = _voice_final(
-        _without_final_soft_sign(exceptions.possessive_bases.get(stem, stem))
+        _without_final_soft_sign(exceptions.possessive_bases.get(stem, stem)), voice_final
     )
     possessives = _possessive_forms(poss_stem, harmony)
-    poss3 = dict(possessives)["noun.p3"]
     forms.extend(possessives)
     forms = _apply_overrides(stem, forms, exceptions)
-    poss3 = exceptions.overrides.get((stem, "noun.p3"), poss3)
+    possessive_map = dict(forms)
+    poss3 = possessive_map["noun.p3"]
 
-    forms.append(("noun.p3pl", attach(stem, "LAрI", harmony)))
+    for possessive in FIRST_SECOND_POSSESSIVES:
+        base = possessive_map[possessive]
+        for case, pattern in NOUN_POSSESSIVE_CASE_PATTERNS:
+            if case == "dat" and possessive in ("noun.p1", "noun.p2"):
+                pattern = "A"  # юлыма, юлыңа; plural persons take -га/-гә.
+            forms.append((f"{possessive}.{case}", attach(base, pattern)))
+
+    plural_possessives = dict(_possessive_forms(plural, harmony))
+    poss3pl = exceptions.overrides.get((stem, "noun.p3pl"), plural_possessives["noun.p3"])
+    forms.append(("noun.p3pl", poss3pl))
     for label, pattern in NOUN_POST3_PATTERNS:
-        forms.append((label, attach(poss3, pattern)))
+        forms.append((label, attach(poss3, pattern, harmony)))
+    for label, pattern in NOUN_POST3_PATTERNS:
+        forms.append((label.replace("noun.p3.", "noun.p3pl.", 1), attach(poss3pl, pattern, harmony)))
+
+    for possessive in FIRST_SECOND_POSSESSIVES:
+        base = plural_possessives[possessive]
+        forms.append((f"noun.pl.{possessive.removeprefix('noun.')}", base))
+        for case, pattern in NOUN_POSSESSIVE_CASE_PATTERNS:
+            if case == "dat" and possessive in ("noun.p1", "noun.p2"):
+                pattern = "A"
+            forms.append(
+                (
+                    f"noun.pl.{possessive.removeprefix('noun.')}.{case}",
+                    attach(base, pattern),
+                )
+            )
     for label, pattern in NOUN_PLURAL_CASE_PATTERNS:
         forms.append((label, attach(plural, pattern)))
     for label, pattern in NOUN_PREDICATIVE_PATTERNS:
@@ -693,13 +792,15 @@ def generate_noun_forms(
         forms.append(
             (f"{label}.q", exceptions.overrides.get((stem, f"{label}.q"), attach(form, QUESTION_PATTERN)))
         )
-    return forms
+    return _apply_overrides(stem, forms, exceptions)
 
 
 def generate_verb_forms(
     stem: str, harmony: str, exceptions: Exceptions = EMPTY_EXCEPTIONS
 ) -> list[tuple[str, str]]:
     """The ordered verb paradigm of [stem] as (label, form) pairs."""
+    voice_final = stem not in exceptions.loanwords
+    devoiced_final = stem in exceptions.loanwords and stem[-1] in LOAN_DEVOICING_FINALS
     forms: list[tuple[str, str]] = [("verb.imp.2sg", stem)]
     forms.append(("verb.imp.2pl", attach(stem, "(IгIз~гIз)", harmony)))
     # 1pl -ыйк/-ик (языйк, китик); vowel stems contract the final vowel as in
@@ -720,23 +821,23 @@ def generate_verb_forms(
     negated = attach(stem, "мA", harmony)
     bases = {
         "verb.pres": exceptions.overrides.get((stem, "verb.pres.3sg"))
-        or present_base(stem, harmony),
+        or present_base(stem, harmony, voice_final),
         "verb.pres.neg": exceptions.overrides.get((stem, "verb.pres.neg.3sg"))
         or attach(stem, "мY", harmony),
         "verb.past": exceptions.overrides.get((stem, "verb.past.3sg"))
-        or attach(stem, "DI", harmony),
+        or attach(stem, "DI", harmony, devoiced_final),
         "verb.past.neg": exceptions.overrides.get((stem, "verb.past.neg.3sg"))
         or attach(negated, "DI"),
         "verb.rpast": exceptions.overrides.get((stem, "verb.rpast.3sg"))
-        or attach(stem, "GAн", harmony),
+        or attach(stem, "GAн", harmony, devoiced_final),
         "verb.rpast.neg": exceptions.overrides.get((stem, "verb.rpast.neg.3sg"))
         or attach(negated, "GAн"),
         "verb.fut": exceptions.overrides.get((stem, "verb.fut.3sg"))
-        or future_base(stem, harmony),
+        or future_base(stem, harmony, voice_final),
         "verb.fut.neg": exceptions.overrides.get((stem, "verb.fut.neg.3sg"))
         or attach(stem, "мAс", harmony),
         "verb.deffut": exceptions.overrides.get((stem, "verb.deffut.3sg"))
-        or attach(_vowel_suffix_base(stem), "(AчAк~ячAк)", harmony),
+        or attach(_vowel_suffix_base(stem, voice_final), "(AчAк~ячAк)", harmony),
         "verb.cond": exceptions.overrides.get((stem, "verb.cond.3sg"))
         or attach(stem, "сA", harmony),
         "verb.cond.neg": exceptions.overrides.get((stem, "verb.cond.neg.3sg"))
@@ -749,31 +850,40 @@ def generate_verb_forms(
             forms.append((f"{tense}.{person}", form))
             forms.append((f"{tense}.{person}.q", attach(form, QUESTION_PATTERN)))
 
-    forms.append(("verb.ger.ip", converb_ip_form(stem, harmony)))
-    forms.append(("verb.ger.gac", attach(stem, "GAч", harmony)))
-    forms.append(("verb.ger.ganci", attach(stem, "GAнчI", harmony)))
+    forms.append(("verb.ger.ip", converb_ip_form(stem, harmony, voice_final)))
+    forms.append(("verb.ger.gac", attach(stem, "GAч", harmony, devoiced_final)))
+    forms.append(("verb.ger.ganci", attach(stem, "GAнчI", harmony, devoiced_final)))
     forms.append(("verb.ger.neg", stem + NEG_GERUND[harmony]))
-    forms.append(("verb.part.gan", attach(stem, "GAн", harmony)))
+    forms.append(("verb.part.gan", attach(stem, "GAн", harmony, devoiced_final)))
     forms.append(("verb.part.uci", attach(stem, "UчI", harmony)))
     if stem[-1] not in VOWELS:
         # The -AsI participle is only safe on consonant stems (язасы, киләсе);
         # vowel-stem shapes are not standard, so they are not generated.
-        forms.append(("verb.part.asi", attach(_vowel_suffix_base(stem), "AсI", harmony)))
-    forms.append(("verb.masdar", masdar_form(stem, harmony)))
+        forms.append(
+            ("verb.part.asi", attach(_vowel_suffix_base(stem, voice_final), "AсI", harmony))
+        )
+    forms.append(("verb.masdar", masdar_form(stem, harmony, voice_final)))
+    # The infinitive is exactly the resolved indefinite-future base plus -GA.
+    # Lexical future overrides therefore determine it before this attachment.
+    forms.append(("verb.inf", attach(bases["verb.fut"], "GA")))
     forms.append(("verb.intent", attach(stem, "мAкчI", harmony)))
     return _apply_overrides(stem, forms, exceptions)
 
 
-def generate_deriv_forms(stem: str, harmony: str) -> list[tuple[str, str]]:
+def generate_deriv_forms(
+    stem: str, harmony: str, exceptions: Exceptions = EMPTY_EXCEPTIONS
+) -> list[tuple[str, str]]:
     """The frequent derivational suffixes of [stem] as (label, form) pairs."""
+    voice_final = stem not in exceptions.loanwords
+    devoiced_final = stem in exceptions.loanwords and stem[-1] in LOAN_DEVOICING_FINALS
     forms: list[tuple[str, str]] = []
     for label, pattern in DERIV_PATTERNS:
         base = (
-            _voice_final(_without_final_soft_sign(stem))
+            _voice_final(_without_final_soft_sign(stem), voice_final)
             if label == "deriv.rak"
             else stem
         )
-        forms.append((label, attach(base, pattern, harmony)))
+        forms.append((label, attach(base, pattern, harmony, devoiced_final)))
     return forms
 
 
@@ -793,7 +903,7 @@ def generate_all(
     for harmony in variants:
         forms.extend(generate_noun_forms(stem, harmony, exceptions))
         forms.extend(generate_verb_forms(stem, harmony, exceptions))
-        forms.extend(generate_deriv_forms(stem, harmony))
+        forms.extend(generate_deriv_forms(stem, harmony, exceptions))
     emitted = {label for label, _ in forms}
     for override_stem, label in exceptions.overrides:
         if override_stem == stem and label not in emitted:

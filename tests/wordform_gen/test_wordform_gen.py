@@ -37,10 +37,11 @@ EXCEPTIONS_FILE = ROOT / "scripts" / "wordform_exceptions_tat.tsv"
 # Changing the exceptions table changes the generated candidate forms;
 # re-pin in the same commit.
 EXPECTED_EXCEPTIONS_SHA256 = (
-    "9d45e6d6f81367cd7c3372e44b89bec0263d5cbc1c4a61d6b28c45cc67b1c19e"
+    "43d301466cda9705ce15adb143ccf868ae8622319beb7c851be6e311de15e64e"
 )
-EXPECTED_HARMONY_ROWS = 6
-EXPECTED_POSSESSIVE_BASE_ROWS = 1
+EXPECTED_HARMONY_ROWS = 23
+EXPECTED_LOAN_ROWS = 6
+EXPECTED_POSSESSIVE_BASE_ROWS = 2
 EXPECTED_PRONOUN_ROWS = 7
 EXPECTED_OVERRIDE_ROWS = 20
 
@@ -74,6 +75,7 @@ class ExceptionsPinTest(unittest.TestCase):
 
     def test_exceptions_row_counts(self):
         self.assertEqual(len(EXC.harmonies), EXPECTED_HARMONY_ROWS)
+        self.assertEqual(len(EXC.loanwords), EXPECTED_LOAN_ROWS)
         self.assertEqual(len(EXC.possessive_bases), EXPECTED_POSSESSIVE_BASE_ROWS)
         self.assertEqual(len(EXC.pronouns), EXPECTED_PRONOUN_ROWS)
         self.assertEqual(len(EXC.overrides), EXPECTED_OVERRIDE_ROWS)
@@ -104,16 +106,17 @@ class HarmonyTest(unittest.TestCase):
         self.assertIsNone(gen.harmony_of("б"))
         self.assertEqual(gen.harmony_variants("б"), ())
 
-    def test_dual_harmony_for_mixed_and_loans(self):
-        # совет = о+е: loans take back suffixes (советларга), but a surface
-        # rule cannot tell them from native front stems, so both are generated.
-        self.assertEqual(gen.harmony_variants("совет"), ("front", "back"))
-        self.assertEqual(gen.harmony_variants("цирк"), ("front", "back"))
+    def test_no_letter_based_dual_harmony(self):
+        # Only the last-syllable rule applies until a UD/SART-reviewed lexical
+        # row pins a different harmony. Mixed loans and markers do not fork.
+        self.assertEqual(gen.harmony_variants("совет"), ("front",))
+        self.assertEqual(gen.harmony_variants("цирк"), ("front",))
+        self.assertEqual(gen.harmony_variants("вазгыять"), ("front",))
         self.assertEqual(gen.harmony_variants("татар"), ("back",))
         self.assertEqual(gen.harmony_variants("исем"), ("front",))
 
     def test_lexical_harmony_override(self):
-        for stem in ("министр", "президент", "метр", "шрифт", "ел", "еш"):
+        for stem in ("министр", "президент", "метр", "шрифт", "ковид", "совет", "ел", "еш"):
             self.assertEqual(
                 gen.harmony_variants(stem, EXC.harmonies.get(stem)), ("back",), stem
             )
@@ -162,6 +165,14 @@ class ArchiphonemeTest(unittest.TestCase):
         self.assertEqual(self.render("GA", "җәмгыять", "back"), "ка")
         self.assertEqual(self.render("GA", "өй", "front"), "гә")
 
+    def test_reviewed_loan_devoicing(self):
+        self.assertEqual(gen.render_pattern("GA", "ковид", "back", True), "ка")
+        self.assertEqual(gen.render_pattern("DA", "завод", "back", True), "та")
+        self.assertEqual(gen.render_pattern("TAн", "ковид", "back", True), "тан")
+        # The flag never extends the final-consonant class to в or ж.
+        self.assertEqual(gen.render_pattern("GA", "призов", "back", True), "га")
+        self.assertEqual(gen.render_pattern("DA", "мираж", "back", True), "да")
+
     def test_l_assimilation(self):
         self.assertEqual(self.render("LAр", "татар", "back"), "лар")
         self.assertEqual(self.render("LAр", "урман", "back"), "нар")  # nasal н
@@ -202,11 +213,61 @@ class GoldenNounParadigmTest(unittest.TestCase):
                 ("noun.p3", "татары"),
                 ("noun.p1pl", "татарыбыз"),
                 ("noun.p2pl", "татарыгыз"),
+                ("noun.p1.gen", "татарымның"),
+                ("noun.p1.dat", "татарыма"),
+                ("noun.p1.acc", "татарымны"),
+                ("noun.p1.loc", "татарымда"),
+                ("noun.p1.abl", "татарымнан"),
+                ("noun.p2.gen", "татарыңның"),
+                ("noun.p2.dat", "татарыңа"),
+                ("noun.p2.acc", "татарыңны"),
+                ("noun.p2.loc", "татарыңда"),
+                ("noun.p2.abl", "татарыңнан"),
+                ("noun.p1pl.gen", "татарыбызның"),
+                ("noun.p1pl.dat", "татарыбызга"),
+                ("noun.p1pl.acc", "татарыбызны"),
+                ("noun.p1pl.loc", "татарыбызда"),
+                ("noun.p1pl.abl", "татарыбыздан"),
+                ("noun.p2pl.gen", "татарыгызның"),
+                ("noun.p2pl.dat", "татарыгызга"),
+                ("noun.p2pl.acc", "татарыгызны"),
+                ("noun.p2pl.loc", "татарыгызда"),
+                ("noun.p2pl.abl", "татарыгыздан"),
                 ("noun.p3pl", "татарлары"),
+                ("noun.p3.gen", "татарының"),
                 ("noun.p3.acc", "татарын"),
                 ("noun.p3.dat", "татарына"),
                 ("noun.p3.loc", "татарында"),
                 ("noun.p3.abl", "татарыннан"),
+                ("noun.p3pl.gen", "татарларының"),
+                ("noun.p3pl.acc", "татарларын"),
+                ("noun.p3pl.dat", "татарларына"),
+                ("noun.p3pl.loc", "татарларында"),
+                ("noun.p3pl.abl", "татарларыннан"),
+                ("noun.pl.p1", "татарларым"),
+                ("noun.pl.p1.gen", "татарларымның"),
+                ("noun.pl.p1.dat", "татарларыма"),
+                ("noun.pl.p1.acc", "татарларымны"),
+                ("noun.pl.p1.loc", "татарларымда"),
+                ("noun.pl.p1.abl", "татарларымнан"),
+                ("noun.pl.p2", "татарларың"),
+                ("noun.pl.p2.gen", "татарларыңның"),
+                ("noun.pl.p2.dat", "татарларыңа"),
+                ("noun.pl.p2.acc", "татарларыңны"),
+                ("noun.pl.p2.loc", "татарларыңда"),
+                ("noun.pl.p2.abl", "татарларыңнан"),
+                ("noun.pl.p1pl", "татарларыбыз"),
+                ("noun.pl.p1pl.gen", "татарларыбызның"),
+                ("noun.pl.p1pl.dat", "татарларыбызга"),
+                ("noun.pl.p1pl.acc", "татарларыбызны"),
+                ("noun.pl.p1pl.loc", "татарларыбызда"),
+                ("noun.pl.p1pl.abl", "татарларыбыздан"),
+                ("noun.pl.p2pl", "татарларыгыз"),
+                ("noun.pl.p2pl.gen", "татарларыгызның"),
+                ("noun.pl.p2pl.dat", "татарларыгызга"),
+                ("noun.pl.p2pl.acc", "татарларыгызны"),
+                ("noun.pl.p2pl.loc", "татарларыгызда"),
+                ("noun.pl.p2pl.abl", "татарларыгыздан"),
                 ("noun.pl.gen", "татарларның"),
                 ("noun.pl.dat", "татарларга"),
                 ("noun.pl.acc", "татарларны"),
@@ -242,11 +303,61 @@ class GoldenNounParadigmTest(unittest.TestCase):
                 ("noun.p3", "өйе"),
                 ("noun.p1pl", "өйебез"),
                 ("noun.p2pl", "өйегез"),
+                ("noun.p1.gen", "өйемнең"),
+                ("noun.p1.dat", "өйемә"),
+                ("noun.p1.acc", "өйемне"),
+                ("noun.p1.loc", "өйемдә"),
+                ("noun.p1.abl", "өйемнән"),
+                ("noun.p2.gen", "өйеңнең"),
+                ("noun.p2.dat", "өйеңә"),
+                ("noun.p2.acc", "өйеңне"),
+                ("noun.p2.loc", "өйеңдә"),
+                ("noun.p2.abl", "өйеңнән"),
+                ("noun.p1pl.gen", "өйебезнең"),
+                ("noun.p1pl.dat", "өйебезгә"),
+                ("noun.p1pl.acc", "өйебезне"),
+                ("noun.p1pl.loc", "өйебездә"),
+                ("noun.p1pl.abl", "өйебездән"),
+                ("noun.p2pl.gen", "өйегезнең"),
+                ("noun.p2pl.dat", "өйегезгә"),
+                ("noun.p2pl.acc", "өйегезне"),
+                ("noun.p2pl.loc", "өйегездә"),
+                ("noun.p2pl.abl", "өйегездән"),
                 ("noun.p3pl", "өйләре"),
+                ("noun.p3.gen", "өйенең"),
                 ("noun.p3.acc", "өйен"),
                 ("noun.p3.dat", "өйенә"),
                 ("noun.p3.loc", "өйендә"),
                 ("noun.p3.abl", "өйеннән"),
+                ("noun.p3pl.gen", "өйләренең"),
+                ("noun.p3pl.acc", "өйләрен"),
+                ("noun.p3pl.dat", "өйләренә"),
+                ("noun.p3pl.loc", "өйләрендә"),
+                ("noun.p3pl.abl", "өйләреннән"),
+                ("noun.pl.p1", "өйләрем"),
+                ("noun.pl.p1.gen", "өйләремнең"),
+                ("noun.pl.p1.dat", "өйләремә"),
+                ("noun.pl.p1.acc", "өйләремне"),
+                ("noun.pl.p1.loc", "өйләремдә"),
+                ("noun.pl.p1.abl", "өйләремнән"),
+                ("noun.pl.p2", "өйләрең"),
+                ("noun.pl.p2.gen", "өйләреңнең"),
+                ("noun.pl.p2.dat", "өйләреңә"),
+                ("noun.pl.p2.acc", "өйләреңне"),
+                ("noun.pl.p2.loc", "өйләреңдә"),
+                ("noun.pl.p2.abl", "өйләреңнән"),
+                ("noun.pl.p1pl", "өйләребез"),
+                ("noun.pl.p1pl.gen", "өйләребезнең"),
+                ("noun.pl.p1pl.dat", "өйләребезгә"),
+                ("noun.pl.p1pl.acc", "өйләребезне"),
+                ("noun.pl.p1pl.loc", "өйләребездә"),
+                ("noun.pl.p1pl.abl", "өйләребездән"),
+                ("noun.pl.p2pl", "өйләрегез"),
+                ("noun.pl.p2pl.gen", "өйләрегезнең"),
+                ("noun.pl.p2pl.dat", "өйләрегезгә"),
+                ("noun.pl.p2pl.acc", "өйләрегезне"),
+                ("noun.pl.p2pl.loc", "өйләрегездә"),
+                ("noun.pl.p2pl.abl", "өйләрегездән"),
                 ("noun.pl.gen", "өйләрнең"),
                 ("noun.pl.dat", "өйләргә"),
                 ("noun.pl.acc", "өйләрне"),
@@ -500,6 +611,7 @@ class GoldenVerbParadigmTest(unittest.TestCase):
                 ("verb.part.uci", "язучы"),
                 ("verb.part.asi", "язасы"),
                 ("verb.masdar", "язу"),
+                ("verb.inf", "язарга"),
                 ("verb.intent", "язмакчы"),
             ],
         )
@@ -529,12 +641,12 @@ class GoldenVerbParadigmTest(unittest.TestCase):
 
     def test_uku_present_is_regular_negatives_suppletive(self):
         # The contraction rule covers the present (укы→укый); the future and
-        # negative forms switch to the suppletive stem ук- (kaikki-attested).
+        # negative forms switch to the suppletive stem ук- (UD/kaikki-attested).
         uku = verb_forms("укы", "back")
         self.assertEqual(uku["verb.pres.3sg"], "укый")
         self.assertEqual(uku["verb.past.3sg"], "укыды")
         self.assertEqual(uku["verb.masdar"], "уку")
-        self.assertEqual(uku["verb.fut.3sg"], "укар")
+        self.assertEqual(uku["verb.fut.3sg"], "укыр")
         self.assertEqual(uku["verb.deffut.3sg"], "укачак")
         self.assertEqual(uku["verb.pres.neg.3sg"], "укмый")
         self.assertEqual(uku["verb.pres.neg.1sg"], "укмыйм")  # base re-derived
@@ -581,6 +693,27 @@ class GoldenVerbParadigmTest(unittest.TestCase):
             ("тор", "торар", "back"),
         ):
             self.assertNotIn(wrong, {form for _, form in gen.generate_all(stem, EXC)})
+
+    def test_infinitive_uses_resolved_indefinite_future(self):
+        for stem, harmony, future, infinitive in (
+            ("яз", "back", "язар", "язарга"),
+            ("кил", "front", "килер", "килергә"),
+            ("эшлә", "front", "эшләр", "эшләргә"),
+            ("куй", "back", "куяр", "куярга"),
+            ("укы", "back", "укыр", "укырга"),
+            ("әлсер", "front", "әлсерер", "әлсерергә"),
+            ("саклан", "back", "сакланыр", "сакланырга"),
+        ):
+            forms = verb_forms(stem, harmony)
+            self.assertEqual(forms["verb.fut.3sg"], future, stem)
+            self.assertEqual(forms["verb.inf"], infinitive, stem)
+        generated = {form for _, form in gen.generate_all("кил", EXC)}
+        for wrong in ("киләргә", "килергәгә", "килеркә"):
+            self.assertNotIn(wrong, generated)
+        self.assertNotIn("укарга", {form for _, form in gen.generate_all("укы", EXC)})
+        labels = [label for label, _ in gen.generate_verb_forms("яз", "back", EXC)]
+        self.assertEqual(labels.count("verb.inf"), 1)
+        self.assertNotIn("verb.fut.neg.inf", gen.KNOWN_LABELS)
 
     def test_masdar_glide_spelling(self):
         # -у/-ү after consonants and а/ә-stems; the -ю glide spelling after
@@ -676,6 +809,35 @@ class ExternalMorphologyRegressionTest(unittest.TestCase):
         generated = {form for _, form in gen.generate_all("тап", EXC)}
         for wrong in ("тапып", "тапалар", "тапу", "тапачак"):
             self.assertNotIn(wrong, generated)
+
+    def test_russian_loans_keep_final_ptk_unvoiced(self):
+        for stem, expected, wrong in (
+            ("парк", "паркы", "паргы"),
+            ("банк", "банкы", "бангы"),
+            ("суп", "супы", "субы"),
+        ):
+            forms = noun_forms(stem)
+            self.assertEqual(forms["noun.p3"], expected, stem)
+            generated = {form for _, form in gen.generate_all(stem, EXC)}
+            self.assertNotIn(wrong, generated)
+        generated_park = {form for _, form in gen.generate_all("парк", EXC)}
+        self.assertNotIn("паркбы", generated_park)
+        self.assertNotIn("паргы", generated_park)
+        self.assertEqual(noun_forms("халк")["noun.p3"], "халкы")
+
+    def test_russian_loan_suffix_devoicing(self):
+        self.assertEqual(noun_forms("ковид")["noun.dat"], "ковидка")
+        self.assertEqual(noun_forms("ковид")["noun.loc"], "ковидта")
+        self.assertEqual(noun_forms("ковид")["noun.abl"], "ковидтан")
+        self.assertEqual(noun_forms("завод")["noun.dat"], "заводка")
+        self.assertEqual(noun_forms("завод")["noun.loc"], "заводта")
+        self.assertEqual(noun_forms("клуб")["noun.dat"], "клубка")
+        generated = {form for _, form in gen.generate_all("ковид", EXC)}
+        for wrong in ("ковидга", "ковидда", "ковиддан", "ковидкә"):
+            self.assertNotIn(wrong, generated)
+        # Final в and ж stay outside the devoicing rule.
+        self.assertEqual(noun_forms("призов")["noun.dat"], "призовга")
+        self.assertEqual(noun_forms("мираж")["noun.loc"], "миражда")
 
     def test_first_person_plural_present_and_past(self):
         self.assert_verb("бар", "back", {
@@ -783,21 +945,55 @@ class ExternalMorphologyRegressionTest(unittest.TestCase):
         self.assertEqual(forms["noun.p1"], "халкым")
         self.assertEqual(forms["noun.p2"], "халкың")
         self.assertEqual(forms["noun.p3"], "халкы")
+        self.assertEqual(forms["noun.p3.gen"], "халкының")
         self.assertEqual(forms["noun.p3.acc"], "халкын")
         self.assertEqual(forms["noun.pl"], "халыклар")
         self.assertEqual(forms["noun.dat"], "халыкка")
         generated = {form for _, form in gen.generate_all("халык", EXC)}
-        for wrong in ("халыкым", "халыкың", "халыкы", "халыкын"):
+        for wrong in ("халыкым", "халыкың", "халыкы", "халыкын", "халыкының"):
             self.assertNotIn(wrong, generated)
 
-    def test_ay_3sg_possessive_contraction(self):
+    def test_lexical_possessive_alternation(self):
+        forms = noun_forms("ай", EXC.harmonies["ай"])
+        self.assertEqual(forms["noun.p3"], "ае")
+        self.assertEqual(forms["noun.p3.loc"], "аенда")
+        self.assertNotIn("айында", {form for _, form in gen.generate_all("ай", EXC)})
+
+    def test_first_second_possessive_cases_and_plural_bases(self):
+        expected = (
+            ("адрес", "back", "noun.p1.acc", "адресымны"),
+            ("сумка", "back", "noun.p1.acc", "сумкамны"),
+            ("корал", "back", "noun.p2.acc", "коралыңны"),
+            ("урын", "back", "noun.pl.p2pl.acc", "урыннарыгызны"),
+            ("кием", "front", "noun.pl.p1.acc", "киемнәремне"),
+            ("йола", "back", "noun.pl.p1pl", "йолаларыбыз"),
+            ("юл", "back", "noun.p1.dat", "юлыма"),
+            ("урман", "back", "noun.pl.p1", "урманнарым"),
+        )
+        generated = set()
+        for stem, harmony, label, expected_form in expected:
+            rows = gen.generate_noun_forms(stem, harmony, EXC)
+            generated.update(form for _, form in rows)
+            self.assertIn(expected_form, {form for lab, form in rows if lab == label}, label)
+            self.assertIn(label, gen.KNOWN_LABELS)
+        for wrong in (
+            "адресымныны", "сумкамга", "коралыңне", "юлымга",
+            "урыннарыгызныны", "киемнарымны", "йолаларыбызлар", "урманларым",
+        ):
+            self.assertNotIn(wrong, generated)
+
+    def test_ay_possessive_contraction(self):
         forms = noun_forms("малай")
-        self.assertEqual(forms["noun.p1"], "малайым")
-        self.assertEqual(forms["noun.p2"], "малайың")
+        self.assertEqual(forms["noun.p1"], "малаем")
+        self.assertEqual(forms["noun.p2"], "малаең")
         self.assertEqual(forms["noun.p3"], "малае")
         self.assertEqual(forms["noun.p3.acc"], "малаен")
+        self.assertEqual(noun_forms("сарай")["noun.p3"], "сарае")
+        self.assertEqual(noun_forms("чәй", "front")["noun.p3"], "чәе")
+        self.assertEqual(noun_forms("әбекәй", "front")["noun.p1.gen"], "әбекәемнең")
         generated = {form for _, form in gen.generate_all("малай", EXC)}
-        self.assertNotIn("малайы", generated)
+        for wrong in ("малайы", "малайым", "малайың"):
+            self.assertNotIn(wrong, generated)
         self.assertEqual(noun_forms("су")["noun.p3"], "суы")
 
     def test_u_final_converb(self):
@@ -906,10 +1102,10 @@ class ExtendedPersonTensesTest(unittest.TestCase):
         self.assertEqual(bar["verb.fut.2sg"], "барырсың")
         self.assertEqual(bar["verb.fut.1pl"], "барырбыз")
         self.assertEqual(bar["verb.fut.3pl"], "барырлар")
-        # The suppletive укы cluster drives every new family too (kaikki:
-        # укармын, укачаксыз, укмасбыз, укмаганнар).
+        # The suppletive укы cluster drives every new family too (UD/kaikki:
+        # укырмын, укачаксыз, укмасбыз, укмаганнар).
         uku = verb_forms("укы")
-        self.assertEqual(uku["verb.fut.1sg"], "укармын")
+        self.assertEqual(uku["verb.fut.1sg"], "укырмын")
         self.assertEqual(uku["verb.deffut.2pl"], "укачаксыз")
         self.assertEqual(uku["verb.fut.neg.1pl"], "укмасбыз")
         self.assertEqual(uku["verb.rpast.neg.3pl"], "укмаганнар")
@@ -1030,9 +1226,10 @@ class ExceptionsLoadingTest(unittest.TestCase):
 
     def test_valid_minimal_file(self):
         exc = self.load_text(
-            "# comment\n\nharmony\tел\tback\npossessive\tхалык\tхалк\n"
+            "# comment\n\nharmony\tел\tback\nloan\tпарк\tyes\npossessive\tхалык\tхалк\n"
         )
         self.assertEqual(exc.harmonies, {"ел": "back"})
+        self.assertEqual(exc.loanwords, frozenset({"парк"}))
         self.assertEqual(exc.possessive_bases, {"халык": "халк"})
 
     def test_unknown_kind(self):
@@ -1044,6 +1241,8 @@ class ExceptionsLoadingTest(unittest.TestCase):
             self.load_text("harmony\tел\n")
         with self.assertRaises(gen.ExceptionsError):
             self.load_text("possessive\tхалык\tхалк\textra\n")
+        with self.assertRaises(gen.ExceptionsError):
+            self.load_text("loan\tпарк\tauto\n")
 
     def test_bad_harmony_and_possessive_base(self):
         with self.assertRaises(gen.ExceptionsError):
@@ -1102,6 +1301,9 @@ class CandidatesTest(unittest.TestCase):
             ("язды", "яз", "verb.past.3sg"),
             ("язган", "яз", "verb.rpast.3sg"),
             ("язар", "яз", "verb.fut.3sg"),
+            ("язарга", "яз", "verb.inf"),
+            ("татарымны", "татар", "noun.p1.acc"),
+            ("татарларым", "татар", "noun.pl.p1"),
             ("язып", "яз", "verb.ger.ip"),
             ("язу", "яз", "verb.masdar"),
             ("китте", "кит", "verb.past.3sg"),
@@ -1113,10 +1315,8 @@ class CandidatesTest(unittest.TestCase):
             ("дуслык", "дус", "deriv.lik"),
             ("дусча", "дус", "deriv.ca"),
             ("мөмкинлек", "мөмкин", "deriv.lik"),
-            # Dual-harmony loan: both variants are candidates; the attestation
-            # stage keeps the attested one (советларга).
+            # UD-reviewed lexical harmony: only the back variant is a candidate.
             ("советларга", "совет", "noun.pl.dat"),
-            ("советләргә", "совет", "noun.pl.dat"),
             # The newer families: fut/cond/deffut/rpast persons, 1pl/3rd-person
             # imperatives, nominal predicates, the question-clitic layer.
             ("язармын", "яз", "verb.fut.1sg"),
@@ -1141,6 +1341,7 @@ class CandidatesTest(unittest.TestCase):
         self.assertNotIn(("яз", "яз", "verb.imp.2sg"), row_set)
         self.assertNotIn(("татар", "татар", "noun.pred.3sg"), row_set)
         self.assertNotIn("минләр", {form for form, _, _ in rows})
+        self.assertNotIn("советләргә", {form for form, _, _ in rows})
         self.assertEqual(stats["stems"], len(WORD_LIST))
 
     def test_family_counts(self):
@@ -1150,12 +1351,12 @@ class CandidatesTest(unittest.TestCase):
         self.assertEqual(
             families,
             {
-                "deriv": 105,
-                "noun": 299,
-                "noun.pred": 70,
-                "noun.pred.q": 82,
-                "verb": 1182,
-                "verb.q": 990,
+                "deriv": 91,
+                "noun": 857,
+                "noun.pred": 60,
+                "noun.pred.q": 72,
+                "verb": 1037,
+                "verb.q": 858,
             },
         )
 

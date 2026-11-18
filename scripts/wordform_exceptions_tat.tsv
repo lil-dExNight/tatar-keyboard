@@ -10,12 +10,17 @@
 # kind=harmony payload: back|front
 #   Forces one suffix harmony instead of the surface-vowel heuristic. Used for
 #   stems whose spelling does not reveal their suffix harmony (министры,
-#   президенты, метрга, шрифтларга; елның, ешрак).
+#   президенты, метрга, шрифтларга, ковидка; елның, ешрак).
+# kind=loan payload: yes
+#   Reviewed Russian loan. Stem-final п/к does not voice on vocalic bases
+#   (парк→паркы, суп→супы). Stem-final б/г/д/з assimilates G/D/T as voiceless
+#   by pronunciation (ковидка, заводка, заводта, клубка); в and ж are excluded.
 # kind=possessive payload: BASE
 #   Possessive-family forms (noun.p1/p2/p3/p1pl/p2pl and the noun.p3.* case
 #   forms built on noun.p3) attach to BASE after the regular final-consonant
 #   voicing and final-ь spelling rules; plural, case, p3pl, predicative and
-#   derivational forms stay on STEM. Used for lexical syncope (халык→халкы).
+#   derivational forms stay on STEM. Used for lexical alternations
+#   (халык→халкы, ай→аенда).
 # kind=pronoun  payload: FORM [<TAB>FORM ...]
 #   Suppletive paradigm: exactly these forms are emitted (label noun.pron) and
 #   regular noun generation for the stem is suppressed (мин → минем миңа …,
@@ -32,10 +37,34 @@ harmony	министр	back
 harmony	президент	back
 harmony	метр	back
 harmony	шрифт	back
+harmony	ковид	back
+harmony	совет	back
+harmony	объект	back
+harmony	рухани	back
+harmony	тарих	back
+harmony	проект	back
+harmony	студент	back
+harmony	монумент	back
+harmony	конфликт	back
+harmony	баһадир	back
+harmony	синоптик	back
+harmony	әдәбият	back
+harmony	комитет	back
+harmony	волонтер	back
+harmony	мюзикл	back
+harmony	орден	back
 harmony	ел	back
+harmony	ай	back
 harmony	еш	back
+loan	парк	yes
+loan	банк	yes
+loan	суп	yes
+loan	ковид	yes
+loan	завод	yes
+loan	клуб	yes
 possessive	халык	халк
-# Simple future of the -ыр/-ер monosyllable class (the rule generates -ар/-әр
+possessive	ай	ае
+# Indefinite future of the -ыр/-ер monosyllable class (the rule generates -ар/-әр
 # for monosyllables, -ыр/-ер for longer stems; these are lexical exceptions,
 # attested in SART and the Tatar morphology analyzer: барыр, бирер, белер,
 # булыр, алыр, әйтер, калыр, килер, торыр, тулыр, йөрер).
@@ -51,11 +80,11 @@ override	тор	verb.fut.3sg=торыр
 override	тул	verb.fut.3sg=тулыр
 override	йөр	verb.fut.3sg=йөрер
 # уку is suppletive: укы- for present/past (укый, укыды, укыган, уку) but ук-
-# before the future and the negative suffixes (kaikki-attested: укар, укачак,
-# укмый, укмас, укмыйча; укмады/укмаган from standard grammar). The 3sg
+# before the future and the negative suffixes (UD confirms укырга; укачак,
+# укмый, укмас, укмыйча and укмады/укмаган come from standard grammar). The 3sg
 # overrides re-derive their person forms (укмыйм, укмадым…).
 override	укы	verb.masdar=уку
-override	укы	verb.fut.3sg=укар
+override	укы	verb.fut.3sg=укыр
 override	укы	verb.deffut.3sg=укачак
 override	укы	verb.pres.neg.3sg=укмый
 override	укы	verb.fut.neg.3sg=укмас

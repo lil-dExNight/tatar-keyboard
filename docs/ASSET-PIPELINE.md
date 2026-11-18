@@ -118,9 +118,10 @@ These inputs are in the repository:
   combination was a drop-in improvement on every fixed domain. Rerun the comparison for new
   numbers; the recommendation record is the authority, not figures copied into documents.
 - `scripts/wordform_exceptions_tat.tsv`: exception rules for the Tatar word-form generator
-  (`scripts/wordform_gen.py`): lexical harmony, syncopated possessive bases, suppletive pronouns
-  and per-label overrides. Final-consonant voicing, soft-sign spelling and the glide/converb
-  allomorphs are generator rules, not table rows. Its SHA-256 is pinned in
+  (`scripts/wordform_gen.py`): lexical harmony, reviewed Russian loans, syncopated possessive
+  bases, suppletive pronouns and per-label overrides. Final-consonant voicing, soft-sign spelling
+  and the glide/converb allomorphs are generator rules, restricted by the lexical rows where
+  listed. Its SHA-256 is pinned in
   `tests/wordform_gen/`.
 - `scripts/bigram_extra_heads_tat.txt`: extra Tatar bigram heads (imperatives ranked below the
   head cutoff). The rule that produced the list is in the file header; do not add words by hand.

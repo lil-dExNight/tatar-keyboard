@@ -53,8 +53,7 @@ FIXTURE_LINES = [
         form("татарлар", "nominative", "plural"),
         form("татарның", "genitive"),
         form("татарым", "first-person", "nominative", "possessive", "singular"),
-        # Plural-possessed (татарларым): kaikki lists it in the p1 cell, the
-        # generator does not emit such combos, so it is filtered out.
+        # Plural-possessed татарларым shares kaikki's p1 cell with татарым.
         form("татарларым", "first-person", "nominative", "possessive", "singular"),
         form("tatar", "romanization"),
     ]),
@@ -77,7 +76,7 @@ FIXTURE_LINES = [
         form("язганбыз", "first-person", "indefinite", "indicative", "past", "plural"),
         form("яздык", "definite", "first-person", "indicative", "past", "plural"),
         form("язып", "error-unrecognized-form"),
-        # The -рга infinitive: no generator label, out of scope.
+        # The -рга infinitive is attributed to the resolved future base.
         form("язарга", "error-unrecognized-form"),
         form("язу", "noun-from-verb"),
     ]),
@@ -201,10 +200,10 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(self.report["stems_compared_verb"], 1)
 
     def test_recall_counts(self):
-        # 16 kaikki forms in shared cells; only язырсың is missed.
-        self.assertEqual(self.report["kaikki_in_scope_forms"], 16)
-        self.assertEqual(self.report["kaikki_covered_forms"], 15)
-        self.assertEqual(self.report["recall_pct"], 93.75)
+        # The plural possessive and infinitive are in scope; only язырсың is missed.
+        self.assertEqual(self.report["kaikki_in_scope_forms"], 18)
+        self.assertEqual(self.report["kaikki_covered_forms"], 17)
+        self.assertEqual(self.report["recall_pct"], 94.44)
         self.assertEqual(self.per_label["verb.fut.2sg"], {"kaikki": 2, "covered": 1, "extra": 0})
         self.assertEqual(self.report["missed_rows"], [("яз", "verb.fut.2sg", "язырсың")])
 
@@ -215,13 +214,24 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(self.per_label["verb.fut.neg.2sg"]["covered"], 1)
 
     def test_out_of_scope(self):
-        # татарларым (plural-possessed), язма/язмыйк (negative imperatives),
-        # язарга (the -рга infinitive).
-        self.assertEqual(self.report["kaikki_out_of_scope_forms"], 4)
+        # Only язма/язмыйк (negative imperatives) remain outside the generator.
+        self.assertEqual(self.report["kaikki_out_of_scope_forms"], 2)
 
     def test_nonfinite_attribution(self):
         self.assertEqual(self.per_label["verb.ger.ip"], {"kaikki": 1, "covered": 1, "extra": 0})
         self.assertEqual(self.per_label["verb.masdar"], {"kaikki": 1, "covered": 1, "extra": 0})
+        self.assertEqual(self.per_label["verb.inf"], {"kaikki": 1, "covered": 1, "extra": 0})
+
+    def test_plural_possessive_attribution(self):
+        self.assertEqual(self.per_label["noun.p1"], {"kaikki": 2, "covered": 2, "extra": 0})
+        self.assertEqual(
+            check.possessive_label_variants("noun.p1.acc"),
+            ("noun.p1.acc", "noun.pl.p1.acc"),
+        )
+        self.assertEqual(
+            check.possessive_label_variants("noun.p3.dat"),
+            ("noun.p3.dat", "noun.p3pl.dat"),
+        )
 
     def test_no_extra_on_covered_stems(self):
         self.assertEqual(self.report["our_extra_forms"], 0)
