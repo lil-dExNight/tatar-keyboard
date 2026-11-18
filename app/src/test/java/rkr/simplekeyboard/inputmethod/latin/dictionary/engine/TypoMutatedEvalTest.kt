@@ -646,7 +646,7 @@ class TypoMutatedEvalTest {
         private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_191
         private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_820
         private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_324
-        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_150
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_151
         private const val PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY = 0
         // The exact-only control: only a last-position deletion can be a prefix hit.
         private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 326

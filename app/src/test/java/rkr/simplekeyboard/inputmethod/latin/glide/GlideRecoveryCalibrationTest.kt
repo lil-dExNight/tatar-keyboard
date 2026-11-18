@@ -2060,10 +2060,10 @@ class GlideRecoveryCalibrationTest {
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts; the
         // asset rebuild rewrites both). Loop and eligible dwell rows make rows outnumber words.
-        private const val SET_SIZE = 5113
-        private const val SET_BYTES = 14028552
+        private const val SET_SIZE = 5114
+        private const val SET_BYTES = 14029338
         private const val SET_SHA256 =
-            "6cec501e22a5da64a63bb7c641ed803ee6e81d5e425cec8ac0ceb2502b7a4ebc"
+            "badd1466d67e45757f169e6a86b7677b3978f83e8a25afb1ed73e7f98bc0199d"
 
         // The per-class split of gatesRecoveryAndLatencyOnTheRealDictionary.
         private const val CLASS_COUNT = 7
