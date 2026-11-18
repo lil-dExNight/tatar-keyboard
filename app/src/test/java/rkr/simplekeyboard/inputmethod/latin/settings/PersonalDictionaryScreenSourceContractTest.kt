@@ -304,10 +304,10 @@ class PersonalDictionaryScreenSourceContractTest {
         // Every place that inflates the text-input row must run them through that one function.
         val inflations = Regex("R\\.layout\\.row_text_input").findAll(host).count()
         val applications = Regex("applyPrivateInputFlags\\(\\w+\\)").findAll(host).count()
-        assertEquals("each of the four fields — search, add-word and the two shortcut fields — " +
-                "applies the flags",
+        assertEquals("each field — search, add-word, the two shortcut fields and the backup " +
+                "password field — applies the flags",
             inflations, applications)
-        assertEquals(4, inflations)
+        assertEquals(5, inflations)
     }
 
     @Test
