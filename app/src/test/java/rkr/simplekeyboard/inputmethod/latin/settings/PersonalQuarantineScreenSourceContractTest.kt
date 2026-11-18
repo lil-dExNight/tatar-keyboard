@@ -214,8 +214,8 @@ class PersonalQuarantineScreenSourceContractTest {
     @Test
     fun everyActionOnTheCopyMakesTheScreenAskAgain() {
         assertEquals(
-            "restore, discard, erase-all and the per-language clear: four actions, four invalidations",
-            4,
+            "restore, discard, erase-all, per-language clear and inventory deletion re-read the copy",
+            5,
             Regex(Regex.escape("personalQuarantines = null")).findAll(host).count(),
         )
     }

@@ -230,6 +230,42 @@
     <string name="incognito_mode_summary">Nothing new is remembered</string>
     <!-- Entry row leading to the screen with the words the keyboard has saved -->
     <string name="personal_dictionary_screen">Saved words</string>
+    <!-- Counts-only inventory of every kind of personal data, with one delete action per category. -->
+    <string name="personal_inventory_screen">Personal data inventory</string>
+    <string name="personal_inventory_summary">See and delete each kind of saved data</string>
+    <string name="personal_inventory_intro">Only categories and counts are shown. Delete one category without changing the others.</string>
+    <string name="personal_inventory_loading">Reading saved data\u2026</string>
+    <string name="personal_inventory_locked">Unlock your device to see or delete saved data.</string>
+    <string name="personal_inventory_read_failed">Some saved data could not be read. Its count may be incomplete.</string>
+    <string name="personal_inventory_empty">Nothing is saved in these categories.</string>
+    <string name="personal_inventory_words">Saved words</string>
+    <string name="personal_inventory_words_description">Words saved for suggestions.</string>
+    <string name="personal_inventory_pairs">Learned word pairs</string>
+    <string name="personal_inventory_pairs_description">Word pairs saved for next-word predictions.</string>
+    <string name="personal_inventory_emoji">Learned emoji</string>
+    <string name="personal_inventory_emoji_description">Word and emoji pairs saved for suggestions.</string>
+    <string name="personal_inventory_sentence_starts">Sentence starts</string>
+    <string name="personal_inventory_sentence_starts_description">Words saved for sentence beginnings.</string>
+    <string name="personal_inventory_refused_corrections">Refused corrections</string>
+    <string name="personal_inventory_refused_corrections_description">Corrections you rejected.</string>
+    <string name="personal_inventory_text_shortcuts">Text shortcuts</string>
+    <string name="personal_inventory_text_shortcuts_description">Shortcuts and their expanded text.</string>
+    <string name="personal_inventory_pending">Pending learning counters</string>
+    <string name="personal_inventory_pending_description">Salted hashes that track learning before an entry is saved.</string>
+    <string name="personal_inventory_quarantine">Quarantined copies</string>
+    <string name="personal_inventory_quarantine_description">Copies set aside when saved data could not be read.</string>
+    <plurals name="personal_inventory_entries">
+        <item quantity="one">%1$d entry</item>
+        <item quantity="other">%1$d entries</item>
+    </plurals>
+    <plurals name="personal_inventory_files">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <string name="personal_inventory_delete">Delete</string>
+    <string name="personal_inventory_delete_confirm_title">Delete %1$s?</string>
+    <string name="personal_inventory_delete_confirm">Delete everything in this category? Other categories will not be changed. This cannot be undone.</string>
+    <string name="personal_inventory_delete_failed">Could not delete this category. Some of it is still saved.</string>
     <!-- Hint of the search field on the personal dictionary screen -->
     <string name="personal_dictionary_search_hint">Search</string>
     <!-- Row that opens a dialog for adding one word by hand -->

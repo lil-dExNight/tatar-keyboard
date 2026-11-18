@@ -20,7 +20,7 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `latin/dictionary/engine/` | `LatestOnlyPrefixEngine`, `MappedDictionaryEngine`, `CompositePrefixComputer`, `TdictPrefixIndex`, `TatBigrPrefixIndex`, typo recovery |
 | `latin/dictionary/storage/` | asset publishing (`AtomicDictionaryStore`, `AtomicBigramStore`), validators, artifact specs and pins |
 | `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`, `TrefFormat`), validators, snapshots |
-| `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, sentence starts, refused corrections, text shortcuts), learning gates, pending counters, quarantine, erase-all (`PersonalErasure`, `PersonalEraseAll`) |
+| `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, sentence starts, refused corrections, text shortcuts), learning gates, pending counters, quarantine, counts-only inventory and category deletion (`PersonalInventory`), erase-all (`PersonalErasure`, `PersonalEraseAll`) |
 | `latin/glide/` | glide decoder, gesture detector, path and key geometry |
 | `latin/emoji/` | emoji panel, search, skin tones, recents, emoji suggestions |
 | `latin/settings/`, `latin/setup/` | settings screens, onboarding |
@@ -416,7 +416,16 @@ from the settings screen, with no counters, no pending hashes and no learning.
   move preserves the original file, and a failed purge rewrite preserves the original quarantined
   copy. A pending-counter file that does not parse moves to its own slot
   (`pending-*.bin.quarantine`) with no notice: it holds only salted hashes that relearn by
-  themselves, and it is neither listed nor restored.
+  themselves, and it is counted with quarantined copies but never restored.
+- Personal data inventory (`PersonalInventory`, `PersonalInventoryEngine`): the settings screen
+  reads only per-category counts, never the stored words. Saved words, learned pairs, learned
+  emoji, sentence starts, refused corrections and text shortcuts are counted from their opened
+  stores; pending counters are counted separately from their salted hashes, and quarantine by
+  file. A confirmed category deletion runs on the shared worker, updates the live stores and
+  immediately returns a fresh snapshot. Entry deletion leaves pending counters and quarantined
+  copies in place; pending deletion removes counters and salts but not their quarantined copies;
+  quarantine deletion removes only copies. Before the first unlock the screen shows no counts and
+  deletion does not touch the files.
 - Deletion: deleting a saved word, pair or learned emoji also purges it from the quarantined
   copy, so a later quarantine restore can never bring a reported deletion back. The purge fails
   closed: a copy that was not read to its end may still hold the entry in the unread part, so

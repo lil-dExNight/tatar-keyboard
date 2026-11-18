@@ -49,7 +49,7 @@ internal class PersonalBigramStore(
     private val unlockGate: () -> Boolean = { true },
     private val maxPairs: Int = TpersbFormat.MAX_PERSONAL_BIGRAM_PAIRS.toInt(),
     private val quarantineNotice: PersonalQuarantineNotice? = null,
-) {
+) : PersonalInventoryTarget {
     private val alphabet: Set<Int>? = PersonalSubtypes.alphabetFor(subtypeId)
 
     // Worker-confined state (touched only on [executor]).
@@ -282,6 +282,48 @@ internal class PersonalBigramStore(
             deleted { deleteFile(directory, File(directory, pendingQuarantineFileName())) }
         }
         report(outcome, storeGone && countersGone && saltGone && quarantineGone)
+    }
+
+    override fun readInventoryOnWorker(): PersonalStoreInventory {
+        loadFailed = false
+        val available = open()
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+        val pendingData = directory != null && (pending.size > 0 ||
+            File(directory, pendingFileName()).isFile || File(directory, saltFileName()).isFile)
+        return PersonalStoreInventory(
+            available,
+            if (available) snapshot.size else 0,
+            if (available) pending.size else 0,
+            pendingData,
+        )
+    }
+
+    override fun clearEntriesOnWorker(): Boolean {
+        if (!unlockGate()) return false
+        entries = PersonalBigramEntries.empty(maxPairs)
+        counterFlushPending = false
+        snapshot = PersonalBigramDictionary.EMPTY
+        val storeGone = deleted { deleteFile() }
+        loaded = false
+        loadFailed = false
+        val opened = open()
+        return storeGone && opened
+    }
+
+    override fun clearPendingOnWorker(): Boolean {
+        if (!unlockGate()) return false
+        pending = PendingCounters.EMPTY
+        pendingDirty = false
+        salt = null
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+        val countersGone = directory != null &&
+            deleted { deleteFile(directory, File(directory, pendingFileName())) }
+        val saltGone = directory != null &&
+            deleted { deleteFile(directory, File(directory, saltFileName())) }
+        loaded = false
+        loadFailed = false
+        val opened = open()
+        return countersGone && saltGone && opened
     }
 
     /** Replaces the whole store from a backup. See [PersonalDictionaryStore.replaceAll]. */

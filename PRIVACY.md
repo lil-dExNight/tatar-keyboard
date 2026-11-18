@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Version:** 1.14 — 2026-11-15
+**Version:** 1.15 — 2026-11-18
 
 Tatar Keyboard keeps what you type **on your device**.
 
@@ -101,6 +101,10 @@ Keyboard settings → Preferences → “Text shortcuts” holds the shortcuts y
 - Leading and trailing whitespace is trimmed from each shortcut and its expansion before saving. Nothing is added from your typing: a shortcut exists only if you saved it on this screen or restored it from a backup file. At most 500 shortcuts, one list for all languages.
 - The shortcuts live in the same credential-protected `no_backup/` folder as the saved words. Before the first unlock after a restart, nothing is read or written. They are never backed up by Android and never synced; they travel in a backup file you save yourself (see Backup).
 - **How to erase it.** “Delete” on each shortcut, or “Erase everything saved.”
+
+## Personal data inventory
+
+Keyboard settings → Preferences → “Personal data inventory” shows saved words, learned word pairs, learned emoji, sentence starts, refused corrections, text shortcuts, pending counters and quarantined copies as descriptions and counts only; it does not display the stored words or expansions. Every non-empty category can be deleted after confirmation without changing the others. Deleting pending counters also deletes their salts; deleting quarantined copies does not delete the readable saved entries. The same screen keeps “Erase everything saved”; recently used emoji are still cleared by their existing action or by erase-everything.
 
 ## Erase everything saved
 

@@ -46,6 +46,8 @@ import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalErasure
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalInventoryCategory
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalInventorySnapshot
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
@@ -80,6 +82,7 @@ class SettingsHostActivity : Activity() {
         // Title is the language display name, set dynamically in showScreen.
         LANGUAGE_DETAIL(0),
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
+        PERSONAL_INVENTORY(R.string.personal_inventory_screen),
         LEGAL(R.string.settings_screen_legal),
         TEXT_SHORTCUTS(R.string.text_shortcuts_screen),
         BACKUP(R.string.settings_screen_backup)
@@ -159,6 +162,12 @@ class SettingsHostActivity : Activity() {
     private var personalEmojiQuarantines: Map<String, PersonalQuarantineReport>? = null
 
     /**
+     * The counts shown by the personal-data inventory, or null while not read yet. Counts only;
+     * no stored word is kept here. Reset on every start and after every category deletion.
+     */
+    private var personalInventorySnapshot: PersonalInventorySnapshot? = null
+
+    /**
      * Whether the personal directory holds any file, or null while not read yet. Read on the
      * store worker like [personalQuarantines]; reset on every start and finished mutation.
      */
@@ -236,6 +245,7 @@ class SettingsHostActivity : Activity() {
     override fun onStart() {
         super.onStart()
         personalSavedFiles = null
+        personalInventorySnapshot = null
         // Rebuild the visible screen every time the activity returns to the
         // foreground: the language list, enabled-layout summaries and restriction
         // state are re-read, so external changes are picked up.
@@ -287,7 +297,10 @@ class SettingsHostActivity : Activity() {
         }
         detailLocale = detail
         // A repaint of the same screen keeps the answer; arriving from another screen re-reads it.
-        if (screen != currentScreen) personalSavedFiles = null
+        if (screen != currentScreen) {
+            personalSavedFiles = null
+            personalInventorySnapshot = null
+        }
         currentScreen = screen
         restrictionKeys = Settings.readStringSetTolerant(prefs, Settings.ACTIVE_RESTRICTIONS, null)
                 ?: emptySet()
@@ -306,6 +319,7 @@ class SettingsHostActivity : Activity() {
             Screen.LANGUAGES -> buildLanguagesScreen()
             Screen.LANGUAGE_DETAIL -> buildLanguageDetailScreen(detail!!)
             Screen.PERSONAL_DICTIONARY -> buildPersonalDictionaryScreen()
+            Screen.PERSONAL_INVENTORY -> buildPersonalInventoryScreen()
             Screen.TEXT_SHORTCUTS -> buildTextShortcutsScreen()
             Screen.LEGAL -> buildLegalScreen()
             Screen.BACKUP -> buildBackupScreen()
@@ -761,6 +775,8 @@ class SettingsHostActivity : Activity() {
             navigateTo(Screen.PERSONAL_DICTIONARY)
         }, linkRow(R.string.text_shortcuts_screen, R.string.text_shortcuts_summary) {
             navigateTo(Screen.TEXT_SHORTCUTS)
+        }, linkRow(R.string.personal_inventory_screen, R.string.personal_inventory_summary) {
+            navigateTo(Screen.PERSONAL_INVENTORY)
         }))
         // A data action, not an appearance toggle: its own card at the end of Preferences.
         // Erasing recent emoji is a confirmed, one-way action; it does not belong on the
@@ -912,6 +928,137 @@ class SettingsHostActivity : Activity() {
                 showErasePersonalDictionaryDialog(subtypeIds)
             }))
         }
+    }
+
+    /**
+     * The compact personal-data inventory: one row per category, its description and entry count,
+     * and a confirmed delete action for a non-empty category. Counts never come with stored words.
+     */
+    private fun buildPersonalInventoryScreen() {
+        val controller = PersonalInventoryScreenController(this)
+        val subtypeIds = personalSubtypeIds()
+        val snapshot = personalInventorySnapshot
+        if (snapshot == null) {
+            addCard(listOf(textRow(getString(R.string.personal_inventory_loading))))
+            controller.snapshot(subtypeIds) { found ->
+                if (isFinishing || isDestroyed) return@snapshot
+                personalInventorySnapshot = found
+                if (currentScreen == Screen.PERSONAL_INVENTORY) {
+                    showScreen(Screen.PERSONAL_INVENTORY)
+                }
+            }
+            return
+        }
+        if (!snapshot.unlocked) {
+            addCard(listOf(textRow(getString(R.string.personal_inventory_locked))))
+            return
+        }
+
+        addCard(listOf(textRow(getString(R.string.personal_inventory_intro))))
+        if (!snapshot.complete) {
+            addCard(listOf(textRow(getString(R.string.personal_inventory_read_failed))))
+        }
+        if (snapshot.isEmpty) {
+            addCard(listOf(textRow(getString(R.string.personal_inventory_empty))))
+        }
+        val rows = ArrayList<View>()
+        for (category in PersonalInventoryCategory.values()) {
+            val count = snapshot.countOf(category)
+            val countText = resources.getQuantityString(
+                if (category == PersonalInventoryCategory.QUARANTINE) {
+                    R.plurals.personal_inventory_files
+                } else {
+                    R.plurals.personal_inventory_entries
+                },
+                count,
+                count,
+            )
+            val deletable = snapshot.hasData(category)
+            val summary = getString(personalInventoryDescriptionRes(category)) + "\n" + countText +
+                if (deletable) " · " + getString(R.string.personal_inventory_delete) else ""
+            if (deletable) {
+                rows.add(linkRow(getString(personalInventoryTitleRes(category)), summary) {
+                    showPersonalInventoryDeleteDialog(controller, category)
+                }.also { it.findViewById<View>(R.id.row_chevron).visibility = View.GONE })
+            } else {
+                rows.add(inflateRow(R.layout.row_link,
+                    getString(personalInventoryTitleRes(category)), summary).also {
+                    it.findViewById<View>(R.id.row_chevron).visibility = View.GONE
+                    it.isClickable = false
+                    it.isFocusable = false
+                    it.foreground = null
+                })
+            }
+        }
+        addCard(rows)
+        addCard(listOf(actionRow(R.string.personal_dictionary_erase_all) {
+            showErasePersonalDictionaryDialog(subtypeIds)
+        }))
+    }
+
+    private fun personalInventoryTitleRes(category: PersonalInventoryCategory): Int =
+        when (category) {
+            PersonalInventoryCategory.WORDS -> R.string.personal_inventory_words
+            PersonalInventoryCategory.PAIRS -> R.string.personal_inventory_pairs
+            PersonalInventoryCategory.EMOJI -> R.string.personal_inventory_emoji
+            PersonalInventoryCategory.SENTENCE_STARTS -> R.string.personal_inventory_sentence_starts
+            PersonalInventoryCategory.REFUSED_CORRECTIONS ->
+                R.string.personal_inventory_refused_corrections
+            PersonalInventoryCategory.TEXT_SHORTCUTS -> R.string.personal_inventory_text_shortcuts
+            PersonalInventoryCategory.PENDING_COUNTERS -> R.string.personal_inventory_pending
+            PersonalInventoryCategory.QUARANTINE -> R.string.personal_inventory_quarantine
+        }
+
+    private fun personalInventoryDescriptionRes(category: PersonalInventoryCategory): Int =
+        when (category) {
+            PersonalInventoryCategory.WORDS -> R.string.personal_inventory_words_description
+            PersonalInventoryCategory.PAIRS -> R.string.personal_inventory_pairs_description
+            PersonalInventoryCategory.EMOJI -> R.string.personal_inventory_emoji_description
+            PersonalInventoryCategory.SENTENCE_STARTS ->
+                R.string.personal_inventory_sentence_starts_description
+            PersonalInventoryCategory.REFUSED_CORRECTIONS ->
+                R.string.personal_inventory_refused_corrections_description
+            PersonalInventoryCategory.TEXT_SHORTCUTS ->
+                R.string.personal_inventory_text_shortcuts_description
+            PersonalInventoryCategory.PENDING_COUNTERS -> R.string.personal_inventory_pending_description
+            PersonalInventoryCategory.QUARANTINE -> R.string.personal_inventory_quarantine_description
+        }
+
+    /** Confirms one category, then repaints from the counts read after the deletion completed. */
+    private fun showPersonalInventoryDeleteDialog(
+        controller: PersonalInventoryScreenController,
+        category: PersonalInventoryCategory,
+    ) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.personal_inventory_delete_confirm_title,
+                getString(personalInventoryTitleRes(category))))
+            .setMessage(R.string.personal_inventory_delete_confirm)
+            .setPositiveButton(R.string.personal_inventory_delete) { _, _ ->
+                controller.clear(category, personalSubtypeIds()) { cleared, snapshot ->
+                    if (isFinishing || isDestroyed) return@clear
+                    personalInventorySnapshot = snapshot
+                    personalSavedFiles = null
+                    if (category == PersonalInventoryCategory.QUARANTINE) {
+                        personalQuarantines = null
+                        personalPairQuarantines = null
+                        personalEmojiQuarantines = null
+                    }
+                    if (!cleared) {
+                        Toast.makeText(this, R.string.personal_inventory_delete_failed,
+                            Toast.LENGTH_LONG).show()
+                    }
+                    if (currentScreen == Screen.PERSONAL_INVENTORY) {
+                        showScreen(Screen.PERSONAL_INVENTORY)
+                    }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+            .also { dialog ->
+                DialogUtils.filterObscuredTouches(dialog)
+                dialog.show()
+            }
     }
 
     /**
@@ -1399,6 +1546,7 @@ class SettingsHostActivity : Activity() {
                                         personalQuarantines = null
                                         personalPairQuarantines = null
                                         personalEmojiQuarantines = null
+                                        personalInventorySnapshot = null
                                         val erasedAll = erased && recentsCleared
                                         afterPersonalMutation(erasedAll,
                                                 R.string.personal_dictionary_erase_failed)
@@ -1429,6 +1577,9 @@ class SettingsHostActivity : Activity() {
         }
         if (currentScreen == Screen.PERSONAL_DICTIONARY) {
             showScreen(Screen.PERSONAL_DICTIONARY)
+        } else if (currentScreen == Screen.PERSONAL_INVENTORY) {
+            personalInventorySnapshot = null
+            showScreen(Screen.PERSONAL_INVENTORY)
         }
     }
 

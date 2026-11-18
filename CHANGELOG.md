@@ -54,6 +54,10 @@ These hold for every release:
 - The privacy policy exists in Tatar (PRIVACY.tt.md), and the Tatar UI links to it.
 - The Tatar same-stem boost knows the present-tense first-person-plural suffixes -абыз/-әбез
   and the interrogative clitic -мы/-ме, matching the word-form generator.
+- The personal data inventory shows what is stored and how many entries each category holds,
+  including refused corrections, sentence starts, pending counters and quarantined copies. Each
+  category can be deleted separately after confirmation without changing the others; the existing
+  erase-everything action and its final empty-state check remain.
 
 ### Changed
 

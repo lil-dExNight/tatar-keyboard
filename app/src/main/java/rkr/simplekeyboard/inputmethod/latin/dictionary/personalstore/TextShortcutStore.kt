@@ -44,7 +44,7 @@ internal class TextShortcutStore(
     private val validator: TcutValidator = TcutValidator(),
     private val unlockGate: () -> Boolean = { true },
     private val maxEntries: Int = TcutFormat.MAX_SHORTCUT_ENTRIES.toInt(),
-) {
+) : PersonalInventoryTarget {
     // Worker-confined state (touched only on [executor]).
     private var pairs: TextShortcuts = TextShortcuts.EMPTY
     private var loaded = false
@@ -180,6 +180,33 @@ internal class TextShortcutStore(
             false
         }
         report(outcome, fileGone && quarantineGone)
+    }
+
+    override fun readInventoryOnWorker(): PersonalStoreInventory {
+        loadFailed = false
+        val available = open()
+        return PersonalStoreInventory(
+            available,
+            if (available) snapshot.size else 0,
+            0,
+            false,
+        )
+    }
+
+    override fun clearEntriesOnWorker(): Boolean {
+        if (!unlockGate()) return false
+        pairs = TextShortcuts.EMPTY
+        snapshot = TextShortcuts.EMPTY
+        val fileGone = try {
+            deleteFile()
+            true
+        } catch (_: Exception) {
+            false
+        }
+        loaded = false
+        loadFailed = false
+        val opened = open()
+        return fileGone && opened
     }
 
     /**

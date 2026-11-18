@@ -47,7 +47,7 @@ internal class RefusedCorrectionStore(
     private val validator: TrefValidator = TrefValidator(),
     private val unlockGate: () -> Boolean = { true },
     private val maxEntries: Int = TrefFormat.MAX_REFUSED_ENTRIES.toInt(),
-) {
+) : PersonalInventoryTarget {
     // Worker-confined state (touched only on [executor]).
     private var pairs: RefusedCorrections = RefusedCorrections.EMPTY
     private var loaded = false
@@ -109,6 +109,28 @@ internal class RefusedCorrectionStore(
         val quarantineGone = directory != null &&
             deleted { deleteFile(directory, File(directory, quarantineFileName())) }
         report(outcome, fileGone && quarantineGone)
+    }
+
+    override fun readInventoryOnWorker(): PersonalStoreInventory {
+        loadFailed = false
+        val available = open()
+        return PersonalStoreInventory(
+            available,
+            if (available) snapshot.size else 0,
+            0,
+            false,
+        )
+    }
+
+    override fun clearEntriesOnWorker(): Boolean {
+        if (!unlockGate()) return false
+        pairs = RefusedCorrections.EMPTY
+        snapshot = RefusedCorrections.EMPTY
+        val fileGone = deleted { deleteFile() }
+        loaded = false
+        loadFailed = false
+        val opened = open()
+        return fileGone && opened
     }
 
     /**

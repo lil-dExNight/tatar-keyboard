@@ -51,7 +51,7 @@ internal class SentStartOverlayStore(
     private val unlockGate: () -> Boolean = { true },
     private val maxEntries: Int = TsentFormat.MAX_SENTSTART_ENTRIES.toInt(),
     private val quarantineNotice: PersonalQuarantineNotice? = null,
-) {
+) : PersonalInventoryTarget {
     private val alphabet: Set<Int>? = PersonalSubtypes.alphabetFor(subtypeId)
 
     // Worker-confined state (touched only on [executor]).
@@ -179,6 +179,48 @@ internal class SentStartOverlayStore(
             deleted { deleteFile(directory, File(directory, pendingQuarantineFileName())) }
         }
         report(outcome, fileGone && countersGone && saltGone && quarantineGone)
+    }
+
+    override fun readInventoryOnWorker(): PersonalStoreInventory {
+        loadFailed = false
+        val available = open()
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+        val pendingData = directory != null && (pending.size > 0 ||
+            File(directory, pendingFileName()).isFile || File(directory, saltFileName()).isFile)
+        return PersonalStoreInventory(
+            available,
+            if (available) snapshot.topWords().size else 0,
+            if (available) pending.size else 0,
+            pendingData,
+        )
+    }
+
+    override fun clearEntriesOnWorker(): Boolean {
+        if (!unlockGate()) return false
+        entries = SentStartOverlayEntries.empty(maxEntries)
+        pendingCounterFlush = false
+        snapshot = SentStartOverlay.EMPTY
+        val fileGone = deleted { deleteFile() }
+        loaded = false
+        loadFailed = false
+        val opened = open()
+        return fileGone && opened
+    }
+
+    override fun clearPendingOnWorker(): Boolean {
+        if (!unlockGate()) return false
+        pending = PendingCounters.EMPTY
+        pendingDirty = false
+        salt = null
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+        val countersGone = directory != null &&
+            deleted { deleteFile(directory, File(directory, pendingFileName())) }
+        val saltGone = directory != null &&
+            deleted { deleteFile(directory, File(directory, saltFileName())) }
+        loaded = false
+        loadFailed = false
+        val opened = open()
+        return countersGone && saltGone && opened
     }
 
     /** Clears the notice marks. See [PersonalDictionaryStore.noticeDelivered]. */
