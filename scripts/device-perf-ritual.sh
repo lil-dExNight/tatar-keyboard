@@ -234,6 +234,7 @@ DEALLOC_TIMER_MS=10000
 CLK_TCK=$(getconf CLK_TCK 2>/dev/null || echo 100)
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT/scripts/instrumentation-verdict.sh"
 OUTDIR="${OUTDIR:-$ROOT/build/device-perf-ritual}"
 mkdir -p "$OUTDIR"
 RESULTS="$OUTDIR/result.txt"
@@ -1406,7 +1407,7 @@ if leg_on first-glide; then
             esac
         done < "$OUTDIR/first-glide-instrumentation.txt"
         if [ "$instrument_rc" != 0 ] || [ "$cold_results" != 1 ] || [ "$warm_results" != 1 ] \
-                || ! grep -q '^INSTRUMENTATION_CODE: -1' "$OUTDIR/first-glide-instrumentation.txt"; then
+                || ! instrumentation_log_succeeded "$OUTDIR/first-glide-instrumentation.txt"; then
             result FAIL first-glide "runner=$runner rc=$instrument_rc cold_results=$cold_results warm_results=$warm_results; see first-glide-instrumentation.txt"
         fi
         select_ours

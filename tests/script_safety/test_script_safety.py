@@ -15,6 +15,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 DEVICE_PERF = ROOT / "scripts" / "device-perf-ritual.sh"
 EMULATOR_SMOKE = ROOT / "scripts" / "emulator-smoke.sh"
+EMULATOR_RELEASE = ROOT / "scripts" / "emulator-release-validation.sh"
+INSTRUMENTATION_VERDICT = ROOT / "scripts" / "instrumentation-verdict.sh"
 NO_INTERNET = ROOT / "scripts" / "check-no-internet.sh"
 BACKUP_DOMAINS = (
     "file",
@@ -30,7 +32,7 @@ BACKUP_DOMAINS = (
 def shell_function(path: Path, name: str) -> str:
     """Return one shell function so its real body can run inside a fixture."""
     match = re.search(
-        rf"(?ms)^{re.escape(name)}\(\) \{{\n.*?^\}}$", path.read_text(encoding="utf-8")
+        rf"(?ms)^{re.escape(name)}\(\) \{{[^\n]*\n.*?^\}}$", path.read_text(encoding="utf-8")
     )
     if match is None:
         raise AssertionError(f"shell function {name} not found in {path}")
@@ -45,6 +47,118 @@ def run_bash(source: str, *arguments: str, env: dict[str, str] | None = None) ->
         text=True,
         env=env,
     )
+
+
+class EmulatorInstrumentationTest(unittest.TestCase):
+    """Release validation reports every instrumentation failure marker as FAIL."""
+
+    SUCCESS_LOG = (
+        "INSTRUMENTATION_STATUS: class=fixture.Class\n"
+        "INSTRUMENTATION_STATUS: test=fieldSwitch\n"
+        "INSTRUMENTATION_STATUS_CODE: 1\n"
+        "INSTRUMENTATION_STATUS: class=fixture.Class\n"
+        "INSTRUMENTATION_STATUS_CODE: 0\n"
+        "OK (1 test)\n"
+        "INSTRUMENTATION_CODE: -1\n"
+    )
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.directory = Path(self.temporary_directory.name)
+        self.fixture = self.directory / "fixture-instrumentation.txt"
+        self.instrument = shell_function(EMULATOR_RELEASE, "instrument")
+
+    def run_instrument(
+        self, log: str, return_code: int = 0
+    ) -> subprocess.CompletedProcess[str]:
+        self.fixture.write_text(log, encoding="utf-8")
+        harness = textwrap.dedent(
+            """
+            set -uo pipefail
+            source "$INSTRUMENTATION_VERDICT"
+            DEBUG_PKG=fixture.package
+            RESULTS=$1/result.txt
+            : > "$RESULTS"
+            FAILURES=0
+            result() {
+                local line="RESULT|$1|$2|$3"
+                echo "$line"
+                echo "$line" >> "$RESULTS"
+                [ "$1" = "FAIL" ] && FAILURES=$((FAILURES + 1)) || true
+            }
+            SHELL() {
+                cat "$INSTRUMENT_FIXTURE"
+                return "$INSTRUMENT_RC"
+            }
+            """
+        )
+        harness += self.instrument + "\n"
+        harness += textwrap.dedent(
+            """
+            instrument "$1" field-switch.log fixture.Class api.29.field-switch
+            [ "$FAILURES" -eq 0 ]
+            """
+        )
+        environment = os.environ.copy()
+        environment["INSTRUMENTATION_VERDICT"] = str(INSTRUMENTATION_VERDICT)
+        environment["INSTRUMENT_FIXTURE"] = str(self.fixture)
+        environment["INSTRUMENT_RC"] = str(return_code)
+        return run_bash(harness, str(self.directory), env=environment)
+
+    def assert_failed(self, result: subprocess.CompletedProcess[str]) -> None:
+        output = result.stdout + result.stderr
+        self.assertNotEqual(0, result.returncode, output)
+        self.assertIn("RESULT|FAIL|api.29.field-switch|", output)
+        self.assertNotIn("RESULT|PASS|", output)
+
+    def test_a_successful_run_passes(self) -> None:
+        result = self.run_instrument(self.SUCCESS_LOG)
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("RESULT|PASS|api.29.field-switch|", output)
+        self.assertNotIn("RESULT|FAIL|", output)
+
+    def test_a_zero_failure_summary_still_passes(self) -> None:
+        log = self.SUCCESS_LOG.replace(
+            "OK (1 test)", "Tests run: 1, Failures: 0, Errors: 0"
+        )
+        result = self.run_instrument(log)
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("RESULT|PASS|api.29.field-switch|", output)
+
+    def test_a_failed_test_is_not_hidden_by_the_final_code(self) -> None:
+        log = self.SUCCESS_LOG.replace(
+            "INSTRUMENTATION_STATUS_CODE: 1", "INSTRUMENTATION_STATUS_CODE: -2"
+        ).replace(
+            "OK (1 test)",
+            "FAILURES!!!\nTests run: 1, Failures: 1, Errors: 0",
+        )
+        self.assert_failed(self.run_instrument(log))
+
+    def test_each_failure_marker_fails(self) -> None:
+        cases = {
+            "test status code": self.SUCCESS_LOG.replace(
+                "INSTRUMENTATION_STATUS_CODE: 1", "INSTRUMENTATION_STATUS_CODE: -2"
+            ),
+            "failure banner": self.SUCCESS_LOG.replace(
+                "OK (1 test)",
+                "FAILURES!!!\nTests run: 1, Failures: 1, Errors: 0",
+            ),
+            "failure count": self.SUCCESS_LOG.replace(
+                "OK (1 test)", "Tests run: 1, Failures: 1, Errors: 0"
+            ),
+            "missing final code": self.SUCCESS_LOG.replace(
+                "INSTRUMENTATION_CODE: -1\n", ""
+            ),
+        }
+        for name, log in cases.items():
+            with self.subTest(name=name):
+                self.assert_failed(self.run_instrument(log))
+
+    def test_a_nonzero_runner_exit_fails(self) -> None:
+        self.assert_failed(self.run_instrument(self.SUCCESS_LOG, return_code=1))
 
 
 class DeviceStateRestoreTest(unittest.TestCase):

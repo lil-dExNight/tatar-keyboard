@@ -175,6 +175,7 @@ done
 [ -d "$SDK_ROOT/build-tools" ] || { echo "ERROR: build-tools not found under $SDK_ROOT" >&2; exit 2; }
 
 source "$ROOT/scripts/build-tools-pin.sh"
+source "$ROOT/scripts/instrumentation-verdict.sh"
 if [ -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN" ]; then
     TOOL_ROOT="$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN"
 else
@@ -335,7 +336,7 @@ instrument() { # instrument <api-dir> <log-name> <class> <check>
         "$DEBUG_PKG.test/android.test.InstrumentationTestRunner" >"$directory/$output" 2>&1
     rc=$?
     cat "$directory/$output"
-    if [ "$rc" = 0 ] && grep -q '^INSTRUMENTATION_CODE: -1' "$directory/$output"; then
+    if [ "$rc" = 0 ] && instrumentation_log_succeeded "$directory/$output"; then
         result PASS "$check" "$class"
     else
         result FAIL "$check" "rc=$rc class=$class log=$directory/$output"
