@@ -840,9 +840,9 @@ class PersonalizationEvalTest {
             "rep.oracle" to 89_169L, "rep.realistic" to 89_169L, "rep.fixed" to 89_169L,
         )
         private val PIN_EMPTY_OBSERVATIONS = mapOf(
-            "hash.oracle" to 792L, "hash.realistic" to 792L, "hash.fixed" to 792L,
-            "chrono.oracle" to 810L, "chrono.realistic" to 810L, "chrono.fixed" to 810L,
-            "rep.oracle" to 5_001L, "rep.realistic" to 5_001L, "rep.fixed" to 5_001L,
+            "hash.oracle" to 790L, "hash.realistic" to 790L, "hash.fixed" to 790L,
+            "chrono.oracle" to 808L, "chrono.realistic" to 808L, "chrono.fixed" to 808L,
+            "rep.oracle" to 4_989L, "rep.realistic" to 4_989L, "rep.fixed" to 4_989L,
         )
         private val PIN_WORD_COMPLETIONS = mapOf(
             "hash" to 94L, "chrono" to 88L, "rep" to 594L,

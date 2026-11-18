@@ -537,7 +537,7 @@ class TtSuggestEvalTest {
         assertEquals(PIN_PAIRS, nextwordMoments)
         assertEquals(0, nextwordEmpty)
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
-        assertEquals("1.9753", format(prefixEmpty * 100.0 / prefixMoments))
+        assertEquals("1.9711", format(prefixEmpty * 100.0 / prefixMoments))
         assertEquals("0.0000", format(nextwordEmpty * 100.0 / nextwordMoments))
     }
 
@@ -846,7 +846,7 @@ class TtSuggestEvalTest {
                 (PIN_KS_BASELINE_KEYS - PIN_KS_SIMULATED_KEYS_CELLS4) * QUALITY_FLOOR,
         )
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
-        assertEquals("35.9603", format(savedPct))
+        assertEquals("35.9574", format(savedPct))
         assertEquals("38.3086", format(savedPctCells4))
         assertEquals("75.2866", format(oraclePct))
     }
@@ -999,7 +999,7 @@ class TtSuggestEvalTest {
         private const val PIN_CP2_TOP1_HITS = 142
         private const val PIN_CP3_TOP1_HITS = 414
         private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 24_250
-        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 479
+        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 478
         private const val PIN_SAMESTEM_WORDS = 1_823
         private const val PIN_SAMESTEM_TOP1_HITS = 789
         private const val PIN_SAMESTEM_VISIBLE_TOP3_HITS = 1_238
@@ -1020,7 +1020,7 @@ class TtSuggestEvalTest {
         private const val PIN_STRATUM_NEW_FORM_WORDS = 108
         private const val PIN_STRATUM_UNSEEN_STEM_WORDS = 128
         private const val PIN_KS_BASELINE_KEYS = 34_196
-        private const val PIN_KS_SIMULATED_KEYS = 21_899
+        private const val PIN_KS_SIMULATED_KEYS = 21_900
         private const val PIN_KS_SIMULATED_KEYS_CELLS4 = 21_096
         private const val PIN_KS_ORACLE_KEYS = 8_451
         // The context boost over the cp>=2 prefix moments, cross-pinned with the ctxboost_* rows
@@ -1028,8 +1028,8 @@ class TtSuggestEvalTest {
         private const val PIN_CTXBOOST_CP2PLUS_MOMENTS = 18_789
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_HITS = 6_546
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BOOST_HITS = 7_097
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_640
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 10_054
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_HITS = 9_639
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_HITS = 10_053
         private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_HITS = 10_411
         private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_HITS = 10_767
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_BASE_PCT = "34.8395"
@@ -1037,8 +1037,8 @@ class TtSuggestEvalTest {
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_DELTA = "+2.9326"
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_LO = "+2.5029"
         private const val PIN_CTXBOOST_CP2PLUS_TOP1_CI95_HI = "+3.3837"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "51.3066"
-        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "53.5100"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BASE_PCT = "51.3013"
+        private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_BOOST_PCT = "53.5047"
         private const val PIN_CTXBOOST_CP2PLUS_VISIBLE_TOP3_DELTA = "+2.2034"
         private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BASE_PCT = "55.4101"
         private const val PIN_CTXBOOST_CP2PLUS_ENGINE_TOP4_BOOST_PCT = "57.3048"

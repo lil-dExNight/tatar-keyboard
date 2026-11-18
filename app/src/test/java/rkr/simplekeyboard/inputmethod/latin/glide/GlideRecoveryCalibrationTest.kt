@@ -2060,10 +2060,10 @@ class GlideRecoveryCalibrationTest {
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts; the
         // asset rebuild rewrites both). Loop and eligible dwell rows make rows outnumber words.
-        private const val SET_SIZE = 5125
-        private const val SET_BYTES = 14052231
+        private const val SET_SIZE = 5149
+        private const val SET_BYTES = 14130885
         private const val SET_SHA256 =
-            "cde1ca1284c74525a18c8f94f5246180359a2b2435cf055b8c85f8866859c913"
+            "c257c2a4cefb142dd5f1b1697af1d27453b19076c868f27b55f63370e9c8077a"
 
         // The per-class split of gatesRecoveryAndLatencyOnTheRealDictionary.
         private const val CLASS_COUNT = 7
@@ -2074,9 +2074,9 @@ class GlideRecoveryCalibrationTest {
         // The alias class carries zeros: the 8-letter extra row made ё and ъ direct keys, so no
         // Tatar word is alias-folded anymore (the class is seeded on the Russian bench).
         private val TT_PRUNING_BASELINE = PruningBaseline(
-            counts = intArrayOf(2410, 226, 190, 36, 0, 226, 226),
-            bucketHits = intArrayOf(2331, 215, 182, 34, 0, 216, 216),
-            pruningHits = intArrayOf(2328, 215, 182, 34, 0, 216, 216),
+            counts = intArrayOf(2418, 226, 190, 36, 0, 226, 226),
+            bucketHits = intArrayOf(2338, 215, 182, 34, 0, 216, 216),
+            pruningHits = intArrayOf(2335, 215, 182, 34, 0, 216, 216),
         )
         private val RU_PRUNING_BASELINE = PruningBaseline(
             counts = intArrayOf(1109, 99, 97, 2, 35, 100, 100),

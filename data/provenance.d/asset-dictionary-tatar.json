@@ -1,8 +1,8 @@
 {
   "id": "asset-dictionary-tatar-top100k-v1",
   "revision": "tatar_top100k_v1",
-  "size_bytes": 600401,
-  "sha256": "9bf518a43794ab7d38a080d10ee2fffbd3c580c7d498bfccef78ec4ebe814077",
+  "size_bytes": 603152,
+  "sha256": "f8741087df8b215d3f357ff0c270ba75251be548f08d91a79706a7ad4f374129",
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles",
   "source_role": "generated_dictionary",
   "split_rule": "training output; excludes final evaluation records",

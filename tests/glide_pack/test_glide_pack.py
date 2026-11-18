@@ -421,9 +421,9 @@ class CommittedInputsSmokeTest(unittest.TestCase):
         _, data = pack.generate_set(selected, rects, aliases=aliases, context_pairs=context_pairs)
         # The Kotlin calibration test (GlideRecoveryCalibrationTest) asserts the same values; the
         # asset rebuild rewrites both. Loop and eligible dwell rows make rows outnumber words.
-        self.assertEqual(len(selected), 5125)
-        self.assertEqual(len(data), 14052231)
-        self.assertEqual(sha256_bytes(data), "cde1ca1284c74525a18c8f94f5246180359a2b2435cf055b8c85f8866859c913")
+        self.assertEqual(len(selected), 5149)
+        self.assertEqual(len(data), 14130885)
+        self.assertEqual(sha256_bytes(data), "c257c2a4cefb142dd5f1b1697af1d27453b19076c868f27b55f63370e9c8077a")
         self.assertEqual({2, 3, 4}, {len(word) for word in selected if len(word) < 5})
 
     @unittest.skipUnless(DICTIONARY.is_file(), "committed dictionary asset not available")

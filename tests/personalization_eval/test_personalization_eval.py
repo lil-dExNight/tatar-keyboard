@@ -79,9 +79,9 @@ PIN_OBSERVED_LOOKUPS = {
     ("rep", "oracle"): 89_169, ("rep", "realistic"): 89_169, ("rep", "fixed"): 89_169,
 }
 PIN_EMPTY_OBSERVATIONS = {
-    ("hash", "oracle"): 792, ("hash", "realistic"): 792, ("hash", "fixed"): 792,
-    ("chrono", "oracle"): 810, ("chrono", "realistic"): 810, ("chrono", "fixed"): 810,
-    ("rep", "oracle"): 5_001, ("rep", "realistic"): 5_001, ("rep", "fixed"): 5_001,
+    ("hash", "oracle"): 790, ("hash", "realistic"): 790, ("hash", "fixed"): 790,
+    ("chrono", "oracle"): 808, ("chrono", "realistic"): 808, ("chrono", "fixed"): 808,
+    ("rep", "oracle"): 4_989, ("rep", "realistic"): 4_989, ("rep", "fixed"): 4_989,
 }
 PIN_WORD_COMPLETIONS = {
     "hash": 94, "chrono": 88, "rep": 594,

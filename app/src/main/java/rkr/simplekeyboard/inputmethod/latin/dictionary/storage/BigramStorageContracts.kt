@@ -90,15 +90,15 @@ data class BigramArtifactSpec(
             subtypeId = PersonalSubtypes.TATAR_RU,
             storageDirectoryName = "bigrams",
             assetPath = "bigrams/tatar_bigrams_v1.tatbigr.zlib",
-            expectedCompressedSize = 211_913,
+            expectedCompressedSize = 212_001,
             expectedCompressedSha256 =
-                "842566eb42bc2d462872a61cf13fca4b8f44c4db5bfa32e92a0e6862fb8058d3",
-            expectedRawSize = 306_461,
+                "d0ef996bba896516c71dfa11ad50390ff270667bcf8397f6c1c6b4dea7eefbcb",
+            expectedRawSize = 306_605,
             expectedRawSha256 =
-                "f1e21e75253725987569a927c78e6fd64e4c21b4fc19f9c7e6be43e61de8df51",
+                "a1320f4b0e56ad045fa5a6267188afad1eafd56612137457e5f16a92414cd58d",
             expectedDictionaryRawSha256 =
-                "23c1e9e2c2f9450ea8c2014cbc07d7610f59299c3ce26b519726f8b046cbb0cc",
-            expectedHeadCount = 12_881,
+                "0ed3206a0df5c41d639abc7918ccb5d2e3389882287d4cd5e5dce1725c61986a",
+            expectedHeadCount = 12_882,
         )
         // </generated pins>
 
