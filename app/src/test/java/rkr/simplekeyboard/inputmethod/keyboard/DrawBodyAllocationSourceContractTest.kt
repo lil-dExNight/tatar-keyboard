@@ -64,7 +64,12 @@ class DrawBodyAllocationSourceContractTest {
         assertNoAllocation("MainKeyboardView.onDraw", onDraw)
         val trail = body(mainKeyboardView, "private void drawGlideTrail(final Canvas canvas)")
         assertTrue(
-            "the polyline walks the visible window on a preallocated paint",
+            "one reused path avoids overlapping segment strokes",
+            trail.contains("mGlideTrailPath.rewind();") &&
+                trail.contains("canvas.drawPath(mGlideTrailPath, paint);"),
+        )
+        assertFalse(
+            "independent segments make translucent joints darker",
             trail.contains("canvas.drawLine("),
         )
         assertNoAllocation("MainKeyboardView.drawGlideTrail", trail)
@@ -81,7 +86,7 @@ class DrawBodyAllocationSourceContractTest {
         val operations = glideTrail.substring(glideTrail.indexOf("    fun addPoint("))
             .substringBefore("    companion object")
         // Extraction sanity: the fade math the draw pass calls is inside the scanned region.
-        assertTrue(operations.contains("fun alphaAt(i: Int): Int"))
+        assertTrue(operations.contains("fun fadeFactor(nowMs: Float): Float"))
         assertNoAllocation("GlideTrail ring operations", operations)
     }
 

@@ -28,6 +28,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Paint.Align;
+import android.graphics.Path;
 import android.graphics.Typeface;
 import android.os.SystemClock;
 import android.util.AttributeSet;
@@ -122,9 +123,10 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     // The glide trail: the fading polyline drawn under the fingertip of an armed glide.
     // Fed through {@link DrawingProxy#onGlideTrailPoint}; preallocated, zero-allocation draw.
     private final GlideTrail mGlideTrail;
+    private final Path mGlideTrailPath = new Path();
     private final Paint mGlideTrailPaint = new Paint();
     // The refused glide's trail repaint (see {@link #markGlideTrailRefused}): same geometry and
-    // alpha ramp as {@link #mGlideTrailPaint}, in the theme's error ink.
+    // fade as {@link #mGlideTrailPaint}, in the theme's error ink.
     private final Paint mGlideTrailRefusedPaint = new Paint();
     // The system animator scale, read once with the gesture's first trail point and dropped at
     // the lift; {@link #onGlideTrailEnd} consults it, so the draw pass never re-reads it.
@@ -177,8 +179,9 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mBackgroundDimAlphaPaint.setAlpha(backgroundDimAlpha);
         final int glideTrailColor = mainKeyboardViewAttr.getColor(
                 R.styleable.MainKeyboardView_glideTrailColor, Color.TRANSPARENT);
-        // The theme color carries the trail's peak alpha: per-point the draw fades down from
-        // it. Both are read once here, at theme load; the draw loop never touches resources.
+        // The theme color carries the trail's peak alpha: the draw applies it to the whole path
+        // and scales it during the post-lift fade. Both are read once here, at theme load; the
+        // draw loop never touches resources.
         mGlideTrail = new GlideTrail(GlideTrail.DEFAULT_CAPACITY, Color.alpha(glideTrailColor));
         mGlideTrailPaint.setColor(glideTrailColor);
         mGlideTrailPaint.setStyle(Paint.Style.STROKE);
@@ -187,8 +190,8 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mGlideTrailPaint.setStrokeCap(Paint.Cap.ROUND);
         mGlideTrailPaint.setStrokeJoin(Paint.Join.ROUND);
         mGlideTrailPaint.setAntiAlias(true);
-        // Same stroke, error ink. The per-segment alpha comes from the trail's fade math in the
-        // draw pass (setAlpha overrides the color's own alpha), so only the RGB matters here.
+        // Same stroke, error ink. The path alpha comes from the trail's fade math in the draw
+        // pass (setAlpha overrides the color's own alpha), so only the RGB matters here.
         mGlideTrailRefusedPaint.set(mGlideTrailPaint);
         mGlideTrailRefusedPaint.setColor(mainKeyboardViewAttr.getColor(
                 R.styleable.MainKeyboardView_glideTrailRefusedColor, glideTrailColor));
@@ -736,12 +739,15 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         // A refused glide's trail repaints in the error ink for the rest of its fade.
         final Paint paint = mGlideTrail.getRefused() ? mGlideTrailRefusedPaint : mGlideTrailPaint;
         final float fadeFactor = mGlideTrail.fadeFactor(nowMs);
-        // Per-segment drawLine with a preallocated paint: no allocation on the draw path.
-        for (int i = first; i < size - 1; i++) {
-            paint.setAlpha((int)(mGlideTrail.alphaAt(i + 1) * fadeFactor));
-            canvas.drawLine(mGlideTrail.xAt(i), mGlideTrail.yAt(i),
-                    mGlideTrail.xAt(i + 1), mGlideTrail.yAt(i + 1), paint);
+        // One stroke keeps every join smooth and prevents translucent segments from painting
+        // their endpoints twice. rewind() keeps the path's native storage for the next frame.
+        mGlideTrailPath.rewind();
+        mGlideTrailPath.moveTo(mGlideTrail.xAt(first), mGlideTrail.yAt(first));
+        for (int i = first + 1; i < size; i++) {
+            mGlideTrailPath.lineTo(mGlideTrail.xAt(i), mGlideTrail.yAt(i));
         }
+        paint.setAlpha((int)(mGlideTrail.getMaxAlpha() * fadeFactor));
+        canvas.drawPath(mGlideTrailPath, paint);
         if (mGlideTrail.getFadingOut()) {
             // Bounded: the schedule stops the frame after GlideTrail.FADE_OUT_MS (isFadeDone
             // above), on a new gesture (addPoint resets the fade), and on window detach.

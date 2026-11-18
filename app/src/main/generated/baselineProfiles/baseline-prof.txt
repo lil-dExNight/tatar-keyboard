@@ -740,7 +740,7 @@ Lrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;
 HSPLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;-><clinit>()V
 HSPLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;-><init>(II)V
 PLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;->addPoint(FFF)V
-PLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;->alphaAt(I)I
+PLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;->getMaxAlpha()I
 PLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;->clear()V
 PLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;->fadeFactor(F)F
 HSPLrkr/simplekeyboard/inputmethod/keyboard/internal/GlideTrail;->firstVisible()I

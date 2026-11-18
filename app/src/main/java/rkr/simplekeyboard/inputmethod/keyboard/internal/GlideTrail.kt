@@ -26,10 +26,10 @@ package rkr.simplekeyboard.inputmethod.keyboard.internal
  * thins interior points when full), the trail overwrites the oldest point: for a cosmetic layer
  * a stale tail pixel is worse than a dropped one.
  *
- * The tail fades by age relative to the newest recorded point, not to a wall clock: the view
- * redraws only when a new point arrives, so "now" and the newest sample are the same instant,
- * and the JVM tests need no clock injection. A finger that stops moving freezes its tail (no
- * new points, no invalidates), as in the reference keyboards.
+ * The visible tail window is measured relative to the newest recorded point, not to a wall clock:
+ * the view redraws only when a new point arrives, so "now" and the newest sample are the same
+ * instant, and the JVM tests need no clock injection. A finger that stops moving freezes its tail
+ * (no new points, no invalidates), as in the reference keyboards.
  *
  * After the lift, [startFadeOut] freezes the ring and the draw alpha decays to zero over
  * [FADE_OUT_MS]. The view passes elapsed gesture time from SystemClock. A new gesture's first
@@ -148,17 +148,6 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY, val maxAlpha: Int = MAX_A
     fun xAt(i: Int): Float = xs[ringIndex(i)]
 
     fun yAt(i: Int): Float = ys[ringIndex(i)]
-
-    /**
-     * The draw alpha of the point at oldest-first index [i]: [maxAlpha] at the fingertip
-     * (the newest point), fading linearly to 0 at the [TAIL_MS] edge.
-     */
-    fun alphaAt(i: Int): Int {
-        val newest = ts[ringIndex(size - 1)]
-        val age = newest - ts[ringIndex(i)]
-        if (age >= TAIL_MS) return 0
-        return (maxAlpha * (1f - age / TAIL_MS)).toInt()
-    }
 
     private fun ringIndex(i: Int): Int = (start + i) % capacity
 

@@ -10,9 +10,8 @@ import java.lang.management.ManagementFactory
 
 /**
  * Unit tests for [GlideTrail]: ring semantics (overwrite-oldest, order
- * preservation), the age-windowed visibility, the fingertip-to-tail alpha ramp, the post-lift
- * fade-out math, and the zero-allocation discipline of the feed and draw-read paths (fade
- * frames included).
+ * preservation), the age-windowed visibility, the post-lift fade-out math, and the
+ * zero-allocation discipline of the feed and draw-read paths (fade frames included).
  */
 class GlideTrailTest {
 
@@ -73,43 +72,12 @@ class GlideTrailTest {
     }
 
     @Test
-    fun alphaRampsFromTheTailEdgeToTheFingertip() {
-        val trail = GlideTrail()
-        // 21 points, 15 ms apart; the newest is at t = 300, the window is exactly full.
-        for (i in 0 until 21) {
-            trail.addPoint(i.toFloat(), 0f, i * 15f)
-        }
-        assertEquals("the fingertip is fully lit", GlideTrail.MAX_ALPHA, trail.alphaAt(20))
-        assertEquals("the tail edge is transparent", 0, trail.alphaAt(0))
-        // Strictly increasing toward the fingertip inside the window.
-        var previous = -1
-        for (i in trail.firstVisible() until trail.size) {
-            val alpha = trail.alphaAt(i)
-            assertTrue("alpha must increase toward the fingertip (i=$i)", alpha > previous)
-            previous = alpha
-        }
-        // The midpoint of a full 300 ms window sits at half opacity.
-        assertEquals(GlideTrail.MAX_ALPHA / 2, trail.alphaAt(10))
-    }
-
-    @Test
-    fun theThemePeakAlphaScalesTheWholeRamp() {
-        val trail = GlideTrail(maxAlpha = 0xF2)
-        for (i in 0 until 21) {
-            trail.addPoint(i.toFloat(), 0f, i * 15f)
-        }
-        assertEquals("the fingertip reaches the theme's peak", 0xF2, trail.alphaAt(20))
-        assertEquals("the tail edge is transparent", 0, trail.alphaAt(0))
-        assertEquals("the midpoint sits at half the theme peak", 0xF2 / 2, trail.alphaAt(10))
-    }
-
-    @Test
     fun aSinglePointGestureHasNothingToDraw() {
         val trail = GlideTrail()
         trail.addPoint(1f, 2f, 3f)
         assertEquals(0, trail.firstVisible())
         assertEquals("one point draws no segment", 1, trail.size - trail.firstVisible())
-        assertEquals(GlideTrail.MAX_ALPHA, trail.alphaAt(0))
+        assertEquals(GlideTrail.MAX_ALPHA, trail.maxAlpha)
     }
 
     // --- The post-lift fade-out -----------------------------------------------------------------
@@ -210,12 +178,13 @@ class GlideTrailTest {
                 for (i in 0 until GlideTrail.DEFAULT_CAPACITY + 17) {
                     trail.addPoint(i.toFloat(), (i * 2).toFloat(), (g * 1000 + i * 8).toFloat())
                 }
-                // The draw-read path: window scan + per-segment reads.
+                // The draw-read path: window scan + path point reads + whole-path alpha.
                 val first = trail.firstVisible()
                 var acc = 0f
-                for (i in first until trail.size - 1) {
-                    acc += trail.xAt(i) + trail.yAt(i + 1) + trail.alphaAt(i + 1)
+                for (i in first until trail.size) {
+                    acc += trail.xAt(i) + trail.yAt(i)
                 }
+                acc += trail.maxAlpha * trail.fadeFactor((g * 1000 + 900).toFloat())
                 assertTrue(acc > 0f)
                 trail.clear()
             }
@@ -249,9 +218,9 @@ class GlideTrailTest {
                 if (trail.isFadeDone(now)) break
                 val factor = trail.fadeFactor(now)
                 val first = trail.firstVisible()
-                var acc = 0
-                for (i in first until trail.size - 1) {
-                    acc += (trail.alphaAt(i + 1) * factor).toInt()
+                var acc = (trail.maxAlpha * factor).toInt()
+                for (i in first until trail.size) {
+                    acc += (trail.xAt(i) + trail.yAt(i)).toInt()
                 }
                 assertTrue(acc >= 0)
             }

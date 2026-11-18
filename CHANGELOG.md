@@ -42,6 +42,8 @@ These hold for every release:
 
 ### Changed
 
+- The glide trail is one continuous rounded line, with a softer light-blue color in both light
+  and dark themes.
 - Glide typing offers an existing dictionary word with ё for a gesture over е without dropping
   the е spelling. This works with the separate Tatar ё key and the Russian long-press alias;
   pairs such as все/всё remain separate candidates with the usual shape and frequency ranking.

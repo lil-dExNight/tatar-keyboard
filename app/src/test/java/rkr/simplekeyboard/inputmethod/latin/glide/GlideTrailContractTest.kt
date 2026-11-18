@@ -105,10 +105,11 @@ class GlideTrailContractTest {
         val draw = viewSource.substringAfter("private void drawGlideTrail(final Canvas canvas)")
         assertTrue("only the visible tail window is walked", draw.contains("mGlideTrail.firstVisible()"))
         assertTrue("a single point draws nothing", draw.contains("size - first < 2"))
-        assertTrue("the per-segment alpha comes from the trail's fade math times the post-lift fade",
-            draw.contains("paint.setAlpha((int)(mGlideTrail.alphaAt(i + 1) * fadeFactor));"))
-        assertTrue("the draw is a plain polyline on the preallocated paint",
-            draw.contains("canvas.drawLine("))
+        assertTrue("the whole path takes the theme peak times the post-lift fade",
+            draw.contains("paint.setAlpha((int)(mGlideTrail.getMaxAlpha() * fadeFactor));"))
+        assertTrue("one preallocated path gives continuous rounded joins",
+            draw.contains("mGlideTrailPath.rewind();") &&
+                draw.contains("canvas.drawPath(mGlideTrailPath, paint);"))
         // The fade-out after the lift: bounded self-scheduling from the draw pass.
         assertTrue("the fade reschedules one frame at a time",
             draw.contains("postInvalidateDelayed(FADE_FRAME_MS)"))
@@ -157,21 +158,21 @@ class GlideTrailContractTest {
             "app/src/main/res/values/themes-tatar.xml",
         )
         assertTrue(tatar.contains("<item name=\"glideTrailColor\">@color/tatar_glide_trail</item>"))
-        // Per-theme trail inks: the accent blue in the light palette, near-white in the dark
-        // one, each carrying its peak alpha in the resource value. The literals are pinned so
+        // Per-theme trail inks: soft blue in the light palette, pale blue in the dark one,
+        // each carrying its peak alpha in the resource value. The literals are pinned so
         // a palette edit cannot silently recolor the trail; the AA ratios of both pairs are
         // pinned in ThemeContrastContractTest.
         val colors = read(
             "src/main/res/values/colors.xml",
             "app/src/main/res/values/colors.xml",
         )
-        assertTrue(colors.contains("<color name=\"tatar_glide_trail\">#FF0A6CD9</color>"))
+        assertTrue(colors.contains("<color name=\"tatar_glide_trail\">#FF2675C7</color>"))
         val nightColors = read(
             "src/main/res/values-night/colors.xml",
             "app/src/main/res/values-night/colors.xml",
         )
         assertTrue("the dark palette carries its own trail ink",
-            nightColors.contains("<color name=\"tatar_glide_trail\">#F2FFFFFF</color>"))
+            nightColors.contains("<color name=\"tatar_glide_trail\">#FFF0F8FF</color>"))
         val config = read(
             "src/main/res/values/config.xml",
             "app/src/main/res/values/config.xml",

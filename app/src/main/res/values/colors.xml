@@ -52,10 +52,10 @@
     <!-- The autocorrect preview's correction cell: a deeper blue than app_accent,
          so the text keeps WCAG AA on the keyboard-gray strip. -->
     <color name="tatar_suggestion_emphasis">#0052BE</color>
-    <!-- Glide trail: the action-accent ink, opaque at the fingertip (the resource alpha is
-         the trail's peak, faded per point by GlideTrail) so the ribbon keeps WCAG AA over
+    <!-- Glide trail: a softer action-blue ink, opaque across the visible tail (the resource
+         alpha is the trail's peak, faded as a whole after lift) so the ribbon keeps WCAG AA over
          the white keys; the dark palette carries its own value. -->
-    <color name="tatar_glide_trail">#FF0A6CD9</color>
+    <color name="tatar_glide_trail">#FF2675C7</color>
     <!-- The refused glide's trail repaint: the Material error red, opaque at the fingertip,
          kept over the WCAG 1.4.11 non-text floor on both the white keys and the board gray. -->
     <color name="tatar_glide_trail_refused">#FFB00020</color>
