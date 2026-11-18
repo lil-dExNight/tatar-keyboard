@@ -44,6 +44,10 @@ These hold for every release:
 
 - The glide trail is one continuous rounded line, with a softer light-blue color in both light
   and dark themes.
+- Settings now put language removal behind a long press on that language, move keyboard-behavior
+  and key-press controls into Preferences, keep Appearance to geometry with one combined
+  portrait/landscape offset dialog, and combine Backup and legal links under Information. Once
+  setup is complete, the root settings screen no longer shows the back chevron.
 - Glide typing offers an existing dictionary word with ё for a gesture over е without dropping
   the е spelling. This works with the separate Tatar ё key and the Russian long-press alias;
   pairs such as все/всё remain separate candidates with the usual shape and frequency ranking.

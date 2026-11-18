@@ -640,8 +640,13 @@ opens from the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
 
 `SettingsHostActivity` builds every screen from plain Views (no `android.preference`, no Compose)
 with a manual back stack; `SettingsActivity` only forwards to it and keeps the component name used
-by `method.xml`. Preferences are device-protected (`PreferenceManagerCompat`). `FLAG_SECURE` keeps
-saved words out of screenshots and recent apps. Enterprise restrictions
+by `method.xml`. Preferences include keyboard-behavior switches and the Key press section;
+Appearance holds keyboard height, one-handed mode, emoji-panel height and one dialog with portrait
+and landscape bottom-offset sliders. Information combines backup actions and legal links. Language
+rows open their layouts on tap and offer removal of only that language on long press. The root back
+chevron is hidden once the IME is enabled and selected. Preferences are device-protected
+(`PreferenceManagerCompat`). `FLAG_SECURE` keeps saved words out of screenshots and recent apps.
+Enterprise restrictions
 (`res/xml/app_restrictions.xml`) can disable rows. `SetupActivity` is the onboarding: two system
 steps (enable, select) watched live from the system, then one done block with a single guide card
 that teaches the Tatar layout (the extra row and the long-press partners), the four gestures and

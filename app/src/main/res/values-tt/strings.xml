@@ -24,11 +24,10 @@
     <string name="settings_screen_preferences">Көйләүләр</string>
     <string name="settings_screen_key_press">Төймәгә басу</string>
     <string name="settings_screen_appearance">Тышкы кыяфәт</string>
+    <string name="settings_screen_information">Мәгълүмат</string>
     <string name="settings_screen_theme">Тема</string>
     <string name="keyboard_theme_classic">Классик</string>
     <string name="keyboard_theme_dynamic">Динамик (Material You)</string>
-    <string name="keyboard_theme_dynamic_summary">«Динамик» тема обой төсләрен ала (Android 12 һәм яңараклар).</string>
-    <string name="keyboard_theme_applies_on_next_show">Яңа тема клавиатура киләсе тапкыр ачылганда күренәчәк</string>
     <string name="settings_back">Артка</string>
     <string name="abbreviation_unit_milliseconds"><xliff:g id="MILLISECONDS">%d</xliff:g> мс</string>
     <string name="settings_system_default">Системадагыча</string>
@@ -56,7 +55,8 @@
     <string name="one_handed_mode_right">Уңда</string>
     <string name="one_handed_mode_full">Тулы киңлек</string>
     <string name="globe_menu_emoji">Эмодзи</string>
-    <string name="prefs_bottom_offset_portrait_settings">Астан чигенеш</string>
+    <string name="settings_screen_bottom_offset">Чигенеш</string>
+    <string name="prefs_bottom_offset_portrait_settings">Астан чигенеш (вертикаль режим)</string>
     <string name="prefs_bottom_offset_landscape_settings">Астан чигенеш (горизонталь режим)</string>
     <string name="keyboard_color">Клавиатура төсе</string>
     <string name="show_special_chars">Махсус билгеләр</string>
@@ -282,7 +282,6 @@
     <string name="edit_menu_cursor_right">Курсор уңга</string>
 
     <string name="settings_screen_backup">Резерв күчермә</string>
-    <string name="settings_screen_backup_summary">Файлга саклау яки файлдан кире кайтару</string>
     <string name="backup_contents_note">Резерв күчермәдә сезнең көйләүләр, сакланган сүзләр, сүз парлары, өйрәнелгән эмодзилар, текст кыскартмалары һәм төзәтмәләр бар. Шифрланмаган файлны аны алган һәркем укый ала. Шифрланган файлны ачу өчен серсүзегез кирәк.</string>
     <string name="backup_export_action">Файлга саклау…</string>
     <string name="backup_encrypted_export_action">Шифрлап саклау…</string>

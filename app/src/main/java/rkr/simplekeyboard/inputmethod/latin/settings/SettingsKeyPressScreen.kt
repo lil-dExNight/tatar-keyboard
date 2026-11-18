@@ -21,14 +21,15 @@ import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 
 /**
- * The "Key press" settings screen and the seek-bar value proxies, as `internal` extensions
+ * The "Key press" section of Preferences and the seek-bar value proxies, as `internal` extensions
  * on [SettingsHostActivity]. The two bottom-offset proxies live here too, although the
  * Appearance screen is their caller. The companion constant is referenced as
  * `SettingsHostActivity.PERCENTAGE_FLOAT` because companion members do not resolve unqualified
  * through an extension receiver.
  */
 
-internal fun SettingsHostActivity.buildKeyPressScreen() {
+internal fun SettingsHostActivity.buildKeyPressSection() {
+    addSectionHeader(getString(R.string.settings_screen_key_press))
     val rows = ArrayList<View>()
     if (AudioAndHapticFeedbackManager.getInstance().hasVibrator()) {
         rows.add(switchRow(Settings.PREF_VIBRATE_ON,
@@ -58,7 +59,7 @@ internal fun SettingsHostActivity.buildKeyPressScreen() {
             resources.getInteger(R.integer.config_max_longpress_timeout),
             resources.getInteger(R.integer.config_longpress_timeout_step),
             keyLongpressTimeoutProxy()))
-    addCard(rows)
+    addCard(rows, spacedFromPrevious = false)
     // The volume row depends on sound_on. A managed restriction on the
     // volume key wins over the dependency.
     setRowEnabled(volume, Settings.readKeypressSoundEnabled(prefs, resources)

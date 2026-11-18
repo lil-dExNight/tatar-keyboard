@@ -20,11 +20,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The Preferences screen is grouped into themed cards: "Suggestions" (the strip and what feeds
- * it), "Typing" (keys and gestures) and a read-only "Gestures" card listing every gesture with a
- * one-line description. The fourth-cell row moved to the Appearance screen, beside the number
- * row; the delete-swipe summary must name the word-delete flick. The screen is an `Activity`,
- * so the wiring is pinned by source like the other contract tests in this package.
+ * The Preferences screen is grouped into "Suggestions", "Typing", "Key press" and a read-only
+ * "Gestures" card. The number-row, fourth-cell and emoji-key switches live here too; the
+ * delete-swipe summary must name the word-delete flick. The screen is an `Activity`, so the
+ * wiring is pinned by source like the other contract tests in this package.
  */
 class PreferencesScreenGroupsSourceContractTest {
 
@@ -42,6 +41,11 @@ class PreferencesScreenGroupsSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsRows.kt").readText()
     }
 
+    private val keyPress by lazy {
+        File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsKeyPressScreen.kt").readText()
+    }
+
     private fun screenBody(): String =
         host.substringAfter("private fun buildPreferencesScreen()")
             .substringBefore("\n    private fun ")
@@ -53,17 +57,19 @@ class PreferencesScreenGroupsSourceContractTest {
     private fun stringsXml(folder: String): String =
         File(sourceRoot(), "res/$folder/strings.xml").readText()
 
-    // --- The three cards -----------------------------------------------------------------------
+    // --- The grouped cards ---------------------------------------------------------------------
 
     @Test
-    fun the_screen_builds_suggestions_typing_and_gestures_cards_in_order() {
+    fun the_screen_builds_suggestions_typing_key_press_and_gestures_cards_in_order() {
         val body = screenBody()
         val suggestionsHeader = body.indexOf("addSectionHeader(getString(R.string.settings_section_suggestions))")
         val typingHeader = body.indexOf("addSectionHeader(getString(R.string.settings_section_typing))")
+        val keyPressSection = body.indexOf("buildKeyPressSection()")
         val gesturesHeader = body.indexOf("addSectionHeader(getString(R.string.gestures_card_title))")
         assertTrue("the Suggestions card header is present", suggestionsHeader >= 0)
         assertTrue("the Typing card header follows it", typingHeader > suggestionsHeader)
-        assertTrue("the Gestures card header follows that", gesturesHeader > typingHeader)
+        assertTrue("the Key press section follows Typing", keyPressSection > typingHeader)
+        assertTrue("the Gestures card header follows Key press", gesturesHeader > keyPressSection)
     }
 
     @Test
@@ -80,18 +86,16 @@ class PreferencesScreenGroupsSourceContractTest {
 
         for (key in listOf("Settings.PREF_TATAR_SUGGESTIONS", "Settings.PREF_PERSONAL_DICTIONARY",
                 "Settings.PREF_TATAR_AUTOCORRECT", "Settings.PREF_EMOJI_SUGGESTIONS",
-                "Settings.PREF_INCOGNITO_MODE")) {
+                "Settings.PREF_INCOGNITO_MODE", "Settings.PREF_STRIP_FOURTH_CELL")) {
             assertTrue("the Suggestions card holds $key", suggestionsSlice.contains(key))
         }
-        for (key in listOf("Settings.PREF_GLIDE_TYPING", "Settings.PREF_AUTO_CAP",
+        for (key in listOf("Settings.PREF_SHOW_NUMBER_ROW", "Settings.PREF_SHOW_EMOJI_KEY",
+                "Settings.PREF_GLIDE_TYPING", "Settings.PREF_AUTO_CAP",
                 "Settings.PREF_SHOW_SPECIAL_CHARS", "Settings.PREF_SHOW_LANGUAGE_SWITCH_KEY",
                 "Settings.PREF_ENABLE_IME_SWITCH", "Settings.PREF_SPACE_SWIPE",
                 "Settings.PREF_DELETE_SWIPE")) {
             assertTrue("the Typing card holds $key", typingSlice.contains(key))
         }
-        assertFalse("the fourth-cell switch is not created on the Preferences screen anymore",
-            suggestionsSlice.contains("PREF_STRIP_FOURTH_CELL, false") ||
-                typingSlice.contains("PREF_STRIP_FOURTH_CELL, false"))
     }
 
 
@@ -115,18 +119,22 @@ class PreferencesScreenGroupsSourceContractTest {
     }
 
     @Test
-    fun the_fourth_cell_row_moved_to_appearance_beside_the_number_row() {
+    fun appearance_switches_and_key_press_stay_in_preferences() {
         val appearance = appearanceBody()
-        val fourthCell = appearance.indexOf("PREF_STRIP_FOURTH_CELL, false")
-        val numberRow = appearance.indexOf("PREF_SHOW_NUMBER_ROW, false")
-        assertTrue("the Appearance screen creates the fourth-cell switch", fourthCell >= 0)
-        assertTrue("the number row exists there too", numberRow >= 0)
-        assertTrue("the fourth-cell row sits beside the number row",
-            Math.abs(fourthCell - numberRow) < 600)
-        assertTrue("it is registered into the cross-screen gate",
-            host.contains("fourthCellRow = fourthCellSwitch"))
-        assertTrue("and carries its initial suggestions-dependent state",
-            appearance.contains("Settings.readTatarSuggestionsEnabled(prefs)"))
+        for (key in listOf("PREF_STRIP_FOURTH_CELL", "PREF_SHOW_NUMBER_ROW",
+                "PREF_SHOW_EMOJI_KEY")) {
+            assertFalse("Appearance must not retain $key", appearance.contains(key))
+        }
+        assertTrue("the fourth-cell row keeps its suggestions-dependent state",
+            screenBody().contains("fourthCellRow = fourthCellSwitch"))
+        assertTrue(screenBody().contains("Settings.readTatarSuggestionsEnabled(prefs)"))
+
+        for (key in listOf("PREF_VIBRATE_ON", "PREF_SOUND_ON", "PREF_KEYPRESS_SOUND_VOLUME",
+                "PREF_POPUP_ON", "PREF_KEY_LONGPRESS_TIMEOUT")) {
+            assertTrue("the Key press section keeps $key", keyPress.contains(key))
+        }
+        assertTrue(keyPress.contains("internal fun SettingsHostActivity.buildKeyPressSection()"))
+        assertFalse(host.contains("Screen.KEY_PRESS"))
     }
 
     // --- The flick is named in the summary -----------------------------------------------------
@@ -159,6 +167,8 @@ class PreferencesScreenGroupsSourceContractTest {
             "gesture_delete_slide", "gesture_delete_slide_summary",
             "gesture_word_delete_flick", "gesture_word_delete_flick_summary",
             "gesture_glide", "gesture_glide_summary",
+            "settings_screen_key_press", "settings_screen_information",
+            "settings_screen_bottom_offset", "prefs_bottom_offset_portrait_settings",
             "prefs_bottom_offset_landscape_settings",
         )
         for (folder in listOf("values", "values-ru", "values-tt")) {

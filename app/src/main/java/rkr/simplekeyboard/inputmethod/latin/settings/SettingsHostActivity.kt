@@ -32,6 +32,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -41,7 +42,6 @@ import android.widget.Toast
 import rkr.simplekeyboard.inputmethod.R
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardLayoutSet
-import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme
 import rkr.simplekeyboard.inputmethod.latin.AudioAndHapticFeedbackManager
 import rkr.simplekeyboard.inputmethod.latin.RichInputMethodManager
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
@@ -54,6 +54,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupFormat
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupImportResult
+import rkr.simplekeyboard.inputmethod.latin.setup.SetupState
 import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
@@ -63,9 +64,9 @@ import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
  * One activity swaps pages inside [R.layout.settings_screen] with a manual back stack, so
  * system back and the back chevron behave like separate activities. Prefs are device-protected
  * ([PreferenceManagerCompat]); enterprise restrictions ([Settings.ACTIVE_RESTRICTIONS]) disable
- * rows; theme toggles rebuild the open keyboard live; content is rebuilt on every [onStart].
- * OS backup stays off (res/xml/data_extraction_rules.xml); the SAF export/import has its own
- * screen ([Screen.BACKUP]), and [Screen.LANGUAGE_DETAIL] is the one parameterized page
+ * rows; content is rebuilt on every [onStart].
+ * OS backup stays off (res/xml/data_extraction_rules.xml); the SAF export/import lives on the
+ * Information screen, and [Screen.LANGUAGE_DETAIL] is the one parameterized page
  * ([detailLocale]). Row builders live in SettingsRows.kt, SettingsLanguagesScreens.kt and
  * SettingsKeyPressScreen.kt.
  */
@@ -76,16 +77,14 @@ class SettingsHostActivity : Activity() {
     internal enum class Screen(val titleRes: Int) {
         ROOT(R.string.english_ime_name),
         PREFERENCES(R.string.settings_screen_preferences),
-        KEY_PRESS(R.string.settings_screen_key_press),
         APPEARANCE(R.string.settings_screen_appearance),
         LANGUAGES(R.string.keyboard_languages),
         // Title is the language display name, set dynamically in showScreen.
         LANGUAGE_DETAIL(0),
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
         PERSONAL_INVENTORY(R.string.personal_inventory_screen),
-        LEGAL(R.string.settings_screen_legal),
-        TEXT_SHORTCUTS(R.string.text_shortcuts_screen),
-        BACKUP(R.string.settings_screen_backup)
+        INFORMATION(R.string.settings_screen_information),
+        TEXT_SHORTCUTS(R.string.text_shortcuts_screen)
     }
     companion object {
         private const val TRANSITION_NONE = 0
@@ -113,6 +112,7 @@ class SettingsHostActivity : Activity() {
     private lateinit var scrollView: ScrollView
     internal lateinit var contentView: LinearLayout
     private lateinit var titleView: TextView
+    private lateinit var backButton: ImageButton
 
     private val backStack = ArrayDeque<Screen>()
     /**
@@ -128,9 +128,8 @@ class SettingsHostActivity : Activity() {
     internal var restrictionKeys: Set<String> = emptySet()
 
     /**
-     * The fourth-cell row, built on the Appearance screen but gated by the Preferences master
-     * switch (the row widens the strip that switch owns). Null while that screen is not built,
-     * or after a rebuild resets it to the new row.
+     * The fourth-cell row on the Preferences screen, gated by its master suggestions switch.
+     * Null while that screen is not built, or after a rebuild resets it to the new row.
      */
     private var fourthCellRow: View? = null
 
@@ -227,7 +226,8 @@ class SettingsHostActivity : Activity() {
         scrollView = findViewById(R.id.settings_scroll)
         contentView = findViewById(R.id.settings_content)
         titleView = findViewById(R.id.settings_title)
-        findViewById<ImageButton>(R.id.settings_back).setOnClickListener { onBackPressed() }
+        backButton = findViewById(R.id.settings_back)
+        backButton.setOnClickListener { onBackPressed() }
 
         // Screens persist by name, not ordinal: an enum edit must not misrestore a saved stack.
         // Values written by an older version (ordinals, or a since-removed screen) read as null
@@ -281,6 +281,18 @@ class SettingsHostActivity : Activity() {
         }
     }
 
+    private fun isKeyboardActivated(): Boolean {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        val enabled = try {
+            SetupState.isImeEnabled(imm.enabledInputMethodList.map { it.packageName }, packageName)
+        } catch (e: Exception) {
+            false
+        }
+        val current = SetupState.isImeCurrent(android.provider.Settings.Secure.getString(
+                contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD), packageName)
+        return SetupState.isSetupComplete(enabled, current)
+    }
+
     internal fun navigateTo(screen: Screen) {
         backStack.addLast(currentScreen)
         pendingTransition = TRANSITION_FORWARD
@@ -309,20 +321,23 @@ class SettingsHostActivity : Activity() {
         } else {
             titleView.setText(screen.titleRes)
         }
+        backButton.visibility = if (screen == Screen.ROOT && isKeyboardActivated()) {
+            View.GONE
+        } else {
+            View.VISIBLE
+        }
         // The large title is child 0 of the content column and stays.
         contentView.removeViews(1, contentView.childCount - 1)
         when (screen) {
             Screen.ROOT -> buildRootScreen()
             Screen.PREFERENCES -> buildPreferencesScreen()
-            Screen.KEY_PRESS -> buildKeyPressScreen()
             Screen.APPEARANCE -> buildAppearanceScreen()
             Screen.LANGUAGES -> buildLanguagesScreen()
             Screen.LANGUAGE_DETAIL -> buildLanguageDetailScreen(detail!!)
             Screen.PERSONAL_DICTIONARY -> buildPersonalDictionaryScreen()
             Screen.PERSONAL_INVENTORY -> buildPersonalInventoryScreen()
             Screen.TEXT_SHORTCUTS -> buildTextShortcutsScreen()
-            Screen.LEGAL -> buildLegalScreen()
-            Screen.BACKUP -> buildBackupScreen()
+            Screen.INFORMATION -> buildInformationScreen()
         }
         scrollView.scrollTo(0, 0)
         playScreenTransition()
@@ -373,28 +388,26 @@ class SettingsHostActivity : Activity() {
         addCard(listOf(
             linkRow(R.string.settings_screen_preferences) { navigateTo(Screen.PREFERENCES) }
                     .apply { id = R.id.row_link_preferences },
-            linkRow(R.string.settings_screen_key_press) { navigateTo(Screen.KEY_PRESS) },
             linkRow(R.string.settings_screen_appearance) { navigateTo(Screen.APPEARANCE) }))
         addCard(listOf(
-            linkRow(R.string.settings_screen_backup, R.string.settings_screen_backup_summary) {
-                navigateTo(Screen.BACKUP)
-            }))
-        addCard(listOf(
-            linkRow(R.string.settings_screen_legal) { navigateTo(Screen.LEGAL) }))
+            linkRow(R.string.settings_screen_information) { navigateTo(Screen.INFORMATION) }))
     }
 
 
-    /**
-     * The "Backup" screen offers plaintext and encrypted exports plus one restore action. The
-     * actions launch the system file picker; everything else happens in [onActivityResult] and
-     * in [BackupCoordinator].
-     */
-    private fun buildBackupScreen() {
-        addCard(listOf(textRow(getString(R.string.backup_contents_note))))
+    /** Backup actions and the app's public documents share the Information screen. */
+    private fun buildInformationScreen() {
+        addSectionHeader(getString(R.string.settings_screen_backup))
+        addCard(listOf(textRow(getString(R.string.backup_contents_note))),
+                spacedFromPrevious = false)
         addCard(listOf(
             actionRow(R.string.backup_export_action) { startBackupExport() },
             actionRow(R.string.backup_encrypted_export_action) { startEncryptedBackupExport() },
             actionRow(R.string.backup_import_action) { showBackupImportDialog() }))
+        addSectionHeader(getString(R.string.settings_screen_legal))
+        addCard(listOf(
+            linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
+            linkRow(R.string.license) { openUrl(getString(R.string.license_url)) }),
+                spacedFromPrevious = false)
     }
 
     /** The plaintext create-document picker, pre-filled with the fixed file name. */
@@ -604,16 +617,9 @@ class SettingsHostActivity : Activity() {
         return created
     }
 
-    /** "Legal information": the app's public documents, opened in the browser. */
-    private fun buildLegalScreen() {
-        addCard(listOf(
-            linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
-            linkRow(R.string.license) { openUrl(getString(R.string.license_url)) }))
-    }
     private fun buildPreferencesScreen() {
-        // Two themed cards: "Suggestions" (the strip and everything feeding it) and "Typing"
-        // (how keys and gestures behave). The rows keep their pref keys and dependencies; only
-        // the grouping changed.
+        // Suggestions, typing, key press and the read-only gesture guide share this screen.
+        // The rows keep their pref keys and dependencies.
         val suggestionRows = ArrayList<View>()
         var personalDictionaryRow: View? = null
         var incognitoRow: View? = null
@@ -642,9 +648,7 @@ class SettingsHostActivity : Activity() {
                         disabledReason(isRestricted(Settings.PREF_EMOJI_SUGGESTIONS),
                                 R.string.row_needs_suggestions))
             }
-            // The fourth-cell row lives on the Appearance screen (beside the number row) and
-            // registers itself into this gate when it is built; toggling suggestions here
-            // greys it there on the next Appearance rebuild.
+            // The fourth cell widens the strip owned by this switch.
             fourthCellRow?.let {
                 setRowEnabled(it, checked && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
                         disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
@@ -686,10 +690,24 @@ class SettingsHostActivity : Activity() {
                 R.string.emoji_suggestions, R.string.emoji_suggestions_summary)
         emojiSuggestRow = emojiSuggestSwitch
         suggestionRows.add(emojiSuggestSwitch)
+        // The fourth cell widens the same strip and follows its master switch.
+        val fourthCellSwitch = switchRow(Settings.PREF_STRIP_FOURTH_CELL, false,
+                R.string.strip_fourth_cell, R.string.strip_fourth_cell_summary)
+        fourthCellRow = fourthCellSwitch
+        suggestionRows.add(fourthCellSwitch)
+        setRowEnabled(fourthCellSwitch,
+                Settings.readTatarSuggestionsEnabled(prefs)
+                        && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
+                disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
+                        R.string.row_needs_suggestions))
         addSectionHeader(getString(R.string.settings_section_suggestions))
         addCard(suggestionRows, spacedFromPrevious = false)
 
         val typingRows = ArrayList<View>()
+        typingRows.add(switchRow(Settings.PREF_SHOW_NUMBER_ROW, false,
+                R.string.show_number_row, R.string.show_number_row_summary))
+        typingRows.add(switchRow(Settings.PREF_SHOW_EMOJI_KEY, true,
+                R.string.show_emoji_key, R.string.show_emoji_key_summary))
         // Glide typing has its own row because tapping or sliding is the user's habit, not a
         // property of the words. It does not depend on the suggestions switch: the lift-commit is
         // typing, not a suggestion, and the gesture's own strip (the alternates, the refused
@@ -727,6 +745,8 @@ class SettingsHostActivity : Activity() {
                 R.string.delete_swipe, R.string.delete_swipe_summary))
         addSectionHeader(getString(R.string.settings_section_typing))
         addCard(typingRows, spacedFromPrevious = false)
+
+        buildKeyPressSection()
 
         // Read-only card: every gesture with a one-line description, so a gesture found by
         // accident can be looked up on purpose. No switches here — the per-gesture toggles
@@ -1762,44 +1782,43 @@ class SettingsHostActivity : Activity() {
         return field
     }
 
-    // The "Key press" screen and the seek-bar value proxies live in
+    // The "Key press" section and the seek-bar value proxies live in
     // SettingsKeyPressScreen.kt.
 
     private fun buildAppearanceScreen() {
-        // The fourth strip cell widens the strip the Preferences screen's master switch owns,
-        // so the row follows that switch from afar: it is created here (beside the number row,
-        // another what-the-keyboard-shows toggle) and registered into the Preferences gate.
-        // The default matches Settings.readStripFourthCellEnabled (off); a user-set value wins.
-        val fourthCellSwitch = switchRow(Settings.PREF_STRIP_FOURTH_CELL, false,
-                R.string.strip_fourth_cell, R.string.strip_fourth_cell_summary)
-        fourthCellRow = fourthCellSwitch
-        setRowEnabled(fourthCellSwitch,
-                Settings.readTatarSuggestionsEnabled(prefs)
-                        && !isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
-                disabledReason(isRestricted(Settings.PREF_STRIP_FOURTH_CELL),
-                        R.string.row_needs_suggestions))
         addCard(listOf(
-            themeRow(),
-            switchRow(Settings.PREF_SHOW_NUMBER_ROW, false,
-                    R.string.show_number_row, R.string.show_number_row_summary),
-            fourthCellSwitch,
-            switchRow(Settings.PREF_SHOW_EMOJI_KEY, true,
-                    R.string.show_emoji_key, R.string.show_emoji_key_summary),
             keyboardHeightRow(),
-            emojiPanelHeightRow(),
             oneHandedModeRow(),
-            valueRow(Settings.PREF_BOTTOM_OFFSET_PORTRAIT,
-                    R.string.prefs_bottom_offset_portrait_settings,
+            emojiPanelHeightRow(),
+            bottomOffsetRow()))
+    }
+
+    private fun bottomOffsetRow(): View {
+        val row = inflateRow(R.layout.row_link, R.string.settings_screen_bottom_offset, 0)
+        val entries = listOf(
+            SeekBarDialogHelper.Entry(
+                    getString(R.string.prefs_bottom_offset_portrait_settings),
+                    Settings.PREF_BOTTOM_OFFSET_PORTRAIT,
                     resources.getInteger(R.integer.config_min_bottom_offset_portrait),
                     resources.getInteger(R.integer.config_max_bottom_offset_portrait),
                     resources.getInteger(R.integer.config_bottom_offset_step),
-                    bottomOffsetProxy()),
-            valueRow(Settings.PREF_BOTTOM_OFFSET_LANDSCAPE,
-                    R.string.prefs_bottom_offset_landscape_settings,
+                    bottomOffsetProxy(),
+                    !isRestricted(Settings.PREF_BOTTOM_OFFSET_PORTRAIT)),
+            SeekBarDialogHelper.Entry(
+                    getString(R.string.prefs_bottom_offset_landscape_settings),
+                    Settings.PREF_BOTTOM_OFFSET_LANDSCAPE,
                     resources.getInteger(R.integer.config_min_bottom_offset_landscape),
                     resources.getInteger(R.integer.config_max_bottom_offset_landscape),
                     resources.getInteger(R.integer.config_bottom_offset_step),
-                    bottomOffsetLandscapeProxy())))
+                    bottomOffsetLandscapeProxy(),
+                    !isRestricted(Settings.PREF_BOTTOM_OFFSET_LANDSCAPE)))
+        rowClick(row) {
+            currentDialog?.dismiss()
+            currentDialog = SeekBarDialogHelper.show(this,
+                    getString(R.string.settings_screen_bottom_offset), entries) {}
+        }
+        setRowEnabled(row, entries.any { it.enabled })
+        return row
     }
 
     // ---------------------------------------------------------------------
@@ -1890,60 +1909,6 @@ class SettingsHostActivity : Activity() {
         return if (index >= 0) getString(emojiPanelHeightLabelRes[index])
         else getString(R.string.abbreviation_unit_percent,
                 Math.round(scale * PERCENTAGE_FLOAT))
-    }
-
-    /**
-     * "Theme": the user-facing themes in a one-tap picker, mirroring the height rows. The choice
-     * writes the theme id pref; the running keyboard re-resolves and rebuilds at the next input
-     * view start (LatinIME calls updateKeyboardTheme there), so no live swap is attempted here —
-     * the toast says where and when the change lands.
-     */
-    private fun themeRow(): View {
-        val row = inflateRow(R.layout.row_value, R.string.settings_screen_theme, 0)
-        val valueView = row.findViewById<TextView>(R.id.row_value)
-        valueView.text = themeName()
-        row.setOnClickListener {
-            showThemeDialog {
-                valueView.text = themeName()
-            }
-        }
-        if (isRestricted(Settings.SCREEN_THEME)) {
-            setRowEnabled(row, false)
-        }
-        return row
-    }
-
-    /** The current theme's localized name from the theme table arrays (names and ids align). */
-    private fun themeName(): String {
-        val names = resources.getStringArray(R.array.keyboard_theme_names)
-        val ids = resources.getIntArray(R.array.keyboard_theme_ids)
-        val currentId = KeyboardTheme.getKeyboardTheme(prefs).mThemeId
-        val index = ids.indexOf(currentId)
-        return if (index >= 0) names[index] else names[0]
-    }
-
-    private fun showThemeDialog(onValueChanged: () -> Unit) {
-        val names = resources.getStringArray(R.array.keyboard_theme_names)
-        val ids = resources.getIntArray(R.array.keyboard_theme_ids)
-        currentDialog?.dismiss()
-        currentDialog = AlertDialog.Builder(this)
-                .setTitle(R.string.settings_screen_theme)
-                .setMessage(R.string.keyboard_theme_dynamic_summary)
-                // setItems on purpose, exactly like the keyboard-height picker.
-                .setItems(names) { _, which ->
-                    val themeId = ids[which]
-                    if (themeId != KeyboardTheme.getKeyboardTheme(prefs).mThemeId) {
-                        KeyboardTheme.saveKeyboardThemeId(themeId, prefs)
-                        Toast.makeText(this, R.string.keyboard_theme_applies_on_next_show,
-                                Toast.LENGTH_SHORT).show()
-                    }
-                    onValueChanged()
-                }
-                .create()
-                .also { dialog ->
-                    DialogUtils.filterObscuredTouches(dialog)
-                    dialog.show()
-                }
     }
 
     private fun showEmojiPanelHeightDialog(onValueChanged: () -> Unit) {

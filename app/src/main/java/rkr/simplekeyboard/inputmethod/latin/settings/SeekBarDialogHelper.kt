@@ -18,6 +18,8 @@ package rkr.simplekeyboard.inputmethod.latin.settings
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.view.View
+import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import rkr.simplekeyboard.inputmethod.R
@@ -40,6 +42,66 @@ object SeekBarDialogHelper {
         fun feedbackValue(value: Int)
     }
 
+    /** Describes one independently persisted slider in a multi-slider dialog. */
+    data class Entry(
+        val title: CharSequence,
+        val key: String,
+        val minValue: Int,
+        val maxValue: Int,
+        val stepValue: Int,
+        val proxy: ValueProxy,
+        val enabled: Boolean = true
+    )
+
+    /** Binds one Entry to its own inflated views and ValueProxy. */
+    private class EntryBinding(
+        private val entry: Entry,
+        view: View
+    ) {
+        private val valueView = view.findViewById<TextView>(R.id.seek_bar_dialog_value)
+        private val seekBar = view.findViewById<SeekBar>(R.id.seek_bar_dialog_bar)
+
+        init {
+            seekBar.max = entry.maxValue - entry.minValue
+            seekBar.tag = entry.key
+            seekBar.contentDescription = entry.title
+            seekBar.isEnabled = entry.enabled
+            seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                    valueView.text = entry.proxy.getValueText(
+                        clipValue(progress + entry.minValue))
+                }
+
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+
+                override fun onStopTrackingTouch(bar: SeekBar) {
+                    entry.proxy.feedbackValue(clipValue(bar.progress + entry.minValue))
+                }
+            })
+
+            val value = entry.proxy.readValue(entry.key)
+            valueView.text = entry.proxy.getValueText(value)
+            seekBar.progress = clipValue(value) - entry.minValue
+        }
+
+        fun writeValue() {
+            if (entry.enabled) {
+                entry.proxy.writeValue(clipValue(seekBar.progress + entry.minValue), entry.key)
+            }
+        }
+
+        fun writeDefaultValue() {
+            if (entry.enabled) {
+                entry.proxy.writeDefaultValue(entry.key)
+            }
+        }
+
+        private fun clipValue(value: Int): Int {
+            val clipped = value.coerceIn(entry.minValue, entry.maxValue)
+            return if (entry.stepValue <= 1) clipped else clipped - clipped % entry.stepValue
+        }
+    }
+
     fun show(
         activity: Activity,
         title: CharSequence,
@@ -49,42 +111,51 @@ object SeekBarDialogHelper {
         stepValue: Int,
         proxy: ValueProxy,
         onValueChanged: () -> Unit
+    ): AlertDialog = show(
+        activity,
+        title,
+        listOf(
+            Entry(
+                title = title,
+                key = key,
+                minValue = minValue,
+                maxValue = maxValue,
+                stepValue = stepValue,
+                proxy = proxy
+            )
+        ),
+        onValueChanged
+    )
+
+    fun show(
+        activity: Activity,
+        dialogTitle: CharSequence,
+        entries: List<Entry>,
+        onValueChanged: () -> Unit
     ): AlertDialog {
-        fun clipValue(value: Int): Int {
-            val clipped = value.coerceIn(minValue, maxValue)
-            return if (stepValue <= 1) clipped else clipped - clipped % stepValue
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val bindings = entries.map { entry ->
+            val view = activity.layoutInflater.inflate(
+                R.layout.seek_bar_dialog, container, false) as LinearLayout
+            if (entries.size > 1) {
+                view.addView(TextView(activity).apply { text = entry.title }, 0)
+            }
+            container.addView(view)
+            EntryBinding(entry, view)
         }
 
-        val view = activity.layoutInflater.inflate(R.layout.seek_bar_dialog, null)
-        val valueView = view.findViewById<TextView>(R.id.seek_bar_dialog_value)
-        val seekBar = view.findViewById<SeekBar>(R.id.seek_bar_dialog_bar)
-        seekBar.max = maxValue - minValue
-        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                valueView.text = proxy.getValueText(clipValue(progress + minValue))
-            }
-
-            override fun onStartTrackingTouch(bar: SeekBar) {}
-
-            override fun onStopTrackingTouch(bar: SeekBar) {
-                proxy.feedbackValue(clipValue(bar.progress + minValue))
-            }
-        })
-
-        val value = proxy.readValue(key)
-        valueView.text = proxy.getValueText(value)
-        seekBar.progress = clipValue(value) - minValue
-
         val dialog = AlertDialog.Builder(activity)
-            .setTitle(title)
-            .setView(view)
+            .setTitle(dialogTitle)
+            .setView(container)
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                proxy.writeValue(clipValue(seekBar.progress + minValue), key)
+                bindings.forEach { it.writeValue() }
                 onValueChanged()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .setNeutralButton(R.string.button_default) { _, _ ->
-                proxy.writeDefaultValue(key)
+                bindings.forEach { it.writeDefaultValue() }
                 onValueChanged()
             }
             .create()
