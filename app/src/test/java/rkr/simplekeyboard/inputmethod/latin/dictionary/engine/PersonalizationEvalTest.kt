@@ -827,7 +827,7 @@ class PersonalizationEvalTest {
         private val PIN_GRAD_WORDS = mapOf(
             "hash.oracle" to 0, "hash.realistic" to 0, "hash.fixed" to 0,
             "chrono.oracle" to 1, "chrono.realistic" to 1, "chrono.fixed" to 1,
-            "rep.oracle" to 192, "rep.realistic" to 192, "rep.fixed" to 192,
+            "rep.oracle" to 191, "rep.realistic" to 191, "rep.fixed" to 191,
         )
         private val PIN_GRAD_PAIRS = mapOf(
             "hash.oracle" to 33, "hash.realistic" to 33, "hash.fixed" to 33,
@@ -840,12 +840,12 @@ class PersonalizationEvalTest {
             "rep.oracle" to 89_169L, "rep.realistic" to 89_169L, "rep.fixed" to 89_169L,
         )
         private val PIN_EMPTY_OBSERVATIONS = mapOf(
-            "hash.oracle" to 788L, "hash.realistic" to 788L, "hash.fixed" to 788L,
+            "hash.oracle" to 784L, "hash.realistic" to 784L, "hash.fixed" to 784L,
             "chrono.oracle" to 808L, "chrono.realistic" to 808L, "chrono.fixed" to 808L,
-            "rep.oracle" to 4_980L, "rep.realistic" to 4_980L, "rep.fixed" to 4_980L,
+            "rep.oracle" to 4_959L, "rep.realistic" to 4_959L, "rep.fixed" to 4_959L,
         )
         private val PIN_WORD_COMPLETIONS = mapOf(
-            "hash" to 93L, "chrono" to 88L, "rep" to 591L,
+            "hash" to 93L, "chrono" to 88L, "rep" to 588L,
         )
         private val PIN_PAIR_OBSERVATIONS = mapOf(
             "hash" to 2_224L, "chrono" to 2_173L, "rep" to 13_419L,
@@ -863,7 +863,7 @@ class PersonalizationEvalTest {
             "hash" to 57L, "chrono" to 43L, "rep" to 402L,
         )
         private val PIN_PRIME_UNSEEN_TOKENS = mapOf(
-            "hash" to 60L, "chrono" to 54L, "rep" to 387L,
+            "hash" to 59L, "chrono" to 54L, "rep" to 384L,
         )
         private val PIN_UNSEEN_STEM = mapOf(
             "hash" to listOf(0L, 0L, 0L),
@@ -885,7 +885,7 @@ class PersonalizationEvalTest {
         // arm of TtSuggestEvalTest; the lift is pinned python-side (PIN_REP_KS_PERS_KEYS in
         // tests/personalization_eval) and floored here at 80%.
         private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_096
-        private const val PIN_REP_KS_LIFT_KEYS = 1_084
+        private const val PIN_REP_KS_LIFT_KEYS = 916
 
         private lateinit var evalLines: List<String>
         private var dictionaryIndex: TdictPrefixIndex? = null

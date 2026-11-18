@@ -493,7 +493,7 @@ class FullEvalRecomputeTest(unittest.TestCase):
 
     def test_tatar_pins(self) -> None:
         table = self.tables["tat"]
-        self.assertEqual(table["dict_word_coverage_tokens_pct"], "95.5966")
+        self.assertEqual(table["dict_word_coverage_tokens_pct"], "95.6148")
         self.assertEqual(table["bigram_head_coverage_pct"], "85.2224")
         self.assertEqual(table["nextword_chain_top1_pct"], "7.7129")
         self.assertEqual(table["nextword_chain_visible_top3_hits"], "652")
@@ -505,7 +505,7 @@ class FullEvalRecomputeTest(unittest.TestCase):
         self.assertEqual(table["prefix_top1_cp3_pct"], "15.8499")
         self.assertEqual(table["prefix_visible_top3_cp3_pct"], "29.7090")
         self.assertEqual(table["prefix_engine_top4_cp3_pct"], "33.9587")
-        self.assertEqual(table["strip_empty_prefix_pct"], "1.9670")
+        self.assertEqual(table["strip_empty_prefix_pct"], "1.9505")
         self.assertEqual(table["strip_empty_nextword_empty"], "0")
         # The shipped default strip shows three cells; the fourth-cell arm is the opt-in setting.
         self.assertEqual(table["ks_simulated_keys"], "21900")
@@ -515,15 +515,15 @@ class FullEvalRecomputeTest(unittest.TestCase):
         # The context boost (the armed exact pass) over the cp>=2 prefix moments; the JVM pins
         # in TtSuggestEvalTest assert the same values on the real index.
         self.assertEqual(table["ctxboost_cp2plus_moments"], "18789")
-        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "34.8395")
-        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "37.7721")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+2.9326")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+2.5029")
-        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+3.3837")
-        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "51.3013")
+        self.assertEqual(table["ctxboost_cp2plus_top1_base_pct"], "34.8449")
+        self.assertEqual(table["ctxboost_cp2plus_top1_boost_pct"], "37.7881")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_pp"], "+2.9432")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_lo"], "+2.5134")
+        self.assertEqual(table["ctxboost_cp2plus_top1_delta_ci95_hi"], "+3.3992")
+        self.assertEqual(table["ctxboost_cp2plus_visible_top3_base_pct"], "51.2906")
         self.assertEqual(table["ctxboost_cp2plus_visible_top3_boost_pct"], "53.5047")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "55.4101")
-        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "57.3048")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_base_pct"], "55.4048")
+        self.assertEqual(table["ctxboost_cp2plus_engine_top4_boost_pct"], "57.3101")
 
     def test_russian_pins(self) -> None:
         table = self.tables["rus"]

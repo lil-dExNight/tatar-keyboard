@@ -269,14 +269,14 @@ class CommittedSetIdentityTest(unittest.TestCase):
 
     def test_set_identity(self) -> None:
         result = self.result
-        self.assertEqual(result.substrate_count, 2377)
-        self.assertEqual(result.size, 9508)
+        self.assertEqual(result.substrate_count, 2378)
+        self.assertEqual(result.size, 9512)
         self.assertEqual(
-            result.class_counts, {"sub": 2377, "del": 2377, "ins": 2377, "trans": 2377}
+            result.class_counts, {"sub": 2378, "del": 2378, "ins": 2378, "trans": 2378}
         )
-        self.assertEqual(len(result.data), 310362)
+        self.assertEqual(len(result.data), 310580)
         self.assertEqual(
-            result.sha256, "e720348d953c2c4d4f1653ff78baa38b469435ed81f0ff7fd461ca01f9699efc"
+            result.sha256, "2819c3e08eebc311b6f3eb64b9cccfb93cf19d3ef1e55b78c8790c0531f50ace"
         )
 
     def test_every_class_is_present(self) -> None:
@@ -384,14 +384,14 @@ class TatarValidOovSafetySetIdentityTest(unittest.TestCase):
         )
 
     def test_set_identity_and_strata(self) -> None:
-        self.assertEqual(self.result.size, 216)
-        self.assertEqual(len(self.result.data), 7792)
+        self.assertEqual(self.result.size, 215)
+        self.assertEqual(len(self.result.data), 7755)
         self.assertEqual(
-            self.result.sha256, "ce01381da7898a7346c52cc341ae9814b4503641f5cbb0c676cbefa60434cf31"
+            self.result.sha256, "c17bc5efc8c823bd4874a0ccb71a0d35a76049ec78ee3c04b669340fe6c19588"
         )
         self.assertEqual(
             self.result.stratum_counts,
-            {"seen_form": 6, "new_form_of_seen_stem": 96, "unseen_stem": 114},
+            {"seen_form": 6, "new_form_of_seen_stem": 96, "unseen_stem": 113},
         )
 
     def test_committed_file_is_byte_identical(self) -> None:
@@ -452,13 +452,13 @@ class CliTest(unittest.TestCase):
             code, stdout = self.run_cli(out)
             self.assertEqual(code, 0)
             report = json.loads(stdout)
-            self.assertEqual(report["rows"], 9508)
+            self.assertEqual(report["rows"], 9512)
             self.assertEqual(
                 report["set_sha256"],
-                "e720348d953c2c4d4f1653ff78baa38b469435ed81f0ff7fd461ca01f9699efc",
+                "2819c3e08eebc311b6f3eb64b9cccfb93cf19d3ef1e55b78c8790c0531f50ace",
             )
-            self.assertEqual(report["set_bytes"], 310362)
-            self.assertEqual(report["substrate_words"], 2377)
+            self.assertEqual(report["set_bytes"], 310580)
+            self.assertEqual(report["substrate_words"], 2378)
             self.assertEqual(hashlib.sha256(out.read_bytes()).hexdigest(), report["set_sha256"])
 
     def test_a_missing_eval_set_exits_two_without_output(self) -> None:

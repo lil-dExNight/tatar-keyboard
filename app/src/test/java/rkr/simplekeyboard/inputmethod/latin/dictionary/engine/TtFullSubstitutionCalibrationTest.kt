@@ -131,11 +131,11 @@ class TtFullSubstitutionCalibrationTest {
         // Identities of `python3 scripts/typo_pack.py build --edit-class 4 [--prefix-code-points 5]`
         // on the committed asset; the asset rebuild rewrites them (scripts/rebuild_assets.py).
         val class4w3 = buildSubstitutionSet(3)
-        assertEquals(110_887, class4w3.rows.size)
-        assertEquals("67282dfdee9c63926e7a52c6ff927edebc45042c0f543d6fd87620095a93cbb7", class4w3.sha256)
+        assertEquals(112_563, class4w3.rows.size)
+        assertEquals("639fdf971b861409a8d47ebc625b08371a06a76058899f91963c9fa0a24d3733", class4w3.sha256)
         val class4w5 = buildSubstitutionSet(5)
-        assertEquals(106_257, class4w5.rows.size)
-        assertEquals("f18f7a3b476b0ec739d7475ec62c1db8750c80ecf4eeb1004bd5968ecea88e34", class4w5.sha256)
+        assertEquals(107_924, class4w5.rows.size)
+        assertEquals("e87663ebaaaeb8038eae8b883160219c054a7e7d3e697f804d5e79b26cb9aae3", class4w5.sha256)
     }
 
     @Test
@@ -460,20 +460,20 @@ class TtFullSubstitutionCalibrationTest {
         // Pins over the committed dictionary and eval set; re-pin when an input changes. The
         // candidate-arm counts moved up when the geometry-neighbor bonus was armed: neighbor
         // substitutions reach the strip's four cells more often.
-        private const val PIN_BASE_W5 = 43_773
-        private const val PIN_CAND_W5 = 30_496
-        private const val PIN_BASE_W5_SUBSET = 99_215
-        private const val PIN_CAND_W5_SUBSET = 102_664
+        private const val PIN_BASE_W5 = 43_853
+        private const val PIN_CAND_W5 = 30_534
+        private const val PIN_BASE_W5_SUBSET = 100_770
+        private const val PIN_CAND_W5_SUBSET = 104_254
         private const val PIN_EVAL_PREFIXES_GE4 = 7_599
-        private const val PIN_EXACT_EMPTY = 1_395
-        private const val PIN_CLASS4_FILLED = 1_016
+        private const val PIN_EXACT_EMPTY = 1_388
+        private const val PIN_CLASS4_FILLED = 1_014
 
         // Pins of the same-set lift measurement.
         private const val PIN_LIFT_BASE_W5_WHOLE = 533
-        private const val PIN_LIFT_CAND_W5_WHOLE = 30_505
-        private const val PIN_LIFT_ACTIVE_ROWS = 102_664
+        private const val PIN_LIFT_CAND_W5_WHOLE = 30_543
+        private const val PIN_LIFT_ACTIVE_ROWS = 104_254
         private const val PIN_LIFT_BASE_W5_ACTIVE = 524
-        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_496
+        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_534
         private const val PIN_LIFT_BASE_W3_WHOLE = 113
         private const val PIN_LIFT_CAND_W3_WHOLE = 117
 

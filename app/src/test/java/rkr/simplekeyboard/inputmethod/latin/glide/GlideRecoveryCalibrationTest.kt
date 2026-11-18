@@ -2060,10 +2060,10 @@ class GlideRecoveryCalibrationTest {
 
         // The pinned identity of the synthetic set (the same pins tests/glide_pack/ asserts; the
         // asset rebuild rewrites both). Loop and eligible dwell rows make rows outnumber words.
-        private const val SET_SIZE = 5149
-        private const val SET_BYTES = 14130885
+        private const val SET_SIZE = 5192
+        private const val SET_BYTES = 14279479
         private const val SET_SHA256 =
-            "c257c2a4cefb142dd5f1b1697af1d27453b19076c868f27b55f63370e9c8077a"
+            "95f481739ebe5ef791a560d15b6a48d39a803d6d935787db786e7c824f5e015f"
 
         // The per-class split of gatesRecoveryAndLatencyOnTheRealDictionary.
         private const val CLASS_COUNT = 7
@@ -2074,9 +2074,9 @@ class GlideRecoveryCalibrationTest {
         // The alias class carries zeros: the 8-letter extra row made ё and ъ direct keys, so no
         // Tatar word is alias-folded anymore (the class is seeded on the Russian bench).
         private val TT_PRUNING_BASELINE = PruningBaseline(
-            counts = intArrayOf(2418, 226, 190, 36, 0, 226, 226),
-            bucketHits = intArrayOf(2338, 215, 182, 34, 0, 216, 216),
-            pruningHits = intArrayOf(2335, 215, 182, 34, 0, 216, 216),
+            counts = intArrayOf(2432, 228, 192, 36, 0, 228, 228),
+            bucketHits = intArrayOf(2350, 217, 184, 34, 0, 218, 218),
+            pruningHits = intArrayOf(2347, 217, 184, 34, 0, 218, 218),
         )
         private val RU_PRUNING_BASELINE = PruningBaseline(
             counts = intArrayOf(1109, 99, 97, 2, 35, 100, 100),
@@ -2089,8 +2089,8 @@ class GlideRecoveryCalibrationTest {
         private const val RECOVERY_TOP1_MIN = 35.0
         private const val HOST_P95_MS = 2.0
         private const val NO_DWELL_TWIN_TOP1_PIN = 8.3333
-        private const val PLAIN_TOP1_PIN = 88.2917
-        private const val PLAIN_TOP3_PIN = 95.7917
+        private const val PLAIN_TOP1_PIN = 88.1168
+        private const val PLAIN_TOP3_PIN = 95.6826
         // The alias floors are inert on the Tatar bench (the 8-letter extra row leaves no Tatar
         // alias letter); they apply wherever the alias class is seeded.
         private const val ALIAS_TOP1_PIN = 89.4737
@@ -2099,8 +2099,8 @@ class GlideRecoveryCalibrationTest {
         // The short-word class guard (2-4 cp held-out, per-language constants): floors at the
         // per-language column of gatesPerLanguageConstants' 2-4cp printout minus a 1 pp drift
         // tolerance (the printout carries the slice sizes).
-        private const val TT_SHORT_TOP1_PIN = 85.0140
-        private const val TT_SHORT_TOP3_PIN = 93.7552
+        private const val TT_SHORT_TOP1_PIN = 85.9154
+        private const val TT_SHORT_TOP3_PIN = 94.7183
         private const val RU_SHORT_TOP1_PIN = 88.2308
         private const val RU_SHORT_TOP3_PIN = 94.3846
 

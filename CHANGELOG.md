@@ -16,7 +16,8 @@ These hold for every release:
 
 ### Added
 
-- The Tatar dictionary includes the next reviewed set of stems and word forms, while every
+- The Tatar dictionary includes reviewed lexical adjectives, agent nouns, derived verb stems
+  and their attested word forms, plus whole reduplicative compounds such as `ап-ачык`; every
   previously shipped word stays available.
 - Reviewed exact Tatar spelling corrections cover the approved ү/у pairs and the genitive
   -нын→-ный pairs. They use the existing autocorrect preview, undo and refusal behavior without

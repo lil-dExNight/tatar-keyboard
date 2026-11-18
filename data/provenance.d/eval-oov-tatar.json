@@ -1,8 +1,8 @@
 {
   "id": "eval-oov-tatar-development",
   "revision": "tt-valid-oov/v1",
-  "size_bytes": 7792,
-  "sha256": "ce01381da7898a7346c52cc341ae9814b4503641f5cbb0c676cbefa60434cf31",
+  "size_bytes": 7755,
+  "sha256": "c17bc5efc8c823bd4874a0ccb71a0d35a76049ec78ee3c04b669340fe6c19588",
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles",
   "source_role": "development_regression_evaluation",
   "split_rule": "reviewed development/regression safety data; never final",
