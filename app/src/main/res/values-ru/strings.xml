@@ -282,9 +282,18 @@
 
     <string name="settings_screen_backup">Резервная копия</string>
     <string name="settings_screen_backup_summary">Сохранить в файл или восстановить из файла</string>
-    <string name="backup_contents_note">В файле ваши настройки, сохранённые слова, пары слов, изученные эмодзи, текстовые сокращения и исправления. Любой, у кого есть файл, сможет их прочитать.</string>
+    <string name="backup_contents_note">В резервной копии ваши настройки, сохранённые слова, пары слов, изученные эмодзи, текстовые сокращения и исправления. Незашифрованный файл может прочитать любой, у кого он есть. Для открытия зашифрованного файла нужен ваш пароль.</string>
     <string name="backup_export_action">Сохранить в файл…</string>
+    <string name="backup_encrypted_export_action">Сохранить зашифрованный файл…</string>
+    <string name="backup_export_password_title">Шифрование резервной копии</string>
+    <string name="backup_export_password_action">Зашифровать и сохранить</string>
     <string name="backup_import_action">Восстановить из файла…</string>
+    <string name="backup_import_password_title">Требуется пароль</string>
+    <string name="backup_import_password_action">Восстановить</string>
+    <string name="backup_password_hint">Пароль</string>
+    <string name="backup_password_confirm_hint">Подтвердите пароль</string>
+    <string name="backup_password_empty">Введите пароль.</string>
+    <string name="backup_password_mismatch">Пароли не совпадают.</string>
     <string name="backup_import_confirm_message">Заменить ваши настройки, сохранённые слова, пары слов, изученные эмодзи, текстовые сокращения и исправления теми, что в файле? Это нельзя отменить.</string>
     <string name="backup_import_confirm_action">Заменить</string>
     <string name="backup_export_done">Резервная копия сохранена.</string>

@@ -251,9 +251,18 @@
 
     <string name="settings_screen_backup">Резерв күчермә</string>
     <string name="settings_screen_backup_summary">Файлга саклау яки файлдан кире кайтару</string>
-    <string name="backup_contents_note">Файлда сезнең көйләүләр, сакланган сүзләр, сүз парлары, өйрәнелгән эмодзилар, текст кыскартмалары һәм төзәтмәләр бар. Файлы булган һәркем аларны укый ала.</string>
+    <string name="backup_contents_note">Резерв күчермәдә сезнең көйләүләр, сакланган сүзләр, сүз парлары, өйрәнелгән эмодзилар, текст кыскартмалары һәм төзәтмәләр бар. Шифрланмаган файлны аны алган һәркем укый ала. Шифрланган файлны ачу өчен серсүзегез кирәк.</string>
     <string name="backup_export_action">Файлга саклау…</string>
+    <string name="backup_encrypted_export_action">Шифрлап саклау…</string>
+    <string name="backup_export_password_title">Резерв күчермәне шифрлау</string>
+    <string name="backup_export_password_action">Шифрлап саклау</string>
     <string name="backup_import_action">Файлдан кире кайтару…</string>
+    <string name="backup_import_password_title">Серсүз кирәк</string>
+    <string name="backup_import_password_action">Кире кайтару</string>
+    <string name="backup_password_hint">Серсүз</string>
+    <string name="backup_password_confirm_hint">Серсүзне раслагыз</string>
+    <string name="backup_password_empty">Серсүз кертегез.</string>
+    <string name="backup_password_mismatch">Серсүзләр туры килми.</string>
     <string name="backup_import_confirm_message">Көйләүләрегезне, сакланган сүзләрне, сүз парларын, өйрәнелгән эмодзиларны, текст кыскартмаларын һәм төзәтмәләрне файлдагылар белән алыштырыргамы? Моны кире кайтарып булмый.</string>
     <string name="backup_import_confirm_action">Алыштыру</string>
     <string name="backup_export_done">Күчермә сакланды.</string>

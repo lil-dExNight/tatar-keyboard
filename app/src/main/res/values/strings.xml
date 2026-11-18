@@ -439,13 +439,21 @@
     <string name="settings_screen_backup">Backup</string>
     <!-- Summary under the root-screen row. -->
     <string name="settings_screen_backup_summary">Save to a file or restore from one</string>
-    <!-- The note at the top of the backup screen: the file carries the saved words, and anyone
-         who has the file can read them. -->
-    <string name="backup_contents_note">The file holds your settings, saved words, word pairs, learned emoji, text shortcuts and corrections. Anyone who has the file can read them.</string>
-    <!-- Action that writes the backup file through the system file picker. -->
+    <!-- The note names the backup contents and distinguishes plaintext from encrypted files. -->
+    <string name="backup_contents_note">Backups hold your settings, saved words, word pairs, learned emoji, text shortcuts and corrections. Unencrypted files can be read by anyone who has them. Encrypted files require your password.</string>
+    <!-- Action that writes the plaintext backup file through the system file picker. -->
     <string name="backup_export_action">Save to a file…</string>
+    <string name="backup_encrypted_export_action">Save encrypted file…</string>
+    <string name="backup_export_password_title">Encrypt backup</string>
+    <string name="backup_export_password_action">Encrypt and save</string>
     <!-- Action that restores a backup file, and title of its confirmation dialog. -->
     <string name="backup_import_action">Restore from a file…</string>
+    <string name="backup_import_password_title">Password required</string>
+    <string name="backup_import_password_action">Restore</string>
+    <string name="backup_password_hint">Password</string>
+    <string name="backup_password_confirm_hint">Confirm password</string>
+    <string name="backup_password_empty">Enter a password.</string>
+    <string name="backup_password_mismatch">Passwords do not match.</string>
     <!-- Body of the import confirmation: a restore replaces what is on this device. -->
     <string name="backup_import_confirm_message">Replace your settings, saved words, word pairs, learned emoji, text shortcuts and corrections with the ones in the file? This cannot be undone.</string>
     <!-- Affirmative button of the import dialog. Names the action because it is destructive. -->
