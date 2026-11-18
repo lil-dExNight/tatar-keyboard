@@ -517,10 +517,11 @@ press of two keys takes its base from `ALIAS_BASES` (`һ` on `х`, `ә` on `а`)
 digits and other non-letters never become aliases. Words that share a key sequence (`все` and
 `всё`) compete by frequency. A word with a doubled letter is scored against its looped ideal
 path, so the gesture needs a loop or a dwell there, because the plain path belongs to the
-undoubled twin. Two different letters that share a key through an alias (`её`) draw no loop and
-score against the plain path. When no indexed word has the
-collapsed key sequence (the twin bit of `GlideWordIndex`, recomputed with the personal words),
-the doubled word is also scored against the plain path and keeps the better score.
+undoubled twin. A pause nearest a key outside the candidate can use the second-nearest key as
+off-center evidence; a pause on another letter of the candidate cannot. Two different letters
+that share a key through an alias (`её`) draw no loop and score against the plain path. When no
+indexed word has the collapsed key sequence (the twin bit of `GlideWordIndex`, recomputed with
+the personal words), the doubled word is also scored against the plain path and keeps the better score.
 
 Spacing: a glide adds no space after the word. It prepends one space when the text before the
 cursor ends in a letter, a digit, a mark that attaches to a word (`. , ; : ! ? ) ] }`) or a

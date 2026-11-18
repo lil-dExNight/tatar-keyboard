@@ -207,8 +207,10 @@ class GlideDecoder(
     private val mergeCursor = IntArray(mergeArmCapacity)
     private val mergeHeadEntry = IntArray(mergeArmCapacity)
     private val mergeHeadFrequency = LongArray(mergeArmCapacity)
-    private val dwellMask = LongArray((geometry.keyCount + 63) ushr 6)
-    private val dwellKey = IntArray(1)
+    private val dwellMaskWords = (geometry.keyCount + 63) ushr 6
+    private val dwellMask = LongArray(dwellMaskWords)
+    private val offCenterDwellMask = LongArray(geometry.keyCount * dwellMaskWords)
+    private val dwellKeys = IntArray(2)
     private var dwellMaskValid = false
     private var dwellMaskAny = false
 
@@ -475,18 +477,35 @@ class GlideDecoder(
     ): Boolean {
         if (!dwellMaskValid) buildDwellMask(path, userDurationMs, userLength)
         if (!dwellMaskAny) return false
-        for (position in index.keySeqStart(entry) + 1 until index.keySeqEnd(entry)) {
+        val start = index.keySeqStart(entry)
+        val end = index.keySeqEnd(entry)
+        for (position in start + 1 until end) {
             if (!index.sameLetterAsPreviousAt(position)) continue
             val key = index.keySeqAt(position)
             if ((dwellMask[key ushr 6] ushr (key and 63)) and 1L != 0L) return true
+            // A pause closer to a foreign key than to the doubled key is off-center evidence.
+            // When the nearest key occurs in the candidate, the pause instead belongs to that
+            // letter; clear those nearest-key bits before accepting the second-nearest key.
+            for (maskIndex in 0 until dwellMaskWords) {
+                var nearestKeys = offCenterDwellMask[key * dwellMaskWords + maskIndex]
+                for (letterPosition in start until end) {
+                    val letterKey = index.keySeqAt(letterPosition)
+                    if (letterKey ushr 6 == maskIndex) {
+                        nearestKeys = nearestKeys and (1L shl (letterKey and 63)).inv()
+                    }
+                }
+                if (nearestKeys != 0L) return true
+            }
         }
         return false
     }
 
-    /** Marks keys at slow segments, using the gesture's own average speed as the reference. */
+    /** Marks nearest keys and nearest-to-secondary-key relations at slow segments, using the
+     * gesture's own average speed as the reference. */
     private fun buildDwellMask(path: GlidePath, userDurationMs: Float, userLength: Float) {
         dwellMaskValid = true
         dwellMask.fill(0L)
+        offCenterDwellMask.fill(0L)
         if (userDurationMs <= 0f || !userDurationMs.isFinite() ||
             userLength <= 0f || !userLength.isFinite()
         ) {
@@ -504,11 +523,18 @@ class GlideDecoder(
             val found = geometry.findClosestKeys(
                 (path.xs[i] + path.xs[i + 1]) * 0.5f,
                 (path.ys[i] + path.ys[i + 1]) * 0.5f,
-                dwellKey,
+                dwellKeys,
             )
             if (found == 0) continue
-            val key = dwellKey[0]
-            dwellMask[key ushr 6] = dwellMask[key ushr 6] or (1L shl (key and 63))
+            val nearest = dwellKeys[0]
+            dwellMask[nearest ushr 6] =
+                dwellMask[nearest ushr 6] or (1L shl (nearest and 63))
+            if (found > 1) {
+                val second = dwellKeys[1]
+                val maskIndex = second * dwellMaskWords + (nearest ushr 6)
+                offCenterDwellMask[maskIndex] =
+                    offCenterDwellMask[maskIndex] or (1L shl (nearest and 63))
+            }
             dwellMaskAny = true
         }
     }

@@ -187,6 +187,35 @@ class GlideDecoderTest {
     }
 
     @Test
+    fun offCenterDwellAtDoubleSupportsTheTwin() {
+        val decoder = decoderOf(listOf("алла" to 7466L, "ала" to 36L))
+        val base = dwellPath("алла", 'л')
+        var dwellStart = 0
+        var longestDuration = 0f
+        for (i in 0 until base.size - 1) {
+            val duration = base.ts[i + 1] - base.ts[i]
+            if (duration > longestDuration) {
+                longestDuration = duration
+                dwellStart = i
+            }
+        }
+        val doubleKey = geometry.keyIndexOfLetter('л'.code)
+        val adjacentKey = geometry.keyIndexOfLetter('о'.code)
+        // The slow point is closer to о, while л is its second-nearest key.
+        val dwellX = geometry.centerX(doubleKey) * 0.4f + geometry.centerX(adjacentKey) * 0.6f
+        val dwellY = geometry.centerY(doubleKey)
+        val path = GlidePath(base.size)
+        for (i in 0 until base.size) {
+            if (i == dwellStart || i == dwellStart + 1) {
+                path.addPoint(dwellX, dwellY, base.ts[i])
+            } else {
+                path.addPoint(base.xs[i], base.ys[i], base.ts[i])
+            }
+        }
+        assertEquals("алла", decodeWords(decoder, path)[0])
+    }
+
+    @Test
     fun dwellEvidenceIsRelativeToTheGesturesOwnSpeed() {
         val decoder = decoderOf(listOf("алла" to 7466L, "ала" to 36L))
         val dwell = dwellPath("алла", 'л')
