@@ -1,0 +1,222 @@
+# Reviewed exact Tatar autocorrections; no productive edit class or dictionary admission.
+# Within ң/н, only the reviewed genitive-suffix pairs are active.
+typed	replacement	class	approved	reviewer	review_date	note
+мәгълумат	мәгълүмат	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative. The conflicting safety row was rejected.
+биру	бирү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+дүчар	дучар	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+мәгълуматларына	мәгълүматларына	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узебезне	үзебезне	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+эчу	эчү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+тули	түли	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+киту	китү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+улеп	үлеп	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+күәтендә	куәтендә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+утә	үтә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бируче	бирүче	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+килу	килү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куренеше	күренеше	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курер	күрер	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+мәгърүр	мәгърур	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+мәрхум	мәрхүм	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сурәсендә	сүрәсендә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+яшәуче	яшәүче	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+җөмһурияте	җөмһүрияте	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бируне	бирүне	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+дуртенче	дүртенче	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курсәтә	күрсәтә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+мәхлүк	мәхлук	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сузләре	сүзләре	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сурәсен	сүрәсен	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+ускән	үскән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+утәчәк	үтәчәк	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+җөмһуриятенең	җөмһүриятенең	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+китеру	китерү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курде	күрде	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курсәткән	күрсәткән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+мәхрум	мәхрүм	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сурәне	сүрәне	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сүрәтләде	сурәтләде	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сүрәтләп	сурәтләп	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сүрәтләүче	сурәтләүче	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+түфли	туфли	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+узләре	үзләре	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уткән	үткән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уткәрелә	үткәрелә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+җөмһуриятләр	җөмһүриятләр	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куләм	күләм	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куләмендә	күләмендә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+күркынычсызлыгы	куркынычсызлыгы	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сүрәтлиләр	сурәтлиләр	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сүрәтләргә	сурәтләргә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+тенту	тентү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+туләп	түләп	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узаң	үзаң	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+урнәк	үрнәк	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+фотосүрәтләре	фотосурәтләре	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+булегендә	бүлегендә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+булегенә	бүлегенә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+дурт	дүрт	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+дөньякуләм	дөньякүләм	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+йөру	йөрү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+килуче	килүче	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кузаллый	күзаллый	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куленә	күленә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кургән	күргән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курәсең	күрәсең	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+күәтен	куәтен	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+мәгълуматы	мәгълүматы	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сүрәтенә	сурәтенә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+тугел	түгел	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+усешенә	үсешенә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уткәрә	үткәрә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уткәч	үткәч	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+утми	үтми	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+фотосүрәткә	фотосурәткә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+эшләу	эшләү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+яшусмер	яшүсмер	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+җөмһуриятебез	җөмһүриятебез	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+үзачак	узачак	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үзды	узды	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үздырырга	уздырырга	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үзып	узып	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+берәу	берәү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бирудән	бирүдән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бугенгесе	бүгенгесе	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+булмәсе	бүлмәсе	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бүенча	буенча	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+бүлды	булды	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+газуткәргеч	газүткәргеч	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+гафү	гафу	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+кумер	күмер	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курсәтүне	күрсәтүне	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кучте	күчте	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куңелдә	күңелдә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куңелләребездә	күңелләребездә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+мәгълуматларын	мәгълүматларын	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сүрәткә	сурәткә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сүрәтләүгә	сурәтләүгә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+тугеллеге	түгеллеге	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+тузә	түзә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+турәләре	түрәләре	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узешчән	үзешчән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+утелгән	үтелгән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уткәрелгән	үткәрелгән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+эшкәрту	эшкәртү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+җөмһуриятебезнең	җөмһүриятебезнең	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+үздыру	уздыру	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үздырылган	уздырылган	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+белдеручеләр	белдерүчеләр	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бозү	бозу	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+булмәдә	бүлмәдә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бүлган	булган	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+ганһү	ганһу	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+гуя	гүя	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кабүл	кабул	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+киму	кимү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кубесенең	күбесенең	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кузаллаулары	күзаллаулары	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кузгә	күзгә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кузәтеп	күзәтеп	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куләмендәге	күләмендәге	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+купкырлы	күпкырлы	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+купмедер	күпмедер	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куренешне	күренешне	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курмәгән	күрмәгән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курәләр	күрәләр	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курәм	күрәм	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+куңеленә	күңеленә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+күзгатуны	кузгатуны	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+күлга	кулга	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+күркыныч	куркыныч	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+күркынычсыз	куркынычсыз	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+күрорт	курорт	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+күәсе	куәсе	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+күәтләре	куәтләре	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+мәҗбур	мәҗбүр	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative. The conflicting safety row was rejected.
+реабилитацияләу	реабилитацияләү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+саклаү	саклау	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сузебезне	сүзебезне	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сузме	сүзме	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сузчесе	сүзчесе	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сурәсеннән	сүрәсеннән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сүрәтле	сурәтле	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сүрәтләүдә	сурәтләүдә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сәудә	сәүдә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+теләучеләр	теләүчеләр	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+тетрәудән	тетрәүдән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+түрында	турында	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+узгәртелгән	үзгәртелгән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узгәрү	үзгәрү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узеңнең	үзеңнең	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узәге	үзәге	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узәгендә	үзәгендә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+усемлек	үсемлек	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уткәрелүче	үткәрелүче	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уткәрү	үткәрү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+фотосүрәтен	фотосурәтен	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+фотосүрәтләрен	фотосурәтләрен	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+хөкумәткә	хөкүмәткә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+шурәле	шүрәле	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+эшләуче	эшләүче	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+үзар	узар	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үзмый	узмый	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үзса	узса	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үзу	узу	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үтырту	утырту	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+буленеш	бүленеш	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+буләкләр	бүләкләр	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+керту	кертү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кубесенчә	күбесенчә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+купсанлы	күпсанлы	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+курсәтелгән	күрсәтелгән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+мәгълуматларга	мәгълүматларга	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+мәгълуматлары	мәгълүматлары	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+мәгълуматны	мәгълүматны	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сузлеге	сүзлеге	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сузлек	сүзлек	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+сүрәтли	сурәтли	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+сүрәтханә	сурәтханә	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+тубән	түбән	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+тубәнге	түбәнге	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+төзуче	төзүче	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+узенә	үзенә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+усә	үсә	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+чукеч	чүкеч	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+шүңа	шуңа	ү/у	yes	claude-independent	2026-11-18	Tatar letter used instead of the required one; the typed form is not a word and the replacement is normative.
+үзгәрту	үзгәртү	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+әйләнуен	әйләнүен	ү/у	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+авылнын	авылның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+аганын	аганың	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+чараларнын	чараларның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+шуларнын	шуларның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+акчанын	акчаның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+башкаласынын	башкаласының	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бинанын	бинаның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+журналистларнын	журналистларның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+машиналарынын	машиналарының	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+планнын	планның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+спортнын	спортның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+урыннын	урынның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+булганнын	булганның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+буыннын	буынның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+кызнын	кызның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+театрынын	театрының	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+уеннын	уенның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+укучыларнын	укучыларның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+университетынын	университетының	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+алунын	алуның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+бабайнын	бабайның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+баручыларнын	баручыларның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+демократларнын	демократларның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+йортнын	йортның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+карарнын	карарның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+клубнын	клубның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+команданын	команданың	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+комплекснын	комплексның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+советынын	советының	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+туганнын	туганның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+урманнын	урманның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+хатыннын	хатынның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+җыенынын	җыенының	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+обелискнын	обелискның	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.
+әлифбасынын	әлифбасының	ң/н	yes	claude-independent	2026-11-18	Russian letter used for the Tatar one; the typed form is not a word and the replacement is normative.

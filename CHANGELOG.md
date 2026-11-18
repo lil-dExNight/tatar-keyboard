@@ -18,6 +18,9 @@ These hold for every release:
 
 - The Tatar dictionary includes the next reviewed set of stems and word forms, while every
   previously shipped word stays available.
+- Reviewed exact Tatar spelling corrections cover the approved ү/у pairs and the genitive
+  -нын→-ный pairs. They use the existing autocorrect preview, undo and refusal behavior without
+  adding words to the dictionary or applying a general letter or suffix rule.
 - Reviewed Tatar compound words are suggested as whole words with their internal hyphen
   (`азык-төлек`, `санкт-петербург`). The personal dictionary, learned word pairs, the
   word-delete flick and the commit span treat the whole compound as one word.

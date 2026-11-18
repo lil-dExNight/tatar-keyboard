@@ -206,7 +206,7 @@ the personal word and the typo-recovery candidates fill the cells after it, with
 the shown form. The cell is only painted — showing it learns nothing and saves nothing — and an
 empty answer with no candidates at all still leaves this one tappable cell. A strip whose exact
 pass found candidates keeps its cells, and so does every special strip: a shortcut expansion, the
-legacy-spelling preview and the autocorrect preview all own the whole band, and the preview
+exact-correction preview and the autocorrect preview all own the whole band, and the preview
 already shows the typed word first, where a tap refuses the coming correction instead of
 committing.
 
@@ -308,11 +308,14 @@ previewed again. The match is the exact pair; a different replacement named for 
 fires. A text-shortcut expansion's undo shares only the session list: the pair is user-managed
 content with its own screen.
 
-The legacy-orthography map (`TatarWordUtils.legacyOrthographyCanonical`) handles old spellings
-whose replacement must not depend on statistical ambiguity. It currently maps `тәъмин` to
-`тәэмин`, which is already a high-frequency bundled entry. The controller uses the same preview,
-separator-time replacement, refusals and undo window as an engine verdict; it adds no dictionary
-entry and does not alter `теллә` or `вәҗһ`.
+The exact-correction map (`TatarWordUtils.explicitAutocorrection`) handles reviewed spellings
+whose replacement must not depend on statistical ambiguity. Alongside the legacy `тәъмин` to
+`тәэмин` pair, it contains only the approved exact pairs in
+`data/dictionary/tatar-autocorrect-review.tsv`: the ү/у review class and the reviewed genitive
+-нын→-ның forms of ң/н. This is not a productive letter or suffix rule and adds no dictionary
+entries. The reviewed safety list and the Tatar valid-OOV set remain unchanged in JVM tests. The
+controller uses the same preview, separator-time replacement, refusals and undo window as an
+engine verdict.
 
 Text shortcuts (managed on the "Text shortcuts" settings screen; one list for all layouts,
 `TextShortcutStore`, `.tcut`). While the typed word is exactly a saved shortcut, the strip offers

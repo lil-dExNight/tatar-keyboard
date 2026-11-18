@@ -3196,8 +3196,8 @@ class SuggestionsController internal constructor(
         syncAutocorrectAdviceState()
         val properNames = activeLanguage?.let { properNameIndexes[it] }
         // Only the ordinary completion band below may carry the keep-typed cell. The special
-        // strips that return early — a shortcut expansion, the legacy spelling, the autocorrect
-        // preview — own their documented cells.
+        // strips that return early — a shortcut expansion, an exact correction, a statistical
+        // autocorrect preview — own their documented cells.
         typedWordCell = null
         // A result computed for a request issued BEFORE the last observed setting change still
         // carries the old verdict: only a request issued after the change clears the reset.
@@ -3237,16 +3237,16 @@ class SuggestionsController internal constructor(
             showBand(cells)
             return
         }
-        // An explicitly supported legacy spelling has a deterministic correction even when the
-        // statistical engine withholds its verdict because another dictionary word is one edit away.
-        val legacyPreview = legacyAutocorrectPreview(pendingPrefix)
-        if (legacyPreview != null) {
-            previewKeepTypedCell = legacyPreview.typedShown
+        // An exact reviewed correction is deterministic even when the statistical engine withholds
+        // its verdict because another dictionary word is one edit away.
+        val explicitPreview = explicitAutocorrectPreview(pendingPrefix)
+        if (explicitPreview != null) {
+            previewKeepTypedCell = explicitPreview.typedShown
             displayedGlideAlternativesFor = null
             displayedPrefix = pendingPrefix
             displayedSessionId = sessionId
             showBand(
-                listOf(legacyPreview.typedShown, legacyPreview.correctionShown),
+                listOf(explicitPreview.typedShown, explicitPreview.correctionShown),
                 PREVIEW_EMPHASIZED_CELL,
             )
             return
@@ -3376,18 +3376,13 @@ class SuggestionsController internal constructor(
         }
     }
 
-    /** Returns the deterministic legacy-spelling preview, with the same refusal rules as a verdict. */
-    private fun legacyAutocorrectPreview(word: String): AutocorrectPreview? {
+    /** Returns the exact reviewed preview, with the same refusal rules as a verdict. */
+    private fun explicitAutocorrectPreview(word: String): AutocorrectPreview? {
         if (!autocorrectGate.isOn() || word == suppressedPreviewWord) return null
-        val canonical = TatarWordUtils.legacyOrthographyCanonical(word) ?: return null
         val normalized = TatarWordUtils.normalizeForLookup(word)
+        val canonical = TatarWordUtils.explicitAutocorrection(normalized) ?: return null
         if (normalized in refusedCorrections ||
             refusedCorrectionSource?.isRefused(normalized, canonical) == true
-        ) {
-            return null
-        }
-        if (normalized.codePointCount(0, normalized.length) <
-            AutocorrectPolicy.MIN_WORD_CODE_POINTS
         ) {
             return null
         }
@@ -3415,7 +3410,8 @@ class SuggestionsController internal constructor(
      *    exact (typed word → replacement) correction enough times to be remembered across sessions;
      *  - an engine is usable and the cursor is known;
      *  - the cursor is not inside a word, and the word is not in mixed case (no defined form);
-     *  - the word is long enough ([AutocorrectPolicy.MIN_WORD_CODE_POINTS], on the normalized form);
+     *  - a statistical verdict needs at least [AutocorrectPolicy.MIN_WORD_CODE_POINTS]; an exact
+     *    reviewed pair is already bounded by its reviewed source and may be shorter;
      *  - a verdict exists and was computed for this word: a coalesced or unanswered lookup leaves
      *    an older verdict behind, which must not be applied to a different word;
      *  - the candidate is frequent enough (the per-language floor the advice carries).
@@ -3446,23 +3442,23 @@ class SuggestionsController internal constructor(
         val normalized = TatarWordUtils.normalizeForLookup(word)
         // The user undid this word's correction earlier in the field session.
         if (normalized in refusedCorrections) return false
-        if (normalized.codePointCount(0, normalized.length) <
-            AutocorrectPolicy.MIN_WORD_CODE_POINTS
+        val explicitCanonical = TatarWordUtils.explicitAutocorrection(normalized)
+        if (explicitCanonical != null &&
+            refusedCorrectionSource?.isRefused(normalized, explicitCanonical) != true
         ) {
-            return false
-        }
-        val legacyCanonical = TatarWordUtils.legacyOrthographyCanonical(word)
-        if (legacyCanonical != null &&
-            refusedCorrectionSource?.isRefused(normalized, legacyCanonical) != true
-        ) {
-            val replacement = TatarWordUtils.applyCasing(legacyCanonical, casing)
+            val replacement = TatarWordUtils.applyCasing(explicitCanonical, casing)
             if (replacement != word) {
                 return replaceTrailingWordAndArm(word, replacement, separatorCodePoint,
                     requiresAutocorrectGate = true)
             }
         }
-        // The verdict of a lookup that ran before the last setting change is reset; the legacy
-        // spelling rule above is deterministic, not a verdict, so it is unaffected.
+        if (normalized.codePointCount(0, normalized.length) <
+            AutocorrectPolicy.MIN_WORD_CODE_POINTS
+        ) {
+            return false
+        }
+        // The verdict of a lookup that ran before the last setting change is reset; an exact
+        // reviewed correction is deterministic, not a verdict, so it is unaffected.
         if (adviceAwaitingFreshLookup) return false
         val advice = activeEngine.autocorrectAdvice() ?: return false
         if (advice.typedWord != normalized) return false

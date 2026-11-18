@@ -37,6 +37,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectio
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrectionSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrections
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.WordCompletionSink
+import java.io.File
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -443,6 +444,63 @@ class AutocorrectControllerTest {
 
         assertEquals("тәъмин ", h.editor.before)
         assertTrue(h.editor.edits.isEmpty())
+    }
+
+    @Test
+    fun everyReviewedExactPairFiresAtTheSeparator() {
+        val rows = reviewedCorrections()
+        val uClass = rows.count { it.reviewClass == "ү/у" }
+        val genitiveClass = rows.count { it.reviewClass == "ң/н" }
+        assertEquals(184, uClass)
+        assertEquals(35, genitiveClass)
+        assertEquals(rows.size, uClass + genitiveClass)
+        assertEquals(rows.associate { it.typed to it.replacement }, reviewedCorrectionMap())
+
+        val h = Harness()
+        h.start()
+        for (row in rows) {
+            assertEquals("unreviewed row: $row", "yes", row.approved)
+            assertTrue(
+                "outside the approved genitive scope: $row",
+                row.reviewClass != "ң/н" ||
+                    row.typed.endsWith("нын") && row.replacement.endsWith("ның"),
+            )
+            val before = h.editor.before
+            h.typeWord(row.typed)
+            h.separator(' ')
+            assertEquals(
+                "reviewed pair did not fire: ${row.typed} -> ${row.replacement}",
+                before + row.replacement + " ",
+                h.editor.before,
+            )
+        }
+        assertEquals(rows.size, h.editor.edits.count { it.startsWith("replace:") })
+        println(
+            "reviewed_exact active_total=${rows.size} active_u=$uClass " +
+                "active_ng_genitive=$genitiveClass",
+        )
+    }
+
+    @Test
+    fun reviewedSafetyWordsHaveNoExplicitCorrection() {
+        val words = locate(
+            "data/dictionary/tatar-autocorrect-safety.tsv",
+            "../data/dictionary/tatar-autocorrect-safety.tsv",
+        ).readLines(Charsets.UTF_8).filter { it.isNotEmpty() && !it.startsWith("#") }
+        assertNoExplicitCorrections(words, "reviewed_safety", expectedRows = 1607)
+    }
+
+    @Test
+    fun validOovWordsHaveNoExplicitCorrection() {
+        val words = locate(
+            "app/src/test/resources/tt_valid_oov_safety_set.tsv",
+            "src/test/resources/tt_valid_oov_safety_set.tsv",
+        ).readLines(Charsets.UTF_8).filter { it.isNotEmpty() }.map { line ->
+            val fields = line.split("\t")
+            assertEquals("malformed valid-OOV row: $line", 2, fields.size)
+            fields[0]
+        }
+        assertNoExplicitCorrections(words, "valid_oov", expectedRows = 216)
     }
 
     @Test
@@ -1049,4 +1107,61 @@ class AutocorrectControllerTest {
         assertFalse(TatarWordUtils.isAutocorrectSeparator('7'.code))
         assertFalse(TatarWordUtils.isAutocorrectSeparator('+'.code))
     }
+
+    private data class ReviewedCorrection(
+        val typed: String,
+        val replacement: String,
+        val reviewClass: String,
+        val approved: String,
+    )
+
+    private fun reviewedCorrections(): List<ReviewedCorrection> {
+        val lines = locate(
+            "data/dictionary/tatar-autocorrect-review.tsv",
+            "../data/dictionary/tatar-autocorrect-review.tsv",
+        ).readLines(Charsets.UTF_8).filter { it.isNotEmpty() && !it.startsWith("#") }
+        assertEquals("typed\treplacement\tclass\tapproved\treviewer\treview_date\tnote", lines.first())
+        return lines.drop(1).map { line ->
+            val fields = line.split("\t")
+            assertEquals("malformed reviewed correction: $line", 7, fields.size)
+            ReviewedCorrection(fields[0], fields[1], fields[2], fields[3])
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun reviewedCorrectionMap(): Map<String, String> {
+        val field = TatarWordUtils::class.java.getDeclaredField("REVIEWED_AUTOCORRECTIONS")
+        field.isAccessible = true
+        return field.get(TatarWordUtils) as Map<String, String>
+    }
+
+    private fun assertNoExplicitCorrections(
+        words: List<String>,
+        metric: String,
+        expectedRows: Int,
+    ) {
+        assertEquals(expectedRows, words.size)
+        val offenders = words.mapNotNull { word ->
+            val normalized = TatarWordUtils.normalizeForLookup(word)
+            TatarWordUtils.explicitAutocorrection(normalized)?.let { "$word -> $it" }
+        }
+        val h = Harness()
+        h.start()
+        val changed = ArrayList<String>()
+        for (word in words) {
+            val before = h.editor.before
+            h.typeWord(word)
+            h.separator(' ')
+            if (h.editor.before != before + word + " ") changed.add(word)
+        }
+        println(
+            "$metric rows=${words.size} false_replacements=${offenders.size} " +
+                "separator_changes=${changed.size}",
+        )
+        assertEquals("false exact replacements: $offenders", 0, offenders.size)
+        assertEquals("separator changed protected words: $changed", 0, changed.size)
+    }
+
+    private fun locate(vararg paths: String): File =
+        paths.map(::File).firstOrNull(File::isFile) ?: error("file not found: ${paths.first()}")
 }
