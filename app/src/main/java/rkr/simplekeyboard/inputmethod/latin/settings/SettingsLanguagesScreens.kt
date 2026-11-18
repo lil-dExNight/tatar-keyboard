@@ -37,8 +37,9 @@ import rkr.simplekeyboard.inputmethod.latin.utils.SubtypeLocaleUtils
 /**
  * "Keyboard languages": a card with one row per enabled language
  * (summary lists its enabled layouts), then an actions card with
- * "Add language" and — with more than one language — "Remove language",
- * both opening a multi-choice dialog ([showLocalePickerDialog]).
+ * "Add language" opening a multi-choice dialog ([showLocalePickerDialog]).
+ * A language row opens its layouts on tap and, while another language remains,
+ * offers removal from a long-click menu.
  */
 internal fun SettingsHostActivity.buildLanguagesScreen() {
     val comparator = LocaleUtils.LocaleComparator()
@@ -61,11 +62,18 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
     addCard(usedValues.map { localeString ->
         val layoutNames = richImm.getEnabledSubtypesForLocale(localeString)
                 .joinToString(", ") { it.layoutDisplayName }
-        linkRow(LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(localeString),
-                layoutNames) {
+        val displayName = LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(localeString)
+        val row = linkRow(displayName, layoutNames) {
             detailLocale = localeString
             navigateTo(Screen.LANGUAGE_DETAIL)
         }
+        if (usedValues.size > 1) {
+            row.setOnLongClickListener {
+                showRemoveLanguageDialog(localeString)
+                true
+            }
+        }
+        row
     }, spacedFromPrevious = false)
 
     val actions = ArrayList<View>()
@@ -73,23 +81,10 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
     // list, a dialog with no items and a dead OK.
     if (unusedValues.isNotEmpty()) {
         actions.add(actionRow(R.string.add_language) {
-            showLocalePickerDialog(unusedValues, R.string.add_language, R.string.add,
-                    allowAllChecked = true) { checkedValues ->
+            showLocalePickerDialog(unusedValues, R.string.add_language, R.string.add) { checkedValues ->
                 for (localeString in checkedValues) {
                     richImm.addSubtype(
                             SubtypeLocaleUtils.getDefaultSubtype(localeString, resources))
-                }
-            }
-        })
-    }
-    if (usedValues.size > 1) {
-        actions.add(actionRow(R.string.remove_language) {
-            showLocalePickerDialog(usedValues, R.string.remove_language, R.string.remove,
-                    allowAllChecked = false) { checkedValues ->
-                for (localeString in checkedValues) {
-                    for (subtype in richImm.getEnabledSubtypesForLocale(localeString)) {
-                        richImm.removeSubtype(subtype)
-                    }
                 }
             }
         })
@@ -99,16 +94,31 @@ internal fun SettingsHostActivity.buildLanguagesScreen() {
     }
 }
 
+/** Offers removal of all enabled layouts of one language from its long-click menu. */
+internal fun SettingsHostActivity.showRemoveLanguageDialog(localeString: String) {
+    currentDialog?.dismiss()
+    currentDialog = AlertDialog.Builder(this)
+            .setTitle(LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(localeString))
+            .setItems(arrayOf(getString(R.string.remove))) { _, _ ->
+                for (subtype in richImm.getEnabledSubtypesForLocale(localeString)) {
+                    richImm.removeSubtype(subtype)
+                }
+                showScreen(Screen.LANGUAGES)
+            }
+            .create()
+            .also { dialog ->
+                DialogUtils.filterObscuredTouches(dialog)
+                dialog.show()
+            }
+}
+
 /**
- * Multi-choice language dialog shared by add/remove: the positive button
- * is only enabled while at least one item is checked and — unless
- * [allowAllChecked] — at least one is unchecked (removing every
- * language at once must stay impossible). On accept the checked locale
- * strings go to [onAccept] and the screen is rebuilt.
+ * Multi-choice language dialog for adding languages: the positive button
+ * is only enabled while at least one item is checked. On accept the checked
+ * locale strings go to [onAccept] and the screen is rebuilt.
  */
 internal fun SettingsHostActivity.showLocalePickerDialog(localeValues: List<String>, titleRes: Int,
-                                   positiveButtonRes: Int, allowAllChecked: Boolean,
-                                   onAccept: (List<String>) -> Unit) {
+                                   positiveButtonRes: Int, onAccept: (List<String>) -> Unit) {
     val names = localeValues.map {
         LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(it) as CharSequence
     }.toTypedArray()
@@ -118,12 +128,11 @@ internal fun SettingsHostActivity.showLocalePickerDialog(localeValues: List<Stri
             .setTitle(titleRes)
             .setMultiChoiceItems(names, checkedItems) { dialogInterface, _, _ ->
                 var hasCheckedItem = false
-                var hasUncheckedItem = false
                 for (itemChecked in checkedItems) {
-                    if (itemChecked) hasCheckedItem = true else hasUncheckedItem = true
+                    if (itemChecked) hasCheckedItem = true
                 }
                 (dialogInterface as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE)
-                        .isEnabled = hasCheckedItem && (hasUncheckedItem || allowAllChecked)
+                        .isEnabled = hasCheckedItem
             }
             .setPositiveButton(positiveButtonRes) { _, _ ->
                 onAccept(localeValues.filterIndexed { index, _ -> checkedItems[index] })

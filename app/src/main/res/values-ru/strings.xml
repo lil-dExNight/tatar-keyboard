@@ -298,7 +298,6 @@
     <string name="keyboard_languages_summary">Добавить или убрать язык</string>
     <string name="user_languages">Ваши языки</string>
     <string name="add_language">Добавить язык</string>
-    <string name="remove_language">Удалить язык</string>
     <string name="generic_language_layouts">Раскладки клавиатуры: <xliff:g id="LANGUAGE_NAME" example="English (US)">%s</xliff:g></string>
     <string name="change_keyboard">Сменить клавиатуру</string>
     <string name="privacy_policy">Политика конфиденциальности</string>

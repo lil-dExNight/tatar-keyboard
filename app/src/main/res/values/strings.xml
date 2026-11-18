@@ -445,7 +445,6 @@
     <string name="keyboard_languages_summary">Add or remove languages</string>
     <string name="user_languages">Your languages</string>
     <string name="add_language">Add language</string>
-    <string name="remove_language">Remove language</string>
     <string name="generic_language_layouts"><xliff:g id="LANGUAGE_NAME" example="English (US)">%s</xliff:g> keyboard layouts</string>
     <string name="change_keyboard">Change keyboard</string>
     <string name="privacy_policy">Privacy Policy</string>

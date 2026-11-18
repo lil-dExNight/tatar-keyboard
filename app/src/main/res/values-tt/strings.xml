@@ -261,7 +261,6 @@
     <string name="keyboard_languages_summary">Тел өстәү яки бетерү</string>
     <string name="user_languages">Сезнең телләр</string>
     <string name="add_language">Тел өстәү</string>
-    <string name="remove_language">Телне бетерү</string>
     <string name="generic_language_layouts"><xliff:g id="LANGUAGE_NAME" example="English (US)">%s</xliff:g> җәемнәре</string>
     <string name="change_keyboard">Клавиатураны алыштыру</string>
     <string name="privacy_policy">Хосусыйлык сәясәте</string>

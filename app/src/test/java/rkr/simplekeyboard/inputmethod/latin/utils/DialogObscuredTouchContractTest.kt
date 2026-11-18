@@ -88,8 +88,8 @@ class DialogObscuredTouchContractTest {
             dialogs, filters,
         )
         assertEquals(1, read(SEEK_BAR_HELPER).occurrencesOf("DialogUtils.filterObscuredTouches("))
-        // The languages screen builds its own dialog (the add-language
-        // picker) — it is covered by the same rule, counted the same way.
+        // The languages screen builds the add-language picker and the remove-language popup.
+        // Both are covered by the same rule, counted the same way.
         val languages = read(SETTINGS_LANGUAGES_SCREENS)
         assertEquals(
             "every AlertDialog in SettingsLanguagesScreens must install the obscured-touch filter",
