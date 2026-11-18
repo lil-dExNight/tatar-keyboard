@@ -470,6 +470,49 @@ from the settings screen, with no counters, no pending hashes and no learning.
   `RichInputMethodManager.reloadSubtypesAndNotifyIfInitialized()` to finish on the main thread.
   Import also reports personal-dictionary and pause-learning switch changes.
 
+Backup export can write the existing plaintext ZIP or, at the user's explicit choice, an encrypted
+container whose plaintext payload is that same ZIP byte for byte. Plaintext import remains
+supported. Import detects the container from the exact eight-byte magic rather than the file name;
+every other input follows the plaintext ZIP path. The create-document picker suggests
+`tatar-keyboard-backup.zip.enc` for encrypted export.
+
+The container header is 48 bytes. `N` below is the plaintext ZIP length, capped at 8 MiB
+(8,388,608 bytes; `BackupFormat.MAX_ARCHIVE_BYTES`). Multi-byte integers are unsigned and
+big-endian.
+
+| Offset | Size | Field | Value or meaning |
+|---|---:|---|---|
+| 0 | 8 | Magic | ASCII `TTKBENC\0` |
+| 8 | 1 | Version | `1` |
+| 9 | 1 | KDF id | `1`: PBKDF2-HMAC-SHA256 |
+| 10 | 1 | Cipher id | `1`: AES-GCM |
+| 11 | 1 | Reserved | Zero |
+| 12 | 4 | Iteration count | PBKDF2 iterations |
+| 16 | 16 | Salt | Fresh `SecureRandom` bytes for each export |
+| 32 | 12 | IV | Fresh `SecureRandom` bytes for each export |
+| 44 | 4 | Plaintext length | `N`, the ZIP byte length |
+| 48 | `N` | Ciphertext | AES-GCM encryption of the ZIP; the same length as the plaintext |
+| `48 + N` | 16 | GCM tag | Authentication tag; the file ends after it |
+
+Version 1 derives a 256-bit AES key from the user password and salt with PBKDF2-HMAC-SHA256 and
+uses AES-GCM with a 96-bit IV and a 128-bit tag. Android exposes the platform PBKDF2 factory
+from API 26; on API 24 and 25 the same standard one-block derivation runs over the platform
+`HmacSHA256` MAC and produces byte-identical keys. Export uses 210,000 iterations. Import accepts
+50,000 through 500,000 iterations inclusive and rejects any other count before running the KDF.
+All 48 header bytes are AES-GCM additional authenticated data; only the ZIP bytes are encrypted.
+The header and tag add 64 bytes to the plaintext size. Decryption authenticates the header and
+ciphertext before accepting the plaintext ZIP.
+
+A password is supplied only for an encrypted import. An encrypted import without one returns
+`PASSWORD_REQUIRED`; a wrong password or any modification fails AES-GCM authentication and returns
+`INVALID_FILE` before any store changes. KDF, encryption and decryption run on the backup worker.
+After authentication and decryption, the unchanged ZIP passes through the existing archive and
+store validation before the journal and mutation sequence begins. The journal keeps the same
+verified plaintext before/after states as a plaintext import; its format and recovery rules do not
+change. The password and derived key stay in memory only and are never persisted or logged.
+`BackupTransfer` wipes the supplied password `CharArray` in `finally`, and wipeable key material is
+cleared after use.
+
 Settings screens list, delete and erase entries for every supported language, including disabled
 ones. Manual word addition still targets an enabled language.
 

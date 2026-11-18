@@ -41,6 +41,8 @@ These hold for every release:
 
 ### Added
 
+- Backup export can optionally use password encryption, and encrypted backups can be restored with
+  the same password. Plaintext backup export and import remain available.
 - The Tatar extra row carries ё and ъ next to ә ө ү җ ң һ, so every Tatar alphabet letter has
   its own key; their long-press duplicates on е and ь stay. Tablet and one-handed geometry
   follow the wider row.
