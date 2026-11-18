@@ -493,6 +493,16 @@ public final class InputView extends FrameLayout {
     }
 
     /**
+     * Forwards the appearance marker to the strip if it exists; never creates it — the marker
+     * belongs to a publication, and the words of that publication create the strip first.
+     */
+    public void markSuggestionStripAppearance() {
+        if (mSuggestionStripView != null) {
+            mSuggestionStripView.markSuggestionAppearance();
+        }
+    }
+
+    /**
      * Forwards the recent-clip cell marker to the strip if it exists; never creates it — the same
      * discipline as {@link #setSuggestionStripEmphasis}, and the marker is always republished
      * with the next strip update anyway.

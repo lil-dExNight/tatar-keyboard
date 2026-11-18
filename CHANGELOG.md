@@ -32,6 +32,11 @@ These hold for every release:
   as method rules.
 
 
+### Fixed
+
+- TalkBack announces the suggestions once when they appear instead of reading them again after
+  every letter.
+
 ## [4.0.0] — 2026-11-14
 
 ### Added

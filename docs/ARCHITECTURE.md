@@ -151,17 +151,20 @@ the strip to all four (`SuggestionStripState.visibleCellCount`; the engines alwa
 candidates and the controller truncates the band). Cells fill the keyboard's dock content
 rectangle. A right dock mirrors only ranked bands across the visible grid, putting the leading
 candidate nearest the right thumb; undo, recent-clip and emoji-only offers keep their documented
-order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry. A tap
-commits the word with a space; a long press on a word cell offers to forget the word when the
-personal dictionary holds it and to add it when the manual-add filter accepts it, and answers
-with an explanation otherwise (`LatinIME.onStripWordLongPress`). The filter rejects manual
-addition from postal-address fields and while Pause learning is on. A cell may show the typed
-word itself (see Word completion); it is a word cell like any other, so both gestures apply
-unchanged. A punctuation mark that attaches to a word (`. , ; : ! ? ) ] }`) typed right after
-takes that space's place ("сүз, ", "сүз?! "), tracked by the cursor position in `InputLogic`.
-A space typed there is swallowed and counts as the first space of a double-space period. Two
-quick spaces give a period only in a general text field
-(`InputTypeUtils.isGeneralTextInputType`: the text class without the email, URI, password,
+order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry.
+TalkBack hears a populated strip once per context (`SuggestionAnnouncementPolicy`): the words
+change on every keystroke and the strip is blanked while a lookup runs, so only the first words
+of a field, language, cursor position or committed word are announced, and a strip left with
+nothing to show arms the next appearance. A tap commits the word with a space; a long press on a
+word cell offers to forget the word when the personal dictionary holds it and to add it when the
+manual-add filter accepts it, and answers with an explanation otherwise
+(`LatinIME.onStripWordLongPress`). The filter rejects manual addition from postal-address fields
+and while Pause learning is on. A cell may show the typed word itself (see Word completion); it
+is a word cell like any other, so both gestures apply unchanged. A punctuation mark that attaches
+to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ", "сүз?! "),
+tracked by the cursor position in `InputLogic`. A space typed there is swallowed and counts as
+the first space of a double-space period. Two quick spaces give a period only in a general text
+field (`InputTypeUtils.isGeneralTextInputType`: the text class without the email, URI, password,
 phonetic and filter variations). Cursor moves by the keyboard itself (space slide, delete swipe,
 word-delete flick, the edit menu's arrows) drop this state (`InputLogic.onKeyboardCursorMove`).
 

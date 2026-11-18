@@ -85,6 +85,14 @@ interface StripSurface {
     fun setClipCellMarker(cell: Int) {}
 
     /**
+     * Marks the publication that [setSpokenCellLabels] completes as an appearance of suggestions,
+     * so the accessibility service speaks the whole strip once. The controller calls it for the
+     * first words of a context; the strip cannot tell those apart from the blank it shows while a
+     * lookup is in flight. Default no-op.
+     */
+    fun markSuggestionAppearance() {}
+
+    /**
      * The visible cell count (the user's fourth-cell setting), pushed when LatinIME (re)loads the
      * settings. The strip re-splits its dock content rectangle; a cell past the count
      * keeps its content but stays inert. Default no-op.
@@ -452,6 +460,9 @@ class SuggestionsController internal constructor(
         }
     private var bandEmphasizedCell = SuggestionStripState.NO_CELL
     private var bandRanked = true
+
+    /** Which publication of the strip the accessibility service speaks. */
+    private val announcementPolicy = SuggestionAnnouncementPolicy()
 
     /**
      * The visible strip cell count (the user's fourth-cell setting), pushed by LatinIME at every
@@ -864,6 +875,7 @@ class SuggestionsController internal constructor(
         // teardown that a disabled setting scheduled.
         runPendingRelease()
         sessionId++
+        announcementPolicy.onContextBoundary()
         displayedPrefix = null
         displayedContextWord = null
         displayedGlideAlternativesFor = null
@@ -1049,6 +1061,7 @@ class SuggestionsController internal constructor(
         runMachine.markRunDirty()
         clearRevertState()
         sessionId++
+        announcementPolicy.onContextBoundary()
         activeSlot()?.engine?.finishInput()
         // finishInput invalidates the in-flight generation, so no result will arrive for it.
         endLookupTrace()
@@ -1124,6 +1137,7 @@ class SuggestionsController internal constructor(
             personalEmojiSink?.onInputFinished()
         }
         sessionId++
+        announcementPolicy.onContextBoundary()
         displayedPrefix = null
         displayedContextWord = null
         displayedGlideAlternativesFor = null
@@ -1155,6 +1169,7 @@ class SuggestionsController internal constructor(
         clearRevertState()
         refusedCorrections.clear()
         sessionId++
+        announcementPolicy.onContextBoundary()
         // Idles the engine of the language being left; setActiveLanguage does the same for a real
         // language change, and doing it here too covers a same-language subtype change (a
         // different layout for the same dictionary).
@@ -1225,6 +1240,7 @@ class SuggestionsController internal constructor(
         if (destroyed) return
         clearRevertState()
         sessionId++
+        announcementPolicy.onContextBoundary()
         activeSlot()?.engine?.finishInput()
         // The idled engine's in-flight lookup is invalidated with it: end its trace slice.
         endLookupTrace()
@@ -1252,6 +1268,7 @@ class SuggestionsController internal constructor(
         // Bumping the session invalidates any in-flight lookup, so a result computed for the older
         // generation can no longer repaint the strip.
         sessionId++
+        announcementPolicy.onContextBoundary()
         eligible = false
         displayedPrefix = null
         displayedContextWord = null
@@ -1290,6 +1307,7 @@ class SuggestionsController internal constructor(
     @JvmOverloads
     fun onSuggestionsSettingEnabled(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE) {
         if (destroyed) return
+        announcementPolicy.onContextBoundary()
         clearRevertState()
         // Mirrors onSuggestionsSettingDisabled: the setting is global, so every language it stopped
         // is un-stopped here.
@@ -1729,6 +1747,7 @@ class SuggestionsController internal constructor(
         // Successful publication moves the strip from GONE (preparing/unavailable) to reserved.
         // Look up whatever the user has already typed without waiting for a keystroke; an empty
         // or unknown prefix leaves the strip reserved with 0 results.
+        announcementPolicy.onContextBoundary()
         strip.reserve()
         // See the comment on the same gate in onStartInput().
         if (editor.hasKnownCursor()) {
@@ -2036,6 +2055,11 @@ class SuggestionsController internal constructor(
             SuggestionStripState.NO_CELL
         }
         strip.setClipCellMarker(publishedClipCell)
+        // Words are an appearance only the first time for their context: the labels below
+        // complete the publication the accessibility service then speaks.
+        if (announcementPolicy.onPublication(shown.isNotEmpty())) {
+            strip.markSuggestionAppearance()
+        }
         strip.setSpokenCellLabels(
             if (publishedClipCell == 0) clipSpokenLabel else spokenLabelFor(first),
             if (publishedClipCell == 1) clipSpokenLabel else spokenLabelFor(second),
@@ -2502,6 +2526,7 @@ class SuggestionsController internal constructor(
         previewKeepTypedCell = null
         displayedPrefix = null
         displayedContextWord = null
+        announcementPolicy.onContextBoundary()
         unbindPaintedBand()
         clearCompanionRequest()
         // The decode supersedes any lookup in flight (the engine drops its stale result, so no
@@ -2963,6 +2988,15 @@ class SuggestionsController internal constructor(
     }
 
     /**
+     * The empty strip of a context that has no words to show: unlike the blank of an in-flight
+     * lookup ([showEmptyBand]), the words that appear next are an appearance to speak.
+     */
+    private fun showSettledEmptyBand() {
+        announcementPolicy.onSettledEmpty()
+        showEmptyBand()
+    }
+
+    /**
      * Whether the strip may show glide candidates: always with the suggestions setting on, and
      * with it off while glide typing is on and field-eligible: the alternates of a committed
      * glide, the candidates of a refused one and the undo's rescue strip are corrections of the
@@ -3010,7 +3044,7 @@ class SuggestionsController internal constructor(
         clearCompanionRequest()
         requestSessionId = NO_SESSION
         // With suggestions off, a rejected glide request must not show an empty strip either.
-        showEmptyBand()
+        showSettledEmptyBand()
     }
 
     /**
@@ -3224,7 +3258,7 @@ class SuggestionsController internal constructor(
             } else {
                 displayedPrefix = null
                 bandBaseCells = emptyList()
-                strip.reserve()
+                showSettledEmptyBand()
             }
             // An empty strip displaces nothing of the active language, so the companion may fill
             // it from the first cell — or from the cell after the keep-typed one; the one case
@@ -3275,7 +3309,7 @@ class SuggestionsController internal constructor(
             if (emoji == null) {
                 displayedContextWord = null
                 bandBaseCells = emptyList()
-                strip.reserve()
+                showSettledEmptyBand()
             } else {
                 displayedGlideAlternativesFor = null
                 displayedContextWord = pendingContextWord
@@ -3592,6 +3626,7 @@ class SuggestionsController internal constructor(
         recentClip.clear()
         pendingGlidePathForSink = null
         sessionId++
+        announcementPolicy.onContextBoundary()
         requestSessionId = NO_SESSION
         displayedSessionId = NO_SESSION
         displayedPrefix = null
@@ -3670,6 +3705,7 @@ class SuggestionsController internal constructor(
                 // neither the words nor a pair with the clip's last word as context.
                 runMachine.markClipboardPasteDirty()
             }
+            announcementPolicy.onContextBoundary()
             strip.reserve()
             requestCurrentPrefix()
             return
@@ -3709,6 +3745,7 @@ class SuggestionsController internal constructor(
                 displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
+                announcementPolicy.onContextBoundary()
                 strip.reserve()
                 // The accepted cell counts as a use: for a saved personal word the sink bumps its
                 // usage counter (in memory; the file is written at the session boundary).
@@ -3743,6 +3780,7 @@ class SuggestionsController internal constructor(
                 displayedGlideAlternativesFor = null
                 bandBaseCells = emptyList()
                 clearCompanionRequest()
+                announcementPolicy.onContextBoundary()
                 strip.reserve()
                 // An accepted emoji cell is an emoji insertion like a panel or search pick, so
                 // the recent-emoji list learns it. Word cells never reach the sink, and a refused

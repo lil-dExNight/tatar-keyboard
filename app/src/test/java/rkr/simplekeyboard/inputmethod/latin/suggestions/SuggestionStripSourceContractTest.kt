@@ -122,32 +122,61 @@ class SuggestionStripSourceContractTest {
     }
 
     @Test
-    fun suggestionsAreAnnouncedOnlyOnTheEmptyToPopulatedTransition() {
+    fun suggestionsAreAnnouncedOncePerAppearanceNotPerKeystroke() {
         val viewSource = File(
             sourceRoot(),
             "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionStripView.kt",
         ).readText()
+        val controllerSource = File(
+            sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/suggestions/SuggestionsController.kt",
+        ).readText()
         val setSuggestionsBody = viewSource.substringAfter("fun setSuggestions(")
+            .substringBefore("fun markSuggestionAppearance()")
+        val markBody = viewSource.substringAfter("fun markSuggestionAppearance()")
             .substringBefore("fun clearSuggestions()")
         val labelsBody = viewSource.substringAfter("fun setSpokenLabels(")
             .substringBefore("private fun clearSpokenLabels()")
         val announcementBody = viewSource.substringAfter("private fun announcePublishedSuggestions()")
             .substringBefore("fun setEmphasis(")
+        val showBandBody = controllerSource.substringAfter("private fun showBand(")
+            .substringBefore("    internal fun onOneHandedSideChanged")
 
-        // The triple changes on every keystroke: announcing each one would bury the key echo.
-        assertTrue(setSuggestionsBody.contains("val hadSuggestions = state.hasAnySuggestion()"))
-        assertTrue(
-            setSuggestionsBody.contains(
-                "if (!hadSuggestions && accessibilityManager.isTouchExplorationEnabled)",
-            ),
-        )
+        // The strip is blanked while a lookup is in flight, so its own cells cannot say whether
+        // words appeared: the physical empty -> words test would speak again after every letter.
+        // The controller's context policy alone decides, and the words change on every keystroke.
+        assertFalse(setSuggestionsBody.contains("hasAnySuggestion"))
+        assertFalse(setSuggestionsBody.contains("announcementPending"))
+        assertTrue(markBody.contains("isTouchExplorationEnabled"))
+        assertTrue(markBody.contains("announcementPending = true"))
         // The words are announced after the whole publication: a clip must be recognizable by its
         // marker and action label before anything is spoken.
-        assertTrue(setSuggestionsBody.contains("announcementPending = true"))
-        assertFalse(setSuggestionsBody.contains("announceForAccessibility"))
         assertTrue(labelsBody.contains("announcePublishedSuggestions()"))
+        assertFalse(setSuggestionsBody.contains("announceForAccessibility"))
         assertTrue(announcementBody.contains("announceForAccessibility"))
         assertTrue(announcementBody.contains("R.string.spoken_suggestions_available"))
+        // The mark travels with the publication, after every cell it describes and before the
+        // labels that deliver it.
+        val clipMarkerAt = showBandBody.indexOf("strip.setClipCellMarker(")
+        val markAt = showBandBody.indexOf("strip.markSuggestionAppearance()")
+        val labelsAt = showBandBody.indexOf("strip.setSpokenCellLabels(")
+        assertTrue(clipMarkerAt >= 0 && markAt > clipMarkerAt && labelsAt > markAt)
+    }
+
+    @Test
+    fun theProductionStripSurfaceForwardsTheAppearanceMarkerToTheView() {
+        val javaRoot = File(sourceRoot(), "java/rkr/simplekeyboard/inputmethod/latin")
+        val latinIme = File(javaRoot, "LatinIME.java").readText()
+        val inputView = File(javaRoot, "InputView.java").readText()
+        val adapterBody = latinIme
+            .substringAfter("final StripSurface stripSurface = new StripSurface()")
+            .substringBefore("final EditorSurface editorSurface")
+
+        // The seam's default is a no-op, so a missing forward would silently mute every
+        // announcement: the adapter and the input view both have to pass it on.
+        assertTrue(adapterBody.contains("public void markSuggestionAppearance()"))
+        assertTrue(adapterBody.contains("inputView.markSuggestionStripAppearance()"))
+        assertTrue(inputView.contains("mSuggestionStripView.markSuggestionAppearance()"))
     }
 
     @Test

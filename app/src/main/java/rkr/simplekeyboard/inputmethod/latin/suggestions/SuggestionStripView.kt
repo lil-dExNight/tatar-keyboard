@@ -68,7 +68,11 @@ class SuggestionStripView @JvmOverloads constructor(
      * the content it described.
      */
     private val spokenLabels = arrayOfNulls<String>(SuggestionStripState.CELL_COUNT)
-    /** Empty-to-words announcement waiting for the publication's marker and spoken labels. */
+    /**
+     * An appearance of suggestions the controller marked: the publication's spoken labels then
+     * complete it and the strip speaks the whole strip once. The cells alone cannot say whether
+     * words appeared, because the strip is blanked while a lookup is in flight.
+     */
     private var announcementPending = false
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
@@ -281,22 +285,21 @@ class SuggestionStripView @JvmOverloads constructor(
 
     fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?) {
         clearSpokenLabels()
-        announcementPending = false
-        val hadSuggestions = state.hasAnySuggestion()
         if (!state.setSuggestions(first, second, third, fourth)) return
         // No rebuild here: the paired setEmphasis() of the same publication runs it once, with
         // the final emphasis state already in place (see displayRebuildPending).
         displayRebuildPending = true
         accessibilityHelper.invalidateRoot()
         invalidate()
-        // Announce only the empty -> words transition, and only while touch exploration is on.
-        // The words change on every keystroke; announcing each change would bury the key echo
-        // TalkBack users rely on (the shift announcements skip auto-caps for the same reason, see
-        // KeyboardAccessibilityDelegate). Wait for setSpokenLabels(): a recent clip must be
-        // recognized and spoken by its action label, never by the raw text just published here.
-        if (!hadSuggestions && accessibilityManager.isTouchExplorationEnabled) {
-            announcementPending = true
-        }
+    }
+
+    /**
+     * Marks the publication that [setSpokenLabels] completes as an appearance of suggestions, so
+     * it is spoken once. Only touch exploration hears it: without an accessibility service
+     * reading the strip, the announcement would be an unexplained interruption.
+     */
+    fun markSuggestionAppearance() {
+        if (accessibilityManager.isTouchExplorationEnabled) announcementPending = true
     }
 
     fun clearSuggestions() {
