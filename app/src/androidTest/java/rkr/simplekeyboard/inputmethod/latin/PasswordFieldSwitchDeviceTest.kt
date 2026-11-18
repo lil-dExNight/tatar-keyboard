@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.test.InstrumentationTestCase
 import android.text.InputType
@@ -34,9 +35,9 @@ import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 
 /**
  * Typing in a password field right after a normal field, with auto-capitalization off: the
- * letters must land in the password field. The host enables the debug IME and makes it default
- * beforehand. A password field adds to the setup screen's try-it field; keys are found on the
- * live keyboard view, so no screen geometry is assumed.
+ * letters must land in the password field. Setup selects the debug IME after the instrumentation
+ * force-stop and confirms that the selection sticks. A password field adds to the setup screen's
+ * try-it field; keys are found on the live keyboard view, so no screen geometry is assumed.
  */
 class PasswordFieldSwitchDeviceTest : InstrumentationTestCase() {
 
@@ -44,6 +45,7 @@ class PasswordFieldSwitchDeviceTest : InstrumentationTestCase() {
     private var startedActivity: Activity? = null
 
     override fun setUp() {
+        selectDebugIme()
         val prefs = PreferenceManagerCompat.getDeviceSharedPreferences(instrumentation.targetContext)
         savedAutoCap = prefs.getBoolean(Settings.PREF_AUTO_CAP, true)
         prefs.edit().putBoolean(Settings.PREF_AUTO_CAP, false).commit()
@@ -154,6 +156,42 @@ class PasswordFieldSwitchDeviceTest : InstrumentationTestCase() {
         return letter
     }
 
+    /**
+     * Instrumentation force-stops the target package, which owns the debug IME, so the host's
+     * earlier selection may be gone. Select again and require a stable default before the
+     * setup activity can read it.
+     */
+    private fun selectDebugIme() {
+        var selected = ""
+        for (attempt in 1..IME_SELECTION_ATTEMPTS) {
+            // A force-stop can leave the selected id with no bound service. Re-enable the IME
+            // so the same-id set call rebinds it instead of treating it as already selected.
+            shell("ime disable $DEBUG_IME")
+            shell("ime enable $DEBUG_IME")
+            shell("ime set $DEBUG_IME")
+            val deadline = SystemClock.uptimeMillis() + IME_SELECTION_TIMEOUT_MS
+            var selectedSince = -1L
+            while (SystemClock.uptimeMillis() < deadline) {
+                selected = shell("settings get secure default_input_method").trim()
+                if (selected == DEBUG_IME) {
+                    val now = SystemClock.uptimeMillis()
+                    if (selectedSince < 0) selectedSince = now
+                    if (now - selectedSince >= IME_SELECTION_STABLE_MS) return
+                } else {
+                    selectedSince = -1L
+                }
+                Thread.sleep(IME_POLL_MS)
+            }
+        }
+        fail("the debug IME must be the default before the setup activity starts: " +
+            "'$selected' != '$DEBUG_IME' after $IME_SELECTION_ATTEMPTS attempts")
+    }
+
+    private fun shell(command: String): String =
+        ParcelFileDescriptor.AutoCloseInputStream(
+            instrumentation.uiAutomation.executeShellCommand(command),
+        ).bufferedReader().use { it.readText() }
+
     private fun waitFor(timeoutMs: Long, condition: () -> Boolean): Boolean {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
@@ -184,5 +222,11 @@ class PasswordFieldSwitchDeviceTest : InstrumentationTestCase() {
 
     private companion object {
         const val TAG = "PasswordFieldSwitch"
+        const val DEBUG_IME =
+            "org.tatarkeyboard.ime.debug/rkr.simplekeyboard.inputmethod.latin.LatinIME"
+        const val IME_SELECTION_ATTEMPTS = 3
+        const val IME_SELECTION_TIMEOUT_MS = 10_000L
+        const val IME_SELECTION_STABLE_MS = 1_000L
+        const val IME_POLL_MS = 100L
     }
 }
