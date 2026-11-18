@@ -1,8 +1,8 @@
 {
   "id": "asset-proper-names-tatar-v1",
   "revision": "tatar_proper_names_v1",
-  "size_bytes": 5343,
-  "sha256": "28edf8f1d35978069e867413100852b415fe653bc55ae082b2938490398ef2b1",
+  "size_bytes": 5369,
+  "sha256": "a951eab6d41674d07f7626daad74713e65c5fde1f06b2ed51e2d598fa9d3e5de",
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_proper_name_display_list",
   "split_rule": "training output; development and final evaluation records were not read",

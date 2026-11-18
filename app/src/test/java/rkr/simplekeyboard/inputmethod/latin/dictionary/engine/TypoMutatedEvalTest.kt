@@ -625,11 +625,11 @@ class TypoMutatedEvalTest {
         )
 
         // Pins over the committed dictionary, eval set and layout; re-pin when an input changes.
-        private const val PIN_SUBSTRATE_WORDS = 2_374
-        private const val PIN_SET_ROWS = 9_496
-        private const val PIN_SET_BYTES = 309_756
+        private const val PIN_SUBSTRATE_WORDS = 2_377
+        private const val PIN_SET_ROWS = 9_508
+        private const val PIN_SET_BYTES = 310_362
         private const val PIN_SET_SHA256 =
-            "47a479ed91ea77e75a0dbedede3451462e4ab897c74ad6887de658129b33da6f"
+            "e720348d953c2c4d4f1653ff78baa38b469435ed81f0ff7fd461ca01f9699efc"
 
         // Quality floors beside the exact pins: per-class recovery must stay within 5% of its
         // pinned count, so a dictionary rebuild cannot be re-pinned through a silent quality
@@ -639,14 +639,14 @@ class TypoMutatedEvalTest {
         // Measured baseline recovery counts. The un-suffixed pins hold the bonus-off arm (the
         // pre-bonus ranking); the _GEO pins hold the production arm (the TATAR policy with the
         // geometry-neighbor bonus armed); then the exact-only control.
-        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_180
-        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_824
-        private const val PIN_INS_ENGINE_TOP4_HITS = 2_325
-        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_154
-        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_191
-        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_820
-        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_324
-        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_151
+        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_183
+        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_827
+        private const val PIN_INS_ENGINE_TOP4_HITS = 2_328
+        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_157
+        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_194
+        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_823
+        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_327
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_154
         private const val PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY = 0
         // The exact-only control: only a last-position deletion can be a prefix hit.
         private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 326

@@ -827,7 +827,7 @@ class PersonalizationEvalTest {
         private val PIN_GRAD_WORDS = mapOf(
             "hash.oracle" to 0, "hash.realistic" to 0, "hash.fixed" to 0,
             "chrono.oracle" to 1, "chrono.realistic" to 1, "chrono.fixed" to 1,
-            "rep.oracle" to 195, "rep.realistic" to 195, "rep.fixed" to 195,
+            "rep.oracle" to 193, "rep.realistic" to 193, "rep.fixed" to 193,
         )
         private val PIN_GRAD_PAIRS = mapOf(
             "hash.oracle" to 33, "hash.realistic" to 33, "hash.fixed" to 33,
@@ -840,12 +840,12 @@ class PersonalizationEvalTest {
             "rep.oracle" to 89_169L, "rep.realistic" to 89_169L, "rep.fixed" to 89_169L,
         )
         private val PIN_EMPTY_OBSERVATIONS = mapOf(
-            "hash.oracle" to 794L, "hash.realistic" to 794L, "hash.fixed" to 794L,
+            "hash.oracle" to 792L, "hash.realistic" to 792L, "hash.fixed" to 792L,
             "chrono.oracle" to 810L, "chrono.realistic" to 810L, "chrono.fixed" to 810L,
-            "rep.oracle" to 5_019L, "rep.realistic" to 5_019L, "rep.fixed" to 5_019L,
+            "rep.oracle" to 5_001L, "rep.realistic" to 5_001L, "rep.fixed" to 5_001L,
         )
         private val PIN_WORD_COMPLETIONS = mapOf(
-            "hash" to 95L, "chrono" to 88L, "rep" to 600L,
+            "hash" to 94L, "chrono" to 88L, "rep" to 594L,
         )
         private val PIN_PAIR_OBSERVATIONS = mapOf(
             "hash" to 2_224L, "chrono" to 2_173L, "rep" to 13_419L,
@@ -860,18 +860,18 @@ class PersonalizationEvalTest {
             "hash" to 1_887L, "chrono" to 1_798L, "rep" to 12_400L,
         )
         private val PIN_FIX_PROBES = mapOf(
-            "hash" to 58L, "chrono" to 43L, "rep" to 405L,
+            "hash" to 54L, "chrono" to 43L, "rep" to 393L,
         )
         private val PIN_PRIME_UNSEEN_TOKENS = mapOf(
-            "hash" to 61L, "chrono" to 54L, "rep" to 393L,
+            "hash" to 60L, "chrono" to 54L, "rep" to 387L,
         )
         private val PIN_UNSEEN_STEM = mapOf(
             "hash" to listOf(0L, 0L, 0L),
             "chrono" to listOf(0L, 0L, 0L),
-            "rep" to listOf(336L, 336L, 336L),
+            "rep" to listOf(330L, 330L, 330L),
         )
 
-        private const val PIN_REP_SWEEP_L100_GRAD_WORDS = 157
+        private const val PIN_REP_SWEEP_L100_GRAD_WORDS = 155
         private const val PIN_REP_SWEEP_L100_OBSERVED = 72_173L
         private const val PIN_REP_SWEEP_L100_DROPPED = 0L
         private const val PIN_REP_SWEEP_L100_STALED = 19_578L
@@ -884,7 +884,7 @@ class PersonalizationEvalTest {
         // repetition split. The control count is cross-pinned with the fourth-cell keystroke
         // arm of TtSuggestEvalTest; the lift is pinned python-side (PIN_REP_KS_PERS_KEYS in
         // tests/personalization_eval) and floored here at 80%.
-        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_103
+        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_096
         private const val PIN_REP_KS_LIFT_KEYS = 1_084
 
         private lateinit var evalLines: List<String>

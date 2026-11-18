@@ -269,14 +269,14 @@ class CommittedSetIdentityTest(unittest.TestCase):
 
     def test_set_identity(self) -> None:
         result = self.result
-        self.assertEqual(result.substrate_count, 2374)
-        self.assertEqual(result.size, 9496)
+        self.assertEqual(result.substrate_count, 2377)
+        self.assertEqual(result.size, 9508)
         self.assertEqual(
-            result.class_counts, {"sub": 2374, "del": 2374, "ins": 2374, "trans": 2374}
+            result.class_counts, {"sub": 2377, "del": 2377, "ins": 2377, "trans": 2377}
         )
-        self.assertEqual(len(result.data), 309756)
+        self.assertEqual(len(result.data), 310362)
         self.assertEqual(
-            result.sha256, "47a479ed91ea77e75a0dbedede3451462e4ab897c74ad6887de658129b33da6f"
+            result.sha256, "e720348d953c2c4d4f1653ff78baa38b469435ed81f0ff7fd461ca01f9699efc"
         )
 
     def test_every_class_is_present(self) -> None:
@@ -452,13 +452,13 @@ class CliTest(unittest.TestCase):
             code, stdout = self.run_cli(out)
             self.assertEqual(code, 0)
             report = json.loads(stdout)
-            self.assertEqual(report["rows"], 9496)
+            self.assertEqual(report["rows"], 9508)
             self.assertEqual(
                 report["set_sha256"],
-                "47a479ed91ea77e75a0dbedede3451462e4ab897c74ad6887de658129b33da6f",
+                "e720348d953c2c4d4f1653ff78baa38b469435ed81f0ff7fd461ca01f9699efc",
             )
-            self.assertEqual(report["set_bytes"], 309756)
-            self.assertEqual(report["substrate_words"], 2374)
+            self.assertEqual(report["set_bytes"], 310362)
+            self.assertEqual(report["substrate_words"], 2377)
             self.assertEqual(hashlib.sha256(out.read_bytes()).hexdigest(), report["set_sha256"])
 
     def test_a_missing_eval_set_exits_two_without_output(self) -> None:

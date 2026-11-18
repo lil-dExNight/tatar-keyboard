@@ -131,11 +131,11 @@ class TtFullSubstitutionCalibrationTest {
         // Identities of `python3 scripts/typo_pack.py build --edit-class 4 [--prefix-code-points 5]`
         // on the committed asset; the asset rebuild rewrites them (scripts/rebuild_assets.py).
         val class4w3 = buildSubstitutionSet(3)
-        assertEquals(109_742, class4w3.rows.size)
-        assertEquals("7ffc4305e5e7ad090de6d3cd108cc35ab682590ec3531775f45a0ddf220dc5fd", class4w3.sha256)
+        assertEquals(110_094, class4w3.rows.size)
+        assertEquals("43737fe11ffc3f302af149f8dae0366d8a954e0a2b0756030d9a8f1541dce363", class4w3.sha256)
         val class4w5 = buildSubstitutionSet(5)
-        assertEquals(105_144, class4w5.rows.size)
-        assertEquals("fadbe3e6bb27047db346a7e4027705391dcffaea3d2003fdaa97eaa90937f311", class4w5.sha256)
+        assertEquals(105_473, class4w5.rows.size)
+        assertEquals("dc0131040c0c55ad0d5e8df85a8c6b8e1782a33f3281270cb6bdee9254dae4df", class4w5.sha256)
     }
 
     @Test
@@ -460,22 +460,22 @@ class TtFullSubstitutionCalibrationTest {
         // Pins over the committed dictionary and eval set; re-pin when an input changes. The
         // candidate-arm counts moved up when the geometry-neighbor bonus was armed: neighbor
         // substitutions reach the strip's four cells more often.
-        private const val PIN_BASE_W5 = 43_428
-        private const val PIN_CAND_W5 = 30_289
-        private const val PIN_BASE_W5_SUBSET = 98_236
-        private const val PIN_CAND_W5_SUBSET = 101_600
+        private const val PIN_BASE_W5 = 43_562
+        private const val PIN_CAND_W5 = 30_370
+        private const val PIN_BASE_W5_SUBSET = 98_540
+        private const val PIN_CAND_W5_SUBSET = 101_917
         private const val PIN_EVAL_PREFIXES_GE4 = 7_599
-        private const val PIN_EXACT_EMPTY = 1_407
-        private const val PIN_CLASS4_FILLED = 1_024
+        private const val PIN_EXACT_EMPTY = 1_401
+        private const val PIN_CLASS4_FILLED = 1_022
 
         // Pins of the same-set lift measurement.
-        private const val PIN_LIFT_BASE_W5_WHOLE = 529
-        private const val PIN_LIFT_CAND_W5_WHOLE = 30_298
-        private const val PIN_LIFT_ACTIVE_ROWS = 101_600
-        private const val PIN_LIFT_BASE_W5_ACTIVE = 520
-        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_289
+        private const val PIN_LIFT_BASE_W5_WHOLE = 531
+        private const val PIN_LIFT_CAND_W5_WHOLE = 30_379
+        private const val PIN_LIFT_ACTIVE_ROWS = 101_917
+        private const val PIN_LIFT_BASE_W5_ACTIVE = 522
+        private const val PIN_LIFT_CAND_W5_ACTIVE = 30_370
         private const val PIN_LIFT_BASE_W3_WHOLE = 114
-        private const val PIN_LIFT_CAND_W3_WHOLE = 119
+        private const val PIN_LIFT_CAND_W3_WHOLE = 118
 
         private val neighborTable = TatarLayoutTestFixtures.tatarNeighborTable()
         private lateinit var vocabulary: List<String>
