@@ -132,6 +132,9 @@ class GlideKeyGeometry private constructor(
     )
 
     companion object {
+        internal const val E_CODE_POINT = 0x0435
+        internal const val YO_CODE_POINT = 0x0451
+
         /**
          * The base key of an alias letter that is the long press of more than one key: on the
          * Russian layout `һ` sits on `г` and `х`, `ә` on `а` and `э`. A letter on several keys

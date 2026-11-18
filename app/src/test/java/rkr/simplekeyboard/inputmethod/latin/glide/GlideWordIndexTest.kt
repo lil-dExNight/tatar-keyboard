@@ -97,6 +97,23 @@ class GlideWordIndexTest {
     }
 
     @Test
+    fun yoWordsKeepTheOriginalPathAndGainAPlainEPath() {
+        val tatarIndex = index(listOf("все" to 10L, "всё" to 5L))
+        assertEquals(-1f, tatarIndex.foldedYoPlainLengthAt(0), 0f)
+        assertTrue(tatarIndex.foldedYoPlainLengthAt(1) >= 0f)
+        assertTrue(tatarIndex.foldedYoPlainLengthAt(1) != tatarIndex.plainLengthAt(1))
+
+        val russianGeometry = GlideTestFixtures.russianGeometry()
+        val russianIndex = GlideWordIndex.build(
+            ListGlideInventory(listOf("всё" to 5L)), russianGeometry,
+        )
+        assertEquals(
+            "the alias folds both paths onto the same key",
+            russianIndex.plainLengthAt(0), russianIndex.foldedYoPlainLengthAt(0), 0f,
+        )
+    }
+
+    @Test
     fun frequenciesAreKeptPerEntry() {
         val index = index(listOf("сәләм" to 36L, "салым" to 7466L))
         assertEquals(36L, index.frequencyAt(0))

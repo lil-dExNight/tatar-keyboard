@@ -117,7 +117,7 @@ class GlideWordIndexMemoryScalingTest {
             poolSize + // keySeqPool: one byte per key position
             (poolSize + 63) / 64 * 8L + // sameLetterAsPrevious bits
             entryCount * 4L + // frequencies
-            entryCount * 4L * 3L + // plain/loop/normative durations
+            entryCount * 4L * 4L + // plain/folded-ё/loop/normative lengths and durations
             (geometry.keyCount * geometry.keyCount + 1) * 4L + // pairOffsets
             entryCount * 4L + // pairEntries
             (entryCount + 63) / 64 * 8L // twinless bits
@@ -125,7 +125,7 @@ class GlideWordIndexMemoryScalingTest {
     }
 
     private companion object {
-        /** Pinned variable bytes per entry for the current model shape (measured ≈33). */
+        /** Pinned variable bytes per entry for the current model shape. */
         const val MAX_VARIABLE_BYTES_PER_ENTRY = 48L
     }
 }

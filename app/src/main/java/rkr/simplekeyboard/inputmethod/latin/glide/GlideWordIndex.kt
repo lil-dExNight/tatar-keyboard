@@ -37,6 +37,9 @@ import kotlin.math.sqrt
  *  - [plainLengths]/[loopLengths]: the word's ideal-path arc length, plain and with the
  *    doubled-letter loop detour (-1 when the word has no doubled letter) — the length channel
  *    of the pruner is then two float reads per candidate;
+ *  - [foldedYoPlainLengths]: for a word containing ё, the plain ideal-path length with ё on
+ *    the е key (-1 for other words). The original path remains available, so both spellings
+ *    compete as dictionary candidates;
  *  - [normativeDurations]: the word's Fitts-law normative duration in ms (see
  *    [normativeDurationMsAt]) — the speed channel's per-candidate reference;
  *  - [pairOffsets]/[pairEntries]: CSR buckets keyed by firstKey x lastKey, entry indices in
@@ -58,6 +61,7 @@ class GlideWordIndex private constructor(
     private val sameLetterAsPrevious: LongArray,
     private val frequencies: IntArray,
     private val plainLengths: FloatArray,
+    private val foldedYoPlainLengths: FloatArray,
     private val normativeDurations: FloatArray,
     private val loopLengths: FloatArray,
     private val pairOffsets: IntArray,
@@ -68,7 +72,7 @@ class GlideWordIndex private constructor(
     val retainedByteEstimate: Long
         get() = keySeqStarts.size * 4L + keySeqPool.size + sameLetterAsPrevious.size * 8L +
             frequencies.size * 4L + plainLengths.size * 4L + loopLengths.size * 4L +
-            normativeDurations.size * 4L +
+            foldedYoPlainLengths.size * 4L + normativeDurations.size * 4L +
             pairOffsets.size * 4L + pairEntries.size * 4L + twinless.size * 8L
 
     /** Start (inclusive) of the pair bucket's entry range in the CSR table. */
@@ -104,6 +108,9 @@ class GlideWordIndex private constructor(
 
     /** Plain ideal-path length of [entry] in geometry units. */
     fun plainLengthAt(entry: Int): Float = plainLengths[entry]
+
+    /** Plain ideal-path length with ё folded to е, or -1 when [entry] contains no ё. */
+    fun foldedYoPlainLengthAt(entry: Int): Float = foldedYoPlainLengths[entry]
 
     /** Looped ideal-path length of [entry], or -1 when the word has no doubled letter. */
     fun loopLengthAt(entry: Int): Float = loopLengths[entry]
@@ -158,6 +165,10 @@ class GlideWordIndex private constructor(
             var skipped = 0
             var maxFrequency = 0L
             val pairCounts = IntArray(keyCount * keyCount)
+            val foldedYoPlainLengths = FloatArray(entryCount) { -1f }
+            val canFoldYo =
+                geometry.keyIndexOfLetter(GlideKeyGeometry.E_CODE_POINT) >= 0 &&
+                    geometry.keyIndexOfLetter(GlideKeyGeometry.YO_CODE_POINT) >= 0
             // The byte-level walk: a UTF-8-backed inventory (the dictionary) serves its stored
             // bytes directly, so no Java String is created per entry. Decoding reproduces
             // String.codePointAt exactly for well-formed input, and a malformed sequence yields
@@ -174,12 +185,14 @@ class GlideWordIndex private constructor(
                 var i = 0
                 var letters = 0
                 var previousLetter = -1
+                var hasYo = false
                 val start = poolSize
                 while (i < wordLength) {
                     val packed = GlideUtf8.nextCodePoint(word, i, wordLength)
                     val codePoint = (packed and 0xffff_ffffL).toInt()
                     i += (packed ushr 32).toInt()
                     val letter = Character.toLowerCase(codePoint)
+                    if (letter == GlideKeyGeometry.YO_CODE_POINT) hasYo = true
                     val key = geometry.keyIndexOfLetter(letter)
                     if (key < 0) {
                         mappable = false
@@ -209,6 +222,7 @@ class GlideWordIndex private constructor(
                 if (mappable && letters > 0) {
                     keySeqStarts[entry] = start
                     frequencies[entry] = frequency.toInt()
+                    if (canFoldYo && hasYo) foldedYoPlainLengths[entry] = 0f
                     if (frequency > maxFrequency) maxFrequency = frequency
                     pairCounts[firstKey * keyCount + lastKey]++
                     wordCount++
@@ -249,6 +263,12 @@ class GlideWordIndex private constructor(
                 pairEntries[cursors[firstKey * keyCount + lastKey]++] = entry
                 plainLengths[entry] =
                     idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, false)
+                if (foldedYoPlainLengths[entry] >= 0f) {
+                    foldedYoPlainLengths[entry] = idealLength(
+                        keySeqPool, sameLetterAsPrevious, start, end, geometry, false,
+                        foldYoToE = true,
+                    )
+                }
                 val loopLength =
                     idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, true)
                 if (loopLength >= 0f) loopLengths[entry] = loopLength
@@ -259,8 +279,8 @@ class GlideWordIndex private constructor(
             val twinless = twinlessBits(keySeqStarts, keySeqPool, loopLengths, entryCount)
             return GlideWordIndex(
                 wordCount, skipped, maxFrequency, keyCount, keySeqStarts, keySeqPool,
-                sameLetterAsPrevious, frequencies, plainLengths, normativeDurations,
-                loopLengths, pairOffsets, pairEntries, twinless,
+                sameLetterAsPrevious, frequencies, plainLengths, foldedYoPlainLengths,
+                normativeDurations, loopLengths, pairOffsets, pairEntries, twinless,
             )
         }
 
@@ -409,7 +429,7 @@ class GlideWordIndex private constructor(
          * letter contributes its four-point loop detour (returns -1 instead when the word has no
          * doubled letter, so the pruner never matches the same length twice). The detour fires
          * only where [sameLetter] marks the position: two different letters sharing a key through
-         * an alias (е then ё) never draw a loop.
+         * an alias (е then ё) never draw a loop. [foldYoToE] writes every ё on the е key.
          */
         private fun idealLength(
             keySeq: ByteArray,
@@ -418,14 +438,20 @@ class GlideWordIndex private constructor(
             end: Int,
             geometry: GlideKeyGeometry,
             withLoops: Boolean,
+            foldYoToE: Boolean = false,
         ): Float {
+            val eKey =
+                if (foldYoToE) geometry.keyIndexOfLetter(GlideKeyGeometry.E_CODE_POINT) else -1
+            val yoKey =
+                if (foldYoToE) geometry.keyIndexOfLetter(GlideKeyGeometry.YO_CODE_POINT) else -1
             var total = 0f
             var hasDouble = false
             var previousKey = -1
             var previousX = 0f
             var previousY = 0f
             for (position in start until end) {
-                val key = keySeq[position].toInt() and 0xff
+                val storedKey = keySeq[position].toInt() and 0xff
+                val key = if (foldYoToE && storedKey == yoKey) eKey else storedKey
                 val x = geometry.centerX(key)
                 val y = geometry.centerY(key)
                 if (previousKey >= 0) {

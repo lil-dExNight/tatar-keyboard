@@ -3107,7 +3107,7 @@ PLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder;->hasDwellAtDouble(Lrk
 HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder;->index()Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;
 HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder;->prewarmIndex$app()V
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder;->scoreCandidate(Lrkr/simplekeyboard/inputmethod/latin/glide/GlidePath;Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;IIFFFFFFFFFF)I
-HPLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder;->scoreVariant(Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;IIZFFFFFFFIFFF)F
+HPLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder;->scoreVariant(Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;IIZFFFFFFFIFFFZ)F
 Lrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder$Companion;
 HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder$Companion;-><init>()V
 HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideDecoder$Companion;-><init>(Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -3157,7 +3157,7 @@ PLrkr/simplekeyboard/inputmethod/latin/glide/GlideGestureSink$Companion;-><init>
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideGestureSink$Companion;->getCurrent()Lrkr/simplekeyboard/inputmethod/latin/glide/GlideGestureSink;
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideIdealPaths;-><clinit>()V
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideIdealPaths;-><init>()V
-PLrkr/simplekeyboard/inputmethod/latin/glide/GlideIdealPaths;->write(Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;ILrkr/simplekeyboard/inputmethod/latin/glide/GlideKeyGeometry;Z[F[F[F[F[F)I
+PLrkr/simplekeyboard/inputmethod/latin/glide/GlideIdealPaths;->write(Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;ILrkr/simplekeyboard/inputmethod/latin/glide/GlideKeyGeometry;ZZ[F[F[F[F[F)I
 Lrkr/simplekeyboard/inputmethod/latin/glide/GlideIndexPrewarmer;
 Lrkr/simplekeyboard/inputmethod/latin/glide/GlideIndexReleaser;
 Lrkr/simplekeyboard/inputmethod/latin/glide/GlideKeyGeometry;
@@ -3221,8 +3221,8 @@ PLrkr/simplekeyboard/inputmethod/latin/glide/GlideResult;->reset$app()V
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideResult;->setCount$app(I)V
 Lrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;
 HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;-><clinit>()V
-HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;-><init>(IIJI[I[B[J[I[F[F[F[I[I[J)V
-HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;-><init>(IIJI[I[B[J[I[F[F[F[I[I[JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;-><init>(IIJI[I[B[J[I[F[F[F[F[I[I[J)V
+HSPLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;-><init>(IIJI[I[B[J[I[F[F[F[F[I[I[JLkotlin/jvm/internal/DefaultConstructorMarker;)V
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;->access$getLOG2$cp()D
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;->frequencyAt(I)J
 PLrkr/simplekeyboard/inputmethod/latin/glide/GlideWordIndex;->getMaxFrequency()J

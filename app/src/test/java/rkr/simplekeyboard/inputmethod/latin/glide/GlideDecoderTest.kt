@@ -144,6 +144,77 @@ class GlideDecoderTest {
     }
 
     @Test
+    fun eSwipeOffersTheYoFormWithoutDroppingTheEForm() {
+        val russianGeometry = GlideTestFixtures.russianGeometry()
+        val decoder = GlideDecoder(
+            russianGeometry,
+            ListGlideInventory(listOf("режиссер" to 4_899L, "режиссёр" to 3_118L)),
+            GlideDecoder.GlideConstants.RUSSIAN,
+        )
+        val path = GlideTestFixtures.idealPath("режиссер", russianGeometry)!!
+        val words = decodeWords(decoder, path)
+        assertEquals("режиссер", words[0])
+        assertTrue("the е gesture must offer режиссёр: $words", "режиссёр" in words)
+
+        val tatarWords = decodeWords(
+            decoderOf(listOf("режиссер" to 16_039L, "режиссёр" to 3_118L)),
+            idealPath("режиссер"),
+        )
+        assertEquals("режиссер", tatarWords[0])
+        assertTrue("the е gesture must offer режиссёр: $tatarWords", "режиссёр" in tatarWords)
+    }
+
+    @Test
+    fun eSwipeIncludesAYoStartBucket() {
+        val words = decodeWords(
+            decoderOf(listOf("елка" to 100L, "ёлка" to 50L)), idealPath("елка"),
+        )
+        assertEquals("елка", words[0])
+        assertTrue("the е start must also search the ё bucket: $words", "ёлка" in words)
+    }
+
+    @Test
+    fun eAndYoSpellingsCompeteWithoutReplacingEachOther() {
+        val entries = listOf("все" to 1_367_465L, "всё" to 890_670L)
+        val tatarDecoder = decoderOf(entries)
+        val eWords = decodeWords(tatarDecoder, idealPath("все"))
+        assertEquals("все", eWords[0])
+        assertTrue("both dictionary forms must remain candidates: $eWords", "всё" in eWords)
+
+        val yoWords = decodeWords(tatarDecoder, idealPath("всё"))
+        assertEquals("the explicit ё path keeps its exact match", "всё", yoWords[0])
+
+        val russianGeometry = GlideTestFixtures.russianGeometry()
+        val russianDecoder = GlideDecoder(
+            russianGeometry, ListGlideInventory(entries), GlideDecoder.GlideConstants.RUSSIAN,
+        )
+        val russianWords = decodeWords(
+            russianDecoder, GlideTestFixtures.idealPath("все", russianGeometry)!!,
+        )
+        assertEquals("все", russianWords[0])
+        assertTrue("the alias keeps both forms: $russianWords", "всё" in russianWords)
+    }
+
+    @Test
+    fun yoEquivalenceNeitherInventsWordsNorAcceptsDegeneratePaths() {
+        val eOnly = decodeWords(
+            decoderOf(listOf("режиссер" to 16_039L)), idealPath("режиссер"),
+        )
+        assertEquals(listOf("режиссер"), eOnly)
+
+        val decoder = decoderOf(listOf("режиссер" to 16_039L, "режиссёр" to 3_118L))
+        assertTrue(decodeWords(decoder, GlidePath()).isEmpty())
+        val tap = GlidePath()
+        val key = geometry.keyIndexOfLetter('р'.code)
+        tap.addPoint(geometry.centerX(key), geometry.centerY(key), 0f)
+        assertTrue(decodeWords(decoder, tap).isEmpty())
+        val tremor = GlidePath()
+        tremor.addPoint(geometry.centerX(key), geometry.centerY(key), 0f)
+        tremor.addPoint(geometry.centerX(key) + 1f, geometry.centerY(key), 8f)
+        assertTrue(decodeWords(decoder, tremor).isEmpty())
+    }
+
+    @Test
     fun theLoopVariantRecoversALoopedGesture() {
         val decoder = decoderOf(
             listOf(

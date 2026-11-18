@@ -568,14 +568,20 @@ is decoded from a gesture over that key and committed with the right letter: on 
 layout the Tatar letters, `ъ` on `ь` and `ё` on `е` work that way; on the Tatar layout every
 alphabet letter has its own key, so no alias is needed there. A letter that is the long
 press of two keys takes its base from `ALIAS_BASES` (`һ` on `х`, `ә` on `а`) or gets no alias;
-digits and other non-letters never become aliases. Words that share a key sequence (`все` and
-`всё`) compete by frequency. A word with a doubled letter is scored against its looped ideal
-path, so the gesture needs a loop or a dwell there, because the plain path belongs to the
-undoubled twin. A pause nearest a key outside the candidate can use the second-nearest key as
-off-center evidence; a pause on another letter of the candidate cannot. Two different letters
-that share a key through an alias (`её`) draw no loop and score against the plain path. When no
-indexed word has the collapsed key sequence (the twin bit of `GlideWordIndex`, recomputed with
-the personal words), the doubled word is also scored against the plain path and keeps the better score.
+digits and other non-letters never become aliases. Independently of aliases, an indexed word with
+ё also has a plain ideal path with every ё on the е key, and endpoint pruning searches the е/ё
+counterpart bucket when it is not already present. The original path remains, including on the
+Tatar layout's separate ё key. A doubled word may use this folded plain path even when an е
+spelling blocks its original plain path as a twin. Only existing dictionary entries compete; no
+spelling is synthesized or changed. On an е gesture, both `все` and `всё` can therefore remain
+candidates, with shape and frequency deciding their order; an exact ё gesture keeps its original
+match. A word with a doubled letter is otherwise scored against its looped ideal path, so the
+gesture needs a loop or a dwell there, because the plain path belongs to the undoubled twin. A
+pause nearest a key outside the candidate can use the second-nearest key as off-center evidence;
+a pause on another letter of the candidate cannot. Two different letters that share a key through
+an alias (`её`) draw no loop and score against the plain path. When no indexed word has the
+collapsed key sequence (the twin bit of `GlideWordIndex`, recomputed with the personal words), the
+doubled word is also scored against the plain path and keeps the better score.
 
 Spacing: a glide adds no space after the word. It prepends one space when the text before the
 cursor ends in a letter, a digit, a mark that attaches to a word (`. , ; : ! ? ) ] }`) or a

@@ -32,12 +32,13 @@ import kotlin.math.sqrt
  *  1. Extremity pruning: the keys nearest the gesture's start (up to
  *     [GlideConstants.startExtremityNeighbors]) and its end (up to
  *     [GlideConstants.endExtremityNeighbors]) select the start x end buckets of the
- *     [GlideWordIndex].
- *  2. Length pruning: a candidate stays only when its plain or looped ideal-path length lies
- *     within [GlideConstants.lengthThreshold] x key radius of the gesture's length.
+ *     [GlideWordIndex]. An е or ё endpoint also selects its counterpart's buckets.
+ *  2. Length pruning: a candidate stays only when its plain, looped or е-folded plain ideal-path
+ *     length lies within [GlideConstants.lengthThreshold] x key radius of the gesture's length.
  *  3. Scoring against the candidate's ideal path (the looped variant when the word has a
  *     doubled letter, the plain one otherwise; a twinless doubled word keeps the better of
- *     both, see [scoreCandidate]): shape distance (bbox-normalized pointwise L1
+ *     both, see [scoreCandidate]). A word with ё also has a plain variant on the е key:
+ *     shape distance (bbox-normalized pointwise L1
  *     over the resampled paths, Gaussian with [GlideConstants.shapeStd]) x location distance
  *     (pointwise x/y errors, two Gaussians with [GlideConstants.locationStdXFactor] /
  *     [GlideConstants.locationStdYFactor] sigmas x key radius)
@@ -166,6 +167,10 @@ class GlideDecoder(
     @Volatile
     private var wordIndex: GlideWordIndex? = null
 
+    private val eKey = geometry.keyIndexOfLetter(GlideKeyGeometry.E_CODE_POINT)
+    private val yoKey = geometry.keyIndexOfLetter(GlideKeyGeometry.YO_CODE_POINT)
+    private val foldYoChangesPath = eKey != yoKey
+
     /** Preloads a shared prebuilt index (the calibration grid skips a rebuild per cell). */
     internal fun preloadIndex(index: GlideWordIndex) {
         wordIndex = index
@@ -196,13 +201,15 @@ class GlideDecoder(
     private val idealStats = FloatArray(4)
     private val startKeys: IntArray = IntArray(constants.startExtremityNeighbors)
     private val endKeys: IntArray = IntArray(constants.endExtremityNeighbors)
+    private val expandedStartKeys = IntArray(constants.startExtremityNeighbors + 1)
+    private val expandedEndKeys = IntArray(constants.endExtremityNeighbors + 1)
     private val topScores = FloatArray(TOP_N)
     private val topEntries = IntArray(TOP_N)
     // The extremity-pruning merge arms: nearest start keys x nearest end keys. The head entry
     // and frequency of each arm are cached (an arm's head changes only when the arm advances),
     // so the per-candidate selection scan compares cached values, not fresh CSR reads.
     private val mergeArmCapacity =
-        constants.startExtremityNeighbors * constants.endExtremityNeighbors
+        (constants.startExtremityNeighbors + 1) * (constants.endExtremityNeighbors + 1)
     private val mergeEnd = IntArray(mergeArmCapacity)
     private val mergeCursor = IntArray(mergeArmCapacity)
     private val mergeHeadEntry = IntArray(mergeArmCapacity)
@@ -284,8 +291,10 @@ class GlideDecoder(
             (1.0 / (2.0 * locationStdY * locationStdY)).toFloat()
         val maxChannelProduct = shapeFactor * locationXFactor * locationYFactor
 
-        val startCount = geometry.findClosestKeys(path.firstX, path.firstY, startKeys)
-        val endCount = geometry.findClosestKeys(path.lastX, path.lastY, endKeys)
+        val nearestStartCount = geometry.findClosestKeys(path.firstX, path.firstY, startKeys)
+        val nearestEndCount = geometry.findClosestKeys(path.lastX, path.lastY, endKeys)
+        val startCount = withYoEquivalentKey(startKeys, nearestStartCount, expandedStartKeys)
+        val endCount = withYoEquivalentKey(endKeys, nearestEndCount, expandedEndKeys)
         topScores.fill(Float.POSITIVE_INFINITY)
         var topCount = 0
         // The arm-tail floor: within one arm the entries are frequency-descending, so once an
@@ -304,8 +313,8 @@ class GlideDecoder(
         var armCount = 0
         for (s in 0 until startCount) {
             for (e in 0 until endCount) {
-                val rangeStart = index.pairRangeStart(startKeys[s], endKeys[e])
-                val rangeEnd = index.pairRangeEnd(startKeys[s], endKeys[e])
+                val rangeStart = index.pairRangeStart(expandedStartKeys[s], expandedEndKeys[e])
+                val rangeEnd = index.pairRangeEnd(expandedStartKeys[s], expandedEndKeys[e])
                 if (rangeStart < rangeEnd) {
                     mergeEnd[armCount] = rangeEnd
                     mergeCursor[armCount] = rangeStart
@@ -347,8 +356,10 @@ class GlideDecoder(
             lastCandidateCount++
             val plain = index.plainLengthAt(entry)
             val looped = index.loopLengthAt(entry)
+            val foldedYoPlain = index.foldedYoPlainLengthAt(entry)
             if (abs(userLength - plain) >= maxDistance &&
-                (looped < 0f || abs(userLength - looped) >= maxDistance)
+                (looped < 0f || abs(userLength - looped) >= maxDistance) &&
+                (foldedYoPlain < 0f || abs(userLength - foldedYoPlain) >= maxDistance)
             ) {
                 continue
             }
@@ -380,6 +391,23 @@ class GlideDecoder(
         }
         out.count = topCount
         return topCount
+    }
+
+    /** Copies nearest keys and appends the е/ё counterpart when it is not already present. */
+    private fun withYoEquivalentKey(nearest: IntArray, nearestCount: Int, out: IntArray): Int {
+        var counterpart = -1
+        for (i in 0 until nearestCount) {
+            val key = nearest[i]
+            out[i] = key
+            if (key == eKey) counterpart = yoKey
+            if (key == yoKey) counterpart = eKey
+        }
+        if (counterpart < 0) return nearestCount
+        for (i in 0 until nearestCount) {
+            if (out[i] == counterpart) return nearestCount
+        }
+        out[nearestCount] = counterpart
+        return nearestCount + 1
     }
 
     /**
@@ -434,15 +462,32 @@ class GlideDecoder(
             locationXFactor, locationYFactor,
             shapeInvTwoSigmaSq, locationXInvTwoSigmaSq, locationYInvTwoSigmaSq,
             frequencyWeight, samples, userDurationMs, userLength, lengthInvTwoSigmaSq,
+            foldYoToE = false,
         )
-        if (doubled && (index.isTwinlessAt(entry) || dwellAtDouble)) {
+        val scoreOriginalPlain = doubled && (index.isTwinlessAt(entry) || dwellAtDouble)
+        if (scoreOriginalPlain) {
             val plain = scoreVariant(
                 index, entry, topCount, false, shapeFactor,
                 locationXFactor, locationYFactor,
                 shapeInvTwoSigmaSq, locationXInvTwoSigmaSq, locationYInvTwoSigmaSq,
                 frequencyWeight, samples, userDurationMs, userLength, lengthInvTwoSigmaSq,
+                foldYoToE = false,
             )
             if (plain < best) best = plain
+        }
+        // A ё word also competes through its plain е-key path. The dictionary entry is unchanged;
+        // when both spellings exist, their scores and frequencies decide the order.
+        if (index.foldedYoPlainLengthAt(entry) >= 0f &&
+            (foldYoChangesPath || doubled && !scoreOriginalPlain)
+        ) {
+            val folded = scoreVariant(
+                index, entry, topCount, false, shapeFactor,
+                locationXFactor, locationYFactor,
+                shapeInvTwoSigmaSq, locationXInvTwoSigmaSq, locationYInvTwoSigmaSq,
+                frequencyWeight, samples, userDurationMs, userLength, lengthInvTwoSigmaSq,
+                foldYoToE = true,
+            )
+            if (folded < best) best = folded
         }
         lastScoredCount++
         if (best == Float.POSITIVE_INFINITY) return topCount
@@ -570,14 +615,18 @@ class GlideDecoder(
         userDurationMs: Float,
         userLength: Float,
         lengthInvTwoSigmaSq: Float,
+        foldYoToE: Boolean,
     ): Float {
         val points = GlideIdealPaths.write(
-            index, entry, geometry, loopedOnly, idealX, idealY, idealStats, idealSegLens,
+            index, entry, geometry, loopedOnly, foldYoToE, idealX, idealY, idealStats, idealSegLens,
             idealInvSegLens,
         )
         if (points < 0) return Float.POSITIVE_INFINITY
-        val totalLength =
-            if (loopedOnly) index.loopLengthAt(entry) else index.plainLengthAt(entry)
+        val totalLength = when {
+            foldYoToE -> index.foldedYoPlainLengthAt(entry)
+            loopedOnly -> index.loopLengthAt(entry)
+            else -> index.plainLengthAt(entry)
+        }
         var variantLocationXFactor = locationXFactor
         var variantLocationYFactor = locationYFactor
         var variantLocationXInvTwoSigmaSq = locationXInvTwoSigmaSq

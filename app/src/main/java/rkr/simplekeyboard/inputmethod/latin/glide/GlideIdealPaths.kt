@@ -37,13 +37,15 @@ internal object GlideIdealPaths {
      *
      * [stats] (when non-null) receives the polyline's bounding box [minX, maxX, minY, maxY];
      * [segLenOut] and [invSegLenOut] receive the segment lengths and their reciprocals, so the
-     * decoder's fused scoring pass needs no second walk and no per-point sqrt.
+     * decoder's fused scoring pass needs no second walk and no per-point sqrt. [foldYoToE]
+     * writes every ё on the е key without changing the stored word.
      */
     fun write(
         index: GlideWordIndex,
         entry: Int,
         geometry: GlideKeyGeometry,
         withLoops: Boolean,
+        foldYoToE: Boolean,
         outX: FloatArray,
         outY: FloatArray,
         stats: FloatArray? = null,
@@ -57,8 +59,13 @@ internal object GlideIdealPaths {
         var maxX = -Float.MAX_VALUE
         var minY = Float.MAX_VALUE
         var maxY = -Float.MAX_VALUE
+        val eKey =
+            if (foldYoToE) geometry.keyIndexOfLetter(GlideKeyGeometry.E_CODE_POINT) else -1
+        val yoKey =
+            if (foldYoToE) geometry.keyIndexOfLetter(GlideKeyGeometry.YO_CODE_POINT) else -1
         for (position in start until end) {
-            val key = index.keySeqAt(position)
+            val storedKey = index.keySeqAt(position)
+            val key = if (foldYoToE && storedKey == yoKey) eKey else storedKey
             val x = geometry.centerX(key)
             val y = geometry.centerY(key)
             // The detour fires on the index's same-letter bit: two different letters folded to

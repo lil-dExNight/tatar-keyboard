@@ -86,6 +86,10 @@ class GlideWordIndexUtf8BuildTest {
             }
             assertEquals("frequency($entry)", expected.frequencyAt(entry), actual.frequencyAt(entry))
             assertEquals("plainLength($entry)", expected.plainLengthAt(entry), actual.plainLengthAt(entry))
+            assertEquals(
+                "foldedYoPlainLength($entry)",
+                expected.foldedYoPlainLengthAt(entry), actual.foldedYoPlainLengthAt(entry),
+            )
             assertEquals("loopLength($entry)", expected.loopLengthAt(entry), actual.loopLengthAt(entry))
             assertEquals(
                 "normative($entry)",

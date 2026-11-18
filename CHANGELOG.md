@@ -42,6 +42,9 @@ These hold for every release:
 
 ### Changed
 
+- Glide typing offers an existing dictionary word with ё for a gesture over е without dropping
+  the е spelling. This works with the separate Tatar ё key and the Russian long-press alias;
+  pairs such as все/всё remain separate candidates with the usual shape and frequency ranking.
 - Apostrophe words stay out of the dictionary. Typing a straight or curly apostrophe does not
   merge or split words in tokenization, commit, deletion, learning or suggestions.
 - Cold-companion validation computes the list checksum without a whole-list copy.
