@@ -25,6 +25,7 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
 import android.view.View
 import android.view.WindowInsets
@@ -99,7 +100,9 @@ class SettingsHostActivity : Activity() {
         internal const val PERCENTAGE_FLOAT = 100.0f
         private const val REQUEST_BACKUP_EXPORT = 1
         private const val REQUEST_BACKUP_IMPORT = 2
+        private const val REQUEST_ENCRYPTED_BACKUP_EXPORT = 3
         private const val BACKUP_MIME_TYPE = "application/zip"
+        private const val ENCRYPTED_BACKUP_MIME_TYPE = "application/octet-stream"
     }
 
     internal lateinit var prefs: SharedPreferences
@@ -368,20 +371,19 @@ class SettingsHostActivity : Activity() {
 
 
     /**
-     * The "Backup" screen: one explanation row and the two actions. The explanation
-     * says plainly what the file holds — the learned words among them — and that it is not
-     * encrypted, because the file is the one artifact of this app the user carries around
-     * themselves. The actions launch the system file picker; everything else happens in
-     * [onActivityResult] and in [BackupCoordinator].
+     * The "Backup" screen offers plaintext and encrypted exports plus one restore action. The
+     * actions launch the system file picker; everything else happens in [onActivityResult] and
+     * in [BackupCoordinator].
      */
     private fun buildBackupScreen() {
         addCard(listOf(textRow(getString(R.string.backup_contents_note))))
         addCard(listOf(
             actionRow(R.string.backup_export_action) { startBackupExport() },
+            actionRow(R.string.backup_encrypted_export_action) { startEncryptedBackupExport() },
             actionRow(R.string.backup_import_action) { showBackupImportDialog() }))
     }
 
-    /** The create-document picker, pre-filled with the fixed file name. */
+    /** The plaintext create-document picker, pre-filled with the fixed file name. */
     private fun startBackupExport() {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
@@ -391,6 +393,68 @@ class SettingsHostActivity : Activity() {
             startActivityForResult(intent, REQUEST_BACKUP_EXPORT)
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(this, R.string.backup_no_app, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** The encrypted create-document picker has its own result and file name. */
+    private fun startEncryptedBackupExport() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType(ENCRYPTED_BACKUP_MIME_TYPE)
+            .putExtra(Intent.EXTRA_TITLE, BackupFormat.SUGGESTED_ENCRYPTED_FILE_NAME)
+        try {
+            startActivityForResult(intent, REQUEST_ENCRYPTED_BACKUP_EXPORT)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.backup_no_app, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showEncryptedBackupExportPasswordDialog(uri: Uri) {
+        val column = LinearLayout(this)
+        column.orientation = LinearLayout.VERTICAL
+        val passwordField = backupPasswordField(R.string.backup_password_hint)
+        val confirmationField = backupPasswordField(R.string.backup_password_confirm_hint)
+        column.addView(passwordField)
+        column.addView(confirmationField)
+        currentDialog?.dismiss()
+        val dialog = AlertDialog.Builder(this)
+                .setTitle(R.string.backup_export_password_title)
+                .setView(column)
+                .setPositiveButton(R.string.backup_export_password_action, null)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+        dialog.setOnDismissListener {
+            passwordField.text.clear()
+            confirmationField.text.clear()
+        }
+        DialogUtils.filterObscuredTouches(dialog)
+        DialogUtils.securePersonalContent(dialog)
+        currentDialog = dialog
+        dialog.show()
+        // Replace the default listener so validation errors keep the dialog open.
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val password = copyBackupPassword(passwordField)
+            val confirmation = copyBackupPassword(confirmationField)
+            val errorRes = when {
+                password.isEmpty() -> R.string.backup_password_empty
+                !password.contentEquals(confirmation) -> R.string.backup_password_mismatch
+                else -> null
+            }
+            confirmation.fill('\u0000')
+            if (errorRes != null) {
+                password.fill('\u0000')
+                passwordField.text.clear()
+                confirmationField.text.clear()
+                Toast.makeText(this, errorRes, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            passwordField.text.clear()
+            confirmationField.text.clear()
+            dialog.dismiss()
+            // The backup core owns and wipes the submitted password.
+            backupCoordinator().exportTo(uri, password) { written ->
+                showBackupExportOutcome(written)
+            }
         }
     }
 
@@ -415,7 +479,7 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
-    /** The open-document picker; a zip MIME filter plus octet-stream for providers without one. */
+    /** The open-document picker accepts plaintext and encrypted backup files. */
     private fun startBackupImport() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
@@ -423,12 +487,59 @@ class SettingsHostActivity : Activity() {
             // comment stripper of the log-safety source test would blank the lines below.
             .setType("*" + "/" + "*")
             .putExtra(Intent.EXTRA_MIME_TYPES,
-                    arrayOf(BACKUP_MIME_TYPE, "application/octet-stream"))
+                    arrayOf(BACKUP_MIME_TYPE, ENCRYPTED_BACKUP_MIME_TYPE))
         try {
             startActivityForResult(intent, REQUEST_BACKUP_IMPORT)
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(this, R.string.backup_no_app, Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun showBackupImportPasswordDialog(uri: Uri) {
+        val passwordField = backupPasswordField(R.string.backup_password_hint)
+        currentDialog?.dismiss()
+        val dialog = AlertDialog.Builder(this)
+                .setTitle(R.string.backup_import_password_title)
+                .setView(passwordField)
+                .setPositiveButton(R.string.backup_import_password_action, null)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+        dialog.setOnDismissListener { passwordField.text.clear() }
+        DialogUtils.filterObscuredTouches(dialog)
+        DialogUtils.securePersonalContent(dialog)
+        currentDialog = dialog
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val password = copyBackupPassword(passwordField)
+            if (password.isEmpty()) {
+                password.fill('\u0000')
+                passwordField.text.clear()
+                Toast.makeText(this, R.string.backup_password_empty, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            passwordField.text.clear()
+            dialog.dismiss()
+            // The backup core owns and wipes the submitted password.
+            backupCoordinator().importFrom(uri, password) { result ->
+                handleBackupImportResult(uri, result)
+            }
+        }
+    }
+
+    private fun backupPasswordField(hintRes: Int): EditText {
+        val field = layoutInflater.inflate(R.layout.row_text_input, contentView, false) as EditText
+        field.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        applyPrivateInputFlags(field)
+        field.setHint(hintRes)
+        return field
+    }
+
+    /** Copies the editable without creating a String representation of the password. */
+    private fun copyBackupPassword(field: EditText): CharArray {
+        val editable = field.text
+        val password = CharArray(editable.length)
+        for (index in password.indices) password[index] = editable[index]
+        return password
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -437,25 +548,38 @@ class SettingsHostActivity : Activity() {
         val uri = data?.data ?: return
         when (requestCode) {
             REQUEST_BACKUP_EXPORT -> backupCoordinator().exportTo(uri) { written ->
-                if (isFinishing || isDestroyed) return@exportTo
-                Toast.makeText(this,
-                        if (written) R.string.backup_export_done else R.string.backup_export_failed,
-                        Toast.LENGTH_LONG).show()
+                showBackupExportOutcome(written)
             }
+            REQUEST_ENCRYPTED_BACKUP_EXPORT -> showEncryptedBackupExportPasswordDialog(uri)
             REQUEST_BACKUP_IMPORT -> backupCoordinator().importFrom(uri) { result ->
-                if (isFinishing || isDestroyed) return@importFrom
-                val messageRes = when (result) {
-                    BackupImportResult.IMPORTED -> R.string.backup_import_done
-                    BackupImportResult.IMPORTED_PRIVACY_CHANGED ->
-                        R.string.backup_import_privacy_changed
-                    BackupImportResult.INVALID_FILE -> R.string.backup_import_failed_invalid
-                    BackupImportResult.WRITE_FAILED -> R.string.backup_import_failed_write
-                }
-                Toast.makeText(this, messageRes, Toast.LENGTH_LONG).show()
-                // The imported settings may differ from what the open rows show; repaint.
-                showScreen(currentScreen)
+                handleBackupImportResult(uri, result)
             }
         }
+    }
+
+    private fun showBackupExportOutcome(written: Boolean) {
+        if (isFinishing || isDestroyed) return
+        Toast.makeText(this,
+                if (written) R.string.backup_export_done else R.string.backup_export_failed,
+                Toast.LENGTH_LONG).show()
+    }
+
+    private fun handleBackupImportResult(uri: Uri, result: BackupImportResult) {
+        if (isFinishing || isDestroyed) return
+        val messageRes = when (result) {
+            BackupImportResult.IMPORTED -> R.string.backup_import_done
+            BackupImportResult.IMPORTED_PRIVACY_CHANGED ->
+                R.string.backup_import_privacy_changed
+            BackupImportResult.INVALID_FILE -> R.string.backup_import_failed_invalid
+            BackupImportResult.WRITE_FAILED -> R.string.backup_import_failed_write
+            BackupImportResult.PASSWORD_REQUIRED -> {
+                showBackupImportPasswordDialog(uri)
+                return
+            }
+        }
+        Toast.makeText(this, messageRes, Toast.LENGTH_LONG).show()
+        // The imported settings may differ from what the open rows show; repaint.
+        showScreen(currentScreen)
     }
 
     /** Returns the activity's one backup worker, creating it for recovery or a transfer. */
