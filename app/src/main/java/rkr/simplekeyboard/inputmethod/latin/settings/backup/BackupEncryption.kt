@@ -202,24 +202,29 @@ internal object BackupEncryption {
         val passwordBytes = Charsets.UTF_8.encode(CharBuffer.wrap(password))
         val passwordArray = ByteArray(passwordBytes.remaining())
         passwordBytes.get(passwordArray)
-        Arrays.fill(passwordBytes.array(), 0.toByte())
         val salted = salt.copyOf(salt.size + 4)
         salted[salt.size + 3] = 1
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(passwordArray, "HmacSHA256"))
-        Arrays.fill(passwordArray, 0.toByte())
-        val u = mac.doFinal(salted)
-        Arrays.fill(salted, 0.toByte())
-        val result = u.copyOf()
-        for (round in 1 until iterations) {
-            // HMAC consumes update() input immediately, so input and output can share the buffer.
-            mac.update(u)
-            mac.doFinal(u, 0)
-            for (index in result.indices) result[index] = (result[index].toInt() xor
-                u[index].toInt()).toByte()
+        var u: ByteArray? = null
+        try {
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(passwordArray, "HmacSHA256"))
+            u = mac.doFinal(salted)
+            val result = u.copyOf()
+            for (round in 1 until iterations) {
+                // HMAC consumes update() input immediately, so input and output can share the
+                // buffer.
+                mac.update(u)
+                mac.doFinal(u, 0)
+                for (index in result.indices) result[index] = (result[index].toInt() xor
+                    u[index].toInt()).toByte()
+            }
+            return result
+        } finally {
+            Arrays.fill(passwordBytes.array(), 0.toByte())
+            Arrays.fill(passwordArray, 0.toByte())
+            Arrays.fill(salted, 0.toByte())
+            u?.fill(0.toByte())
         }
-        Arrays.fill(u, 0.toByte())
-        return result
     }
 
     private fun fail(message: String): Nothing = throw BackupValidationException(message)
