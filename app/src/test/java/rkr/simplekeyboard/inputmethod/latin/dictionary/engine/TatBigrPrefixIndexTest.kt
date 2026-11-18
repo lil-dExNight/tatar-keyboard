@@ -223,10 +223,10 @@ class TatBigrPrefixIndexTest {
     @Test
     fun acceptsCommittedTatarBigramAssetAndFindsARealHead() {
         val spec = rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpec
-            .TATAR_BIGRAMS_V1
+            .TATAR_BIGRAMS_V2
         val asset = locateCommittedAsset(
-            "src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
-            "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+            "src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
+            "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
         ).readBytes()
         val decompressed = java.io.ByteArrayOutputStream(spec.expectedRawSize.toInt()).also { output ->
             rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator()

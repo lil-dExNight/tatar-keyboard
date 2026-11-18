@@ -57,7 +57,11 @@ class SuggestionsControllerProperNameTest {
         override fun hasLetterAfterCursor(): Boolean = false
         override fun cachedNextWordContext(): String = contextWord
         override fun isAtSentenceStart(): Boolean = contextWord.isEmpty() && word.isEmpty()
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = true
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean = true
     }
 
     private class FakeEngine : EngineHandle {
@@ -70,6 +74,7 @@ class SuggestionsControllerProperNameTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
         ): Any? = Any().also { current = it }
         override fun isCurrent(token: Any): Boolean = token === current

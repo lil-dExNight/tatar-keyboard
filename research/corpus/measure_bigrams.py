@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import corpuslib as CL, filters as F
 import dictionary_coverage as cov
-import bigram_asset_pack as bp
+import suggest_eval
 import pairs as P
 from measure_filtered import collect, collect_split
 
@@ -31,13 +31,14 @@ DISPLAY = 3          # TatBigrPrefixIndex.MAX_RESULTS
 K = 4                # shipped successors per head
 
 SHIPPED_BIGRAMS = {
-    "tat": "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+    "tat": "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
     "rus": "app/src/main/assets/bigrams/russian_bigrams_v1.tatbigr.zlib",
 }
 
 def shipped_table(tag):
     p = Path(__file__).resolve().parents[2] / SHIPPED_BIGRAMS[tag]
-    return bp.validate_raw(bp.decompress(p.read_bytes()))
+    words, _frequencies, dictionary_raw = suggest_eval.load_dictionary_words(CL.SHIPPED[tag])
+    return suggest_eval.load_bigram_table(p, words, dictionary_raw)
 
 def count_pairs(lines, alpha, vocab):
     pairs = Counter()

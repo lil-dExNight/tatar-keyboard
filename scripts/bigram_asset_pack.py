@@ -27,8 +27,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dictionary_coverage as coverage  # noqa: E402
 import dictionary_pack  # noqa: E402
 from bigram_pack import (  # noqa: E402
-    MAX_COMPRESSED_BYTES,
-    MAX_RAW_BYTES,
     BigramInputError,
     count_pairs,
     measure_punctuation_recovery,
@@ -58,8 +56,11 @@ CHECKSUM_ALGORITHM_SHA256 = 1
 # ascending), (5) V+1 u32 success-word offsets, (6) UTF-8 deduplicated success-word blob in
 # code-point ascending order.
 #
-# Caps for both schemas: compressed <= MAX_COMPRESSED_BYTES and raw <= MAX_RAW_BYTES. The whole
-# image is built and validated in memory before any output file is touched.
+# Shared by bigram-only and combined tables. These are reader/generator safety bounds, not size
+# budgets. The whole image is built and validated in memory before any output file is touched.
+MAX_RAW_BYTES = 4 * 1024 * 1024
+MAX_COMPRESSED_BYTES = 3 * 1024 * 1024
+
 HEADER_FORMAT = "<8s" + "H" * 4 + "I" * 12 + "32s"
 HEADER = struct.Struct(HEADER_FORMAT)
 assert HEADER.size == HEADER_SIZE

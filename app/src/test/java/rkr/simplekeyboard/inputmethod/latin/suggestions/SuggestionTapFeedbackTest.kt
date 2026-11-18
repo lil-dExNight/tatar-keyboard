@@ -109,7 +109,11 @@ class SuggestionTapFeedbackTest {
             return true
         }
 
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean {
             // The production re-checks, modeled: an empty trailing word, the live context must
             // match, and an empty context binds only at a sentence start.
             if (TatarWordUtils.extractTrailingWord(before).isNotEmpty()) return false
@@ -198,13 +202,12 @@ class SuggestionTapFeedbackTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? {
-            val context = String(contextWordUtf8, Charsets.UTF_8)
-            val token = Any()
-            callback?.onResult(token, nextWordByContext[context] ?: emptyList(), LookupKind.NEXT_WORD)
-            return token
-        }
+        ): Any? { val context = String(contextWordUtf8, Charsets.UTF_8)
+        val token = Any()
+        callback?.onResult(token, nextWordByContext[context] ?: emptyList(), LookupKind.NEXT_WORD)
+        return token }
 
         override fun requestGlide(
             editorSessionId: Long,

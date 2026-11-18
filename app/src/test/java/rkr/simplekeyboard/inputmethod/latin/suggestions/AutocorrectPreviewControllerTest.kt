@@ -168,17 +168,16 @@ class AutocorrectPreviewControllerTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? {
-            // A NEXT_WORD lookup never moves the verdict — the autocorrect advice belongs to the
-            // newest PREFIX lookup, exactly like CompositePrefixComputer.predict never touches it.
-            val context = String(contextWordUtf8, Charsets.UTF_8)
-            val token = Any()
-            callback?.onResult(
-                token, nextWordByContext[context] ?: emptyList(), LookupKind.NEXT_WORD,
-            )
-            return token
-        }
+        ): Any? { // A NEXT_WORD lookup never moves the verdict — the autocorrect advice belongs to the
+        // newest PREFIX lookup, exactly like CompositePrefixComputer.predict never touches it.
+        val context = String(contextWordUtf8, Charsets.UTF_8)
+        val token = Any()
+        callback?.onResult(
+            token, nextWordByContext[context] ?: emptyList(), LookupKind.NEXT_WORD,
+        )
+        return token }
 
         override fun isCurrent(token: Any): Boolean = true
 

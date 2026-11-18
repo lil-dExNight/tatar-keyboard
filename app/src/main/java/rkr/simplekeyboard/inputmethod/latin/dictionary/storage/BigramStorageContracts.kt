@@ -80,25 +80,26 @@ data class BigramArtifactSpec(
         private val FILE_LANGUAGE_TAG_PATTERN = Regex("[a-z]{2,3}")
 
         // The pins between the marker pairs are rewritten by scripts/rebuild_assets.py.
-        /** The Tatar bigram table; its pinned sizes, SHA-256 values and head count follow. */
+        /** The combined Tatar bigram and trigram table; its pinned sizes and hashes follow. */
         @JvmField
         // <generated pins>
-        val TATAR_BIGRAMS_V1 = BigramArtifactSpec(
+        val TATAR_BIGRAMS_V2 = BigramArtifactSpec(
             family = "tatar_bigrams",
-            generation = 1,
+            generation = 2,
             fileLanguageTag = "tt",
             subtypeId = PersonalSubtypes.TATAR_RU,
             storageDirectoryName = "bigrams",
-            assetPath = "bigrams/tatar_bigrams_v1.tatbigr.zlib",
-            expectedCompressedSize = 212_001,
+            assetPath = "bigrams/tatar_bigrams_v2.tatbigr.zlib",
+            expectedCompressedSize = 1_123_569,
             expectedCompressedSha256 =
-                "d0ef996bba896516c71dfa11ad50390ff270667bcf8397f6c1c6b4dea7eefbcb",
-            expectedRawSize = 306_605,
+                "710214b3567174dc2fb752894c355d105ddcf7fd3466512e5a7eaffd31e675dc",
+            expectedRawSize = 1_568_235,
             expectedRawSha256 =
-                "a1320f4b0e56ad045fa5a6267188afad1eafd56612137457e5f16a92414cd58d",
+                "fa8e57d28334c5106b4a0a527248cee72aed7244ce99a20bdbb85b03248156eb",
             expectedDictionaryRawSha256 =
                 "0ed3206a0df5c41d639abc7918ccb5d2e3389882287d4cd5e5dce1725c61986a",
             expectedHeadCount = 12_882,
+            schemaId = TatBigrFormat.SCHEMA_ID_V4,
         )
         // </generated pins>
 
@@ -217,13 +218,19 @@ class BackgroundBigramPreparer(
 internal object TatBigrFormat {
     const val MAGIC = "TATBIGR\u0000"
     const val SCHEMA_ID = 3
+    const val SCHEMA_ID_V4 = 4
     const val FORMAT_VERSION = 1
     const val HEADER_SIZE = 128
+    const val HEADER_SIZE_V4 = 224
     const val CHECKSUM_OFFSET = 96
     const val CHECKSUM_SIZE = 32
     const val CHECKSUM_ALGORITHM_SHA256 = 1
     const val HEAD_BLOCK_SIZE = 64
-    const val MAX_COMPRESSED_SIZE = 250_000L
-    const val MAX_RAW_SIZE = 1_048_576L
+    const val TRIGRAM_BLOCK_SIZE = 64
+    const val TRIGRAM_BLOCK_RECORD_BYTES = 16
+    const val TRIGRAM_EXTENSION_OFFSET = 128
+    const val TRIGRAM_RESERVED_OFFSET = 176
+    const val MAX_COMPRESSED_SIZE = 3 * 1024 * 1024L
+    const val MAX_RAW_SIZE = 4 * 1024 * 1024L
     const val MAX_U32 = 0xffff_ffffL
 }

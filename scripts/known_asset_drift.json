@@ -1,5 +1,5 @@
 {
-  "bigrams/tatar_bigrams_v1.tatbigr.zlib": {
+  "bigrams/tatar_bigrams_v2.tatbigr.zlib": {
     "missing_top_heads": 7,
     "unexpected_heads": 0,
     "reason": "Generator rule, not drift: heads with no in-dictionary pair are dropped by the packer (the validator forbids empty ranges). These are two top-cutoff heads (ред, доп) whose partner words are outside the shipped dictionary, and extra-head candidates — frequent conversational question and predicative forms (алмадыңмы, сөйләшәсезме, белмәдегезме and the like) — with the same property. unexpected = 0: every table head is in the top H or in the extra-heads list."

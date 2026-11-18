@@ -58,8 +58,8 @@ internal class CompositePrefixComputer(
     // personal dictionary itself (see GlideDecoderHost).
     private val glideHost: GlideDecoderHost? = null,
 ) : ContextAwarePrefixComputer, ClassifiedPrefixComputer, KeyNeighborSink, NextWordComputer,
-    GlideComputer, GlideGeometrySink, GlideIndexPrewarmer, GlideIndexReleaser, EmptyPrefixProber,
-    AutocorrectAdviceControl {
+    TwoWordNextWordComputer, GlideComputer, GlideGeometrySink, GlideIndexPrewarmer,
+    GlideIndexReleaser, EmptyPrefixProber, AutocorrectAdviceControl {
 
     init {
         // The glide bigram channel reranks the N-best against the context word's successors:
@@ -232,21 +232,86 @@ internal class CompositePrefixComputer(
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         val source = bigramSource ?: runPendingBigramAttach()
         lastNextWordWithoutTable = source == null
-        var result = source?.predict(normalizedContextWordUtf8) ?: emptyList()
-        result = withPersonalPairs(result, normalizedContextWordUtf8)
-        if (result.size < CELL_COUNT) {
+        val result = source?.predict(normalizedContextWordUtf8) ?: emptyList()
+        return withPersonalAndFallback(result, normalizedContextWordUtf8)
+    }
+
+    /**
+     * Two-word NEXT_WORD prediction: unique two-word successors lead, and unique one-word bigram
+     * successors fill their remaining cells. Empty, unsupported or broken two-word lookup uses
+     * exactly the one-word answer. Learned pairs and global fallback still key on B.
+     */
+    override fun predict(
+        normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String> {
+        if (normalizedPreviousContextWordUtf8.byteCount == 0) {
+            return predict(normalizedContextWordUtf8)
+        }
+        val source = bigramSource ?: runPendingBigramAttach()
+        lastNextWordWithoutTable = source == null
+        val result = if (source == null) {
+            emptyList()
+        } else {
+            val twoWordSource = source as? TwoWordNextWordComputer
+            if (twoWordSource == null) {
+                source.predict(normalizedContextWordUtf8)
+            } else {
+                val twoWord = try {
+                    twoWordSource.predict(
+                        normalizedPreviousContextWordUtf8,
+                        normalizedContextWordUtf8,
+                    )
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+                if (twoWord.isEmpty()) {
+                    source.predict(normalizedContextWordUtf8)
+                } else {
+                    mergeTwoWordSuccessors(twoWord, source, normalizedContextWordUtf8)
+                }
+            }
+        }
+        return withPersonalAndFallback(result, normalizedContextWordUtf8)
+    }
+
+    private fun mergeTwoWordSuccessors(
+        twoWord: List<String>,
+        source: NextWordComputer,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String> {
+        val merged = ArrayList<String>(CELL_COUNT)
+        for (candidate in twoWord) {
+            if (merged.size >= CELL_COUNT) return merged
+            if (candidate !in merged) merged.add(candidate)
+        }
+        if (merged.size < CELL_COUNT) {
+            for (candidate in source.predict(normalizedContextWordUtf8)) {
+                if (merged.size >= CELL_COUNT) break
+                if (candidate !in merged) merged.add(candidate)
+            }
+        }
+        return merged
+    }
+
+    private fun withPersonalAndFallback(
+        result: List<String>,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String> {
+        var merged = withPersonalPairs(result, normalizedContextWordUtf8)
+        if (merged.size < CELL_COUNT) {
             val fallback = fallbackWords
             if (fallback != null) {
                 // A broken fallback leaves the earlier results intact.
                 val extras = try {
-                    fallback.fallbackWords(normalizedContextWordUtf8, result, CELL_COUNT - result.size)
+                    fallback.fallbackWords(normalizedContextWordUtf8, merged, CELL_COUNT - merged.size)
                 } catch (_: RuntimeException) {
                     null
                 }
-                if (!extras.isNullOrEmpty()) result = result + extras
+                if (!extras.isNullOrEmpty()) merged = merged + extras
             }
         }
-        return result
+        return merged
     }
 
     /**

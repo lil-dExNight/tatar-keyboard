@@ -646,7 +646,7 @@ class AutocorrectWideningCalibrationTest {
             val index = openIndex(raw, CURRENT_POLICY)
             currentIndex = index.also { it.updateKeyNeighbors(neighborTable) }
             widenedIndex = openIndex(raw, WIDENED_POLICY).also { it.updateKeyNeighbors(neighborTable) }
-            tatarBigramIndex = openBigramIndex(BigramArtifactSpec.TATAR_BIGRAMS_V1, index)
+            tatarBigramIndex = openBigramIndex(BigramArtifactSpec.TATAR_BIGRAMS_V2, index)
 
             russianFullWordRows = locate(
                 "src/test/resources/ru_typo_eval_set.tsv",

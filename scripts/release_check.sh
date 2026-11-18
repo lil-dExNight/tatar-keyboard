@@ -316,7 +316,7 @@ SPECS = [
      [("TATAR_TOP100K_V1", "dictionaries/tatar_top100k_v1.tdict.zlib"),
       ("RUSSIAN_TOP100K_V1", "dictionaries/russian_top100k_v1.tdict.zlib")]),
     (storage / "BigramStorageContracts.kt", "BigramArtifactSpec",
-     [("TATAR_BIGRAMS_V1", "bigrams/tatar_bigrams_v1.tatbigr.zlib"),
+     [("TATAR_BIGRAMS_V2", "bigrams/tatar_bigrams_v2.tatbigr.zlib"),
       ("RUSSIAN_BIGRAMS_V1", "bigrams/russian_bigrams_v1.tatbigr.zlib")]),
     (storage / "CompanionListStorageContracts.kt", "CompanionListArtifactSpec",
      [("TATAR_COMPANION_V1", "dictionaries/tatar_companion_v1.tcomp.zlib"),

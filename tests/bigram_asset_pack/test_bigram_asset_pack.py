@@ -159,9 +159,9 @@ class HeaderLayoutTest(unittest.TestCase):
         self.assertEqual(96, pack.HEADER_SIZE)
         self.assertEqual(64, pack.CHECKSUM_OFFSET)
 
-    def test_caps_are_the_ones_the_gate_names(self) -> None:
-        self.assertEqual(250_000, pack.MAX_COMPRESSED_BYTES)
-        self.assertEqual(1_048_576, pack.MAX_RAW_BYTES)
+    def test_caps_cover_the_combined_table(self) -> None:
+        self.assertEqual(3 * 1024 * 1024, pack.MAX_COMPRESSED_BYTES)
+        self.assertEqual(4 * 1024 * 1024, pack.MAX_RAW_BYTES)
 
 
 class RoundTripTest(unittest.TestCase):

@@ -37,7 +37,7 @@ import suggest_eval  # noqa: E402
 
 DEFAULT_EVAL = ROOT / "app" / "src" / "test" / "resources" / "tt_eval_sentences.txt"
 DEFAULT_DICT = ROOT / "app" / "src" / "main" / "assets" / "dictionaries" / "tatar_top100k_v1.tdict.zlib"
-DEFAULT_BIGRAM = ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "tatar_bigrams_v1.tatbigr.zlib"
+DEFAULT_BIGRAM = ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "tatar_bigrams_v2.tatbigr.zlib"
 DEFAULT_NAMES = ROOT / "app" / "src" / "main" / "assets" / "dictionaries" / "tatar_proper_names_v1.txt"
 DEFAULT_NAME_REVIEW = ROOT / "data" / "dictionary" / "tatar-proper-name-review.tsv"
 DEFAULT_COMPOUND_REVIEW = ROOT / "data" / "dictionary" / "tatar-compound-review.tsv"

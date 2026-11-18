@@ -1,8 +1,8 @@
 {
   "id": "asset-bigram-notice",
-  "revision": "bigram-notice/v1",
-  "size_bytes": 4849,
-  "sha256": "6f1b4daa03499a5fdbfe2ba97796a4530af66787ec8c2618ea6b3fe315f7aff4",
+  "revision": "bigram-notice/v2",
+  "size_bytes": 5040,
+  "sha256": "9ae30626daac1d18a7b2d7b0cd39bf5869ed607a2a36161c64619e52677fde12",
   "license": "Apache-2.0",
   "source_role": "license_attribution",
   "split_rule": "not-applicable",

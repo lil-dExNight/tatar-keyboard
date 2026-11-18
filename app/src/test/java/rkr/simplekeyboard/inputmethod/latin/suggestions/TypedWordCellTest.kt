@@ -136,13 +136,12 @@ class TypedWordCellTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any {
-            nextWordRequests += String(contextWordUtf8, Charsets.UTF_8)
-            val token = Any()
-            lastToken = token
-            return token
-        }
+        ): Any { nextWordRequests += String(contextWordUtf8, Charsets.UTF_8)
+        val token = Any()
+        lastToken = token
+        return token }
 
         /** The worker delivery of the newest prefix request's answer. */
         fun answer(suggestions: List<String>) {

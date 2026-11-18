@@ -68,7 +68,11 @@ class SuggestionsControllerBigramAttachTest {
         override fun cachedNextWordContext(): String = context
 
         /** A predicted-word commit lands like the real editor's: the word becomes the context. */
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean {
             if (expectedContextWord != context) return false
             context = suggestion
             return true
@@ -109,7 +113,12 @@ class SuggestionsControllerBigramAttachTest {
             return Any()
         }
 
-        override fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? {
+        override fun requestNextWord(
+            editorSessionId: Long,
+            subtypeId: String,
+            previousContextWordUtf8: ByteArray,
+            contextWordUtf8: ByteArray,
+        ): Any? {
             events += "requestNextWord"
             requestedContexts += contextWordUtf8
             val token = Any()

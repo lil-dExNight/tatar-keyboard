@@ -81,6 +81,7 @@ class SuggestionsControllerBigramLanguageSwitchTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
         ): Any? = null
 
@@ -237,7 +238,7 @@ class SuggestionsControllerBigramLanguageSwitchTest {
     @Test
     fun everyShippedLanguageResolvesItsOwnTableThroughTheOneRegistry() {
         assertSame(
-            BigramArtifactSpec.TATAR_BIGRAMS_V1,
+            BigramArtifactSpec.TATAR_BIGRAMS_V2,
             DictionaryArtifactSpec.bigramsForSubtype(tatar),
         )
         assertSame(
@@ -273,10 +274,10 @@ class SuggestionsControllerBigramLanguageSwitchTest {
         // The schema segment is deliberately NOT frozen: a schema bump (s2 → s3) is exactly what
         // makes a device re-inflate the cross-referenced table next to the old one instead of
         // opening a format it does not understand.
-        val tt = BigramArtifactSpec.TATAR_BIGRAMS_V1
+        val tt = BigramArtifactSpec.TATAR_BIGRAMS_V2
         assertEquals("bigrams", tt.storageDirectoryName)
         assertEquals(
-            "tatar_bigrams-tt-v000001-s3-f1-${tt.expectedRawSha256}.tatbigr",
+            "tatar_bigrams-tt-v000002-s4-f1-${tt.expectedRawSha256}.tatbigr",
             tt.finalFileName,
         )
         // Neither family's pattern may ever match the other family's file.

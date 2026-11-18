@@ -93,7 +93,11 @@ class StripPaintAndCursorBindingTest {
 
         override fun cachedNextWordContext(): String = nextWordContext
 
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean {
             predictedCommits.add(expectedContextWord to suggestion)
             return true
         }
@@ -116,13 +120,12 @@ class StripPaintAndCursorBindingTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? {
-            requested.add("[next]" + String(contextWordUtf8, Charsets.UTF_8))
-            val token = "next#${serial++}"
-            current = token
-            return token
-        }
+        ): Any? { requested.add("[next]" + String(contextWordUtf8, Charsets.UTF_8))
+        val token = "next#${serial++}"
+        current = token
+        return token }
 
         override fun isCurrent(token: Any): Boolean = token == current
 

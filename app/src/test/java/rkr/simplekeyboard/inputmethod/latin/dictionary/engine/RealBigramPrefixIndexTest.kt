@@ -14,7 +14,7 @@ import kotlin.math.ceil
 /**
  * NEXT_WORD compute p95 <= 5 ms and full request-to-publish warm p95 <= 16 ms, the same bounds as
  * the prefix search. Mirrors [RealDictionaryPrefixIndexTest] against the real committed
- * `tatar_bigrams_v1.tatbigr.zlib`.
+ * `tatar_bigrams_v2.tatbigr.zlib`.
  */
 class RealBigramPrefixIndexTest {
     @Test
@@ -63,7 +63,7 @@ class RealBigramPrefixIndexTest {
         try {
             repeat(200) { sample ->
                 val token = requireNotNull(
-                    engine.requestNextWord(1, "tt", words[sample % words.size]),
+                    engine.requestNextWord(1, "tt", ByteArray(0), words[sample % words.size]),
                 )
                 assertEquals(token, handoffs.poll(1, TimeUnit.SECONDS)?.result?.token)
             }
@@ -72,7 +72,7 @@ class RealBigramPrefixIndexTest {
             for (sample in timings.indices) {
                 val started = System.nanoTime()
                 val token = requireNotNull(
-                    engine.requestNextWord(1, "tt", words[sample % words.size]),
+                    engine.requestNextWord(1, "tt", ByteArray(0), words[sample % words.size]),
                 )
                 val handoff = requireNotNull(handoffs.poll(1, TimeUnit.SECONDS))
                 assertEquals(token, handoff.result.token)
@@ -146,10 +146,10 @@ class RealBigramPrefixIndexTest {
             }
 
             val asset = locate(
-                "src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
-                "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+                "src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
+                "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
             )
-            val spec = BigramArtifactSpec.TATAR_BIGRAMS_V1
+            val spec = BigramArtifactSpec.TATAR_BIGRAMS_V2
             val rawFile = File.createTempFile("real-bigrams-", ".tatbigr")
             try {
                 rawFile.outputStream().use { output ->

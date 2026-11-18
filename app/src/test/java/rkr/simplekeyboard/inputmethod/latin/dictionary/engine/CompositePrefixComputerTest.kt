@@ -460,6 +460,101 @@ class CompositePrefixComputerTest {
     }
 
     @Test
+    fun twoWordSuccessorsLeadAndUniqueBigramsFillFourCells() {
+        val computer = CompositePrefixComputer(FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY)
+        val twoWordCalls = mutableListOf<Pair<String, String>>()
+        val oneWordCalls = mutableListOf<String>()
+        computer.attachBigramSource(object : NextWordComputer, TwoWordNextWordComputer {
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
+                oneWordCalls += normalizedContextWordUtf8.decodeUtf8()
+                return listOf("биг-1", "три-2", "биг-2", "биг-3")
+            }
+
+            override fun predict(
+                normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+            ): List<String> {
+                twoWordCalls += normalizedPreviousContextWordUtf8.decodeUtf8() to
+                    normalizedContextWordUtf8.decodeUtf8()
+                return listOf("три-1", "три-1", "три-2")
+            }
+        })
+
+        val result = computer.predict(prefix("бер"), prefix("сүз"))
+
+        assertEquals(listOf("три-1", "три-2", "биг-1", "биг-2"), result)
+        assertEquals(listOf("бер" to "сүз"), twoWordCalls)
+        assertEquals(listOf("сүз"), oneWordCalls)
+    }
+
+    @Test
+    fun emptyTwoWordAnswerUsesTheOldBigramListAndPlainPredictStaysUnchanged() {
+        val bigrams = listOf("йорт", "бакча")
+        val computer = CompositePrefixComputer(FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY)
+        var twoWordCalls = 0
+        computer.attachBigramSource(object : NextWordComputer, TwoWordNextWordComputer {
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix) = bigrams
+
+            override fun predict(
+                normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+            ): List<String> {
+                twoWordCalls++
+                return emptyList()
+            }
+        })
+
+        assertSame(bigrams, computer.predict(prefix("бер"), prefix("сүз")))
+        assertSame(bigrams, computer.predict(prefix("сүз")))
+        assertEquals(1, twoWordCalls)
+    }
+
+    @Test
+    fun unavailableTwoWordLookupUsesTheOldBigramList() {
+        val bigrams = listOf("йорт", "бакча")
+        val computer = CompositePrefixComputer(FakePrimary(emptyList(), 0), PersonalCandidateSource.EMPTY)
+        computer.attachBigramSource(NextWordComputer { bigrams })
+
+        assertSame(bigrams, computer.predict(prefix("бер"), prefix("сүз")))
+    }
+
+    @Test
+    fun twoWordChainKeepsLearnedPairsAndFallbackKeyedOnB() {
+        var learnedContext: String? = null
+        var fallbackContext: String? = null
+        val learned = object : PersonalBigramSource {
+            override fun successorsFor(normalizedContextWord: String): List<PersonalCandidate> {
+                learnedContext = normalizedContextWord
+                return listOf(PersonalCandidate("өй", "өй"))
+            }
+
+            override fun isEmpty(): Boolean = false
+        }
+        val computer = CompositePrefixComputer(
+            FakePrimary(emptyList(), 0),
+            PersonalCandidateSource.EMPTY,
+            FallbackWords { context, _, _ ->
+                fallbackContext = context.decodeUtf8()
+                listOf("глобал")
+            },
+            learned,
+        )
+        computer.attachBigramSource(object : NextWordComputer, TwoWordNextWordComputer {
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix) = listOf("биграм")
+            override fun predict(
+                normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+            ) = listOf("триграм")
+        })
+
+        val result = computer.predict(prefix("бер"), prefix("сүз"))
+
+        assertEquals(listOf("триграм", "биграм", "өй", "глобал"), result)
+        assertEquals("сүз", learnedContext)
+        assertEquals("сүз", fallbackContext)
+    }
+
+    @Test
     fun predictNeverTouchesThePrimaryOrPersonalSources() {
         // The PREFIX-path sources stay out of NEXT_WORD: learned pairs arrive through their OWN
         // seam ([PersonalBigramSource], EMPTY here), so predict() never reaches the primary or the

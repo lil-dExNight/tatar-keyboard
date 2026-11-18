@@ -1,8 +1,9 @@
 # Asset and store formats
 
 This reference covers the binary files the keyboard reads: the bundled dictionaries (TATDICT
-schema 2), the bundled bigram tables (TATBIGR schema 3), and the personal-dictionary files
-(TATPERS, TATPERSB, TATPERSE, TATREF). The plain-text assets are summarized at the end. For how
+schema 2), the bundled bigram and combined bigram/trigram tables (TATBIGR schemas 3 and 4), and
+the personal-dictionary files (TATPERS, TATPERSB, TATPERSE, TATREF). The plain-text assets are
+summarized at the end. For how
 the bundled files are built, see [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
 
 The code is the authority. The format constants are in `TdictFormat`
@@ -14,8 +15,8 @@ paths below are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/la
 
 - All integers are unsigned little-endian. `u8`/`u16`/`u32` are fixed width.
 - A varint is an unsigned base-128 integer (low 7 bits first, high bit set on every byte except
-  the last) that fits in u32. Readers accept only the minimal encoding: an overlong varint, or a
-  fifth byte above `0x0f`, is an error.
+  the last) that fits in u32 unless the format explicitly says u64. Readers accept only the
+  minimal encoding: an overlong varint, or a fifth byte above `0x0f` for u32, is an error.
 - Words are UTF-8, NFC, lowercase (`Locale.ROOT`). Word order is unsigned byte order of the UTF-8
   encoding, which is the same as code-point order. A stored word may contain U+002D only
   between two alphabet letters; U+2010, U+2013, U+2014 and apostrophes are never part of a word.
@@ -108,8 +109,9 @@ the old file after its last lease is closed. There is no migration code.
 
 ## TATBIGR schema 3: bundled bigram tables
 
-Assets: `assets/bigrams/{tatar,russian}_bigrams_v1.tatbigr.zlib`. Constants: `SCHEMA_ID = 3`,
-`FORMAT_VERSION = 1`, `HEADER_SIZE = 128`, `CHECKSUM_OFFSET = 96`, `HEAD_BLOCK_SIZE = 64`.
+Asset: `assets/bigrams/russian_bigrams_v1.tatbigr.zlib`. The Tatar schema-4 table below extends
+this layout. Constants: `SCHEMA_ID = 3`, `FORMAT_VERSION = 1`, `HEADER_SIZE = 128`,
+`CHECKSUM_OFFSET = 96`, `HEAD_BLOCK_SIZE = 64`.
 
 A table stores no words. Heads (context words) and successors are indices into the dictionary of
 the same language, and the header names that dictionary by its raw SHA-256. A table is valid only
@@ -180,6 +182,45 @@ typing is not affected. On the device, tables are staged, named and retained the
 dictionaries, including the pinned-content re-verification of an already published file, in
 `files/bigrams/` or `files/bigrams-ru/`, with the name
 `<family>-<fileLanguageTag>-v<generation:6>-s3-f1-<rawSha256>.tatbigr`.
+
+## TATBIGR schema 4: bundled Tatar bigram and trigram table
+
+Asset: `assets/bigrams/tatar_bigrams_v2.tatbigr.zlib`. Constants: `SCHEMA_ID_V4 = 4`,
+`FORMAT_VERSION = 1`, `HEADER_SIZE_V4 = 224`, `TRIGRAM_BLOCK_SIZE = 64`. The checksum and linked
+dictionary SHA-256 keep their schema-3 offsets. The one-word sections keep their schema-3 layout,
+shifted from offset 128 to 224; the schema-3 `fileSize` field covers the whole combined file.
+
+The header extension starts at offset 128:
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 128 / 132 / 136 | 4 each | trigram contextCount / pairCount / blockCount |
+| 140 / 144 | 4 each | trigram blockIndexOffset / deltasOffset |
+| 148 | 4 | trigram deltasSize |
+| 152 / 156 | 4 each | trigram countsOffset / successIdsOffset |
+| 160 | 4 | trigram successIdsSize |
+| 164 | 4 | linked dictionary word count |
+| 168 / 172 | 4 each | interpolation beta in millionths / minimum context total |
+| 176 | 48 | reserved, zero |
+
+Four trigram sections follow the one-word success ids, with no padding:
+
+1. Context block index: `blockCount` records of 16 bytes,
+   `{u32 firstDictIndexA, u32 firstDictIndexB, u32 contextDeltaOffset, u32 successOffset}`.
+   A context key is `dictIndexA * dictionaryWordCount + dictIndexB`; block records are ordered by
+   that key, and the two stream offsets are relative to their sections.
+2. Context deltas: for each block, (blockContexts − 1) minimal u64 varint deltas, each ≥ 1. The
+   first context of a block comes from the two dictionary indices in its record.
+3. Success counts: `contextCount` × u8, each in 1..8.
+4. Success ids: `pairCount` minimal u32 varint dictionary indices, grouped by context in the
+   packer's interpolated ranking order.
+
+The full validator and runtime opener check both the one-word and two-word section arithmetic,
+block ordering, minimal varints, counts and dictionary bounds. A two-word lookup resolves A and B
+through the linked dictionary, binary-searches the context blocks and decodes at most one block.
+It returns the stored successors without re-ranking. An empty or unsupported two-word answer
+falls back to the one-word chain. The published file name uses `s4-f1` and the new generation and
+raw SHA-256, so devices retain no migration code.
 
 ## Personal dictionary files: TATPERS, TATPERSB, TATPERSE
 
@@ -334,7 +375,7 @@ in the `NOTICE.txt` in each asset directory.
 | Asset | Pinned values | Location |
 |---|---|---|
 | dictionaries | compressed size and SHA-256, raw size and SHA-256, entry count | `DictionaryArtifactSpec.TATAR_TOP100K_V1` / `RUSSIAN_TOP100K_V1`, `storage/DictionaryStorageContracts.kt` |
-| bigram tables | the same values, with head count instead of entry count, plus the linked dictionary's raw SHA-256 | `BigramArtifactSpec.TATAR_BIGRAMS_V1` / `RUSSIAN_BIGRAMS_V1`, `storage/BigramStorageContracts.kt` |
+| bigram tables | the same values, with head count instead of entry count, plus the linked dictionary's raw SHA-256 | `BigramArtifactSpec.TATAR_BIGRAMS_V2` / `RUSSIAN_BIGRAMS_V1`, `storage/BigramStorageContracts.kt` |
 | cold-companion lists | compressed size and SHA-256, raw size and SHA-256, word count | `CompanionListArtifactSpec.TATAR_COMPANION_V1` / `RUSSIAN_COMPANION_V1`, `storage/CompanionListStorageContracts.kt` |
 | plain-text assets | SHA-256 and line or record counts | `tests/<packer>/test_*.py` and the JVM asset and emoji tests |
 

@@ -128,7 +128,7 @@ class TtNextWordFillE2ETest {
                 requireNotNull(tatarIndex), PersonalCandidateSource.EMPTY,
                 GlobalTopFrequencyFallbackFactory(DictionaryArtifactSpec.TATAR_TOP100K_V1.harmonyTwins)
                     .createFallbackWords(requireNotNull(tatarIndex)),
-            ).also { it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, requireNotNull(tatarIndex))) }
+            ).also { it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V2, requireNotNull(tatarIndex))) }
             russianComputer = CompositePrefixComputer(
                 requireNotNull(russianIndex), PersonalCandidateSource.EMPTY,
                 GlobalTopFrequencyFallbackFactory.INSTANCE

@@ -81,7 +81,11 @@ class PerformanceGatingTest {
             return true
         }
 
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean =
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean =
             true
     }
 

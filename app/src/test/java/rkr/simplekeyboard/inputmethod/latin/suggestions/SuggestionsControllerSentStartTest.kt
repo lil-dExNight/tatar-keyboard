@@ -100,7 +100,11 @@ class SuggestionsControllerSentStartTest {
         override fun isAtSentenceStart(): Boolean =
             rawText?.let { TatarWordUtils.isSentenceStartContext(it, true) } ?: sentenceStart
 
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean {
             predictedCommits.add(expectedContextWord to suggestion)
             return true
         }
@@ -120,11 +124,10 @@ class SuggestionsControllerSentStartTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? {
-            nextWordRequests.add(String(contextWordUtf8, Charsets.UTF_8))
-            return Any().also { current = it }
-        }
+        ): Any? { nextWordRequests.add(String(contextWordUtf8, Charsets.UTF_8))
+        return Any().also { current = it } }
 
         override fun isCurrent(token: Any): Boolean = token === current
         override fun finishInput() {

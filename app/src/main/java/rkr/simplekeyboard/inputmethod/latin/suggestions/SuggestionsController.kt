@@ -359,10 +359,13 @@ class SuggestionsController internal constructor(
     private var displayedPrefix: String? = null
     private var displayedSessionId: Long = NO_SESSION
 
-    // --- NEXT_WORD state, shaped like pendingPrefix/displayedPrefix above. At most one of
-    // displayedPrefix/displayedContextWord is non-null at a time; every request path clears the
-    // other one.
+    // --- NEXT_WORD state, shaped like pendingPrefix/displayedPrefix above. A is the word before
+    // B in "A B "; B remains the required context. At most one of displayedPrefix/
+    // displayedContextWord is non-null at a time; displayedPreviousContextWord is meaningful only
+    // with its displayedContextWord. Every request path clears the other binding kinds.
+    private var pendingPreviousContextWord: String = ""
     private var pendingContextWord: String = ""
+    private var displayedPreviousContextWord: String = ""
     private var displayedContextWord: String? = null
 
     // --- GLIDE state, shaped like the other two bindings. At most one of displayedPrefix,
@@ -1597,7 +1600,10 @@ class SuggestionsController internal constructor(
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         val context = editor.cachedNextWordContext()
-        if (context.isEmpty() || context != pendingContextWord) return
+        val previousContext = editor.cachedWordBeforeTrailingWord()
+        if (context.isEmpty() || context != pendingContextWord ||
+            previousContext != pendingPreviousContextWord
+        ) return
         if (bandHasActiveLanguageWord && !bandWordsWithoutTable) return
         // The shown cells stay bound and tappable until the answer, as on every async update: a
         // tap or keystroke meanwhile issues a newer lookup, so the latest-only engine drops this
@@ -1620,7 +1626,10 @@ class SuggestionsController internal constructor(
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         val context = editor.cachedNextWordContext()
-        if (context.isEmpty() || context != pendingContextWord) return
+        val previousContext = editor.cachedWordBeforeTrailingWord()
+        if (context.isEmpty() || context != pendingContextWord ||
+            previousContext != pendingPreviousContextWord
+        ) return
         // The room rule of [applyCompanionResult]: word cells stay put, and the companion may not
         // take the emoji cell at the end.
         val base = bandBaseCells
@@ -1881,7 +1890,12 @@ class SuggestionsController internal constructor(
         val bytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(query))
         val token = when (kind) {
             LookupKind.PREFIX -> engine.request(sessionId, slot.subtypeId, bytes)
-            LookupKind.NEXT_WORD -> engine.requestNextWord(sessionId, slot.subtypeId, bytes)
+            LookupKind.NEXT_WORD -> {
+                val previousBytes = TatarWordUtils.toLookupBytes(
+                    TatarWordUtils.normalizeForLookup(pendingPreviousContextWord)
+                )
+                engine.requestNextWord(sessionId, slot.subtypeId, previousBytes, bytes)
+            }
             // A companion language is never asked for a glide: the gesture belongs to the active
             // layout, and the fill rule covers only prefix and next-word lookups.
             LookupKind.GLIDE -> null
@@ -1990,7 +2004,10 @@ class SuggestionsController internal constructor(
         if (emojiTail != null) cells.add(emojiTail)
         when (kind) {
             LookupKind.PREFIX -> displayedPrefix = query
-            LookupKind.NEXT_WORD -> displayedContextWord = query
+            LookupKind.NEXT_WORD -> {
+                displayedPreviousContextWord = pendingPreviousContextWord
+                displayedContextWord = query
+            }
             // A companion never holds a glide request (see requestCompanionFill); unreachable.
             LookupKind.GLIDE -> return
         }
@@ -2155,6 +2172,7 @@ class SuggestionsController internal constructor(
         }
         cells.add(emoji)
         displayedGlideAlternativesFor = null
+        displayedPreviousContextWord = pendingPreviousContextWord
         displayedContextWord = contextWord
         displayedSessionId = sessionId
         showBand(cells)
@@ -2204,7 +2222,10 @@ class SuggestionsController internal constructor(
         if (!editor.hasKnownCursor() || editor.hasLetterAfterCursor()) return
         if (editor.cachedWordBeforeCursor().isNotEmpty()) return
         val context = editor.cachedNextWordContext()
-        if (context.isEmpty() || context != pendingContextWord) return
+        val previousContext = editor.cachedWordBeforeTrailingWord()
+        if (context.isEmpty() || context != pendingContextWord ||
+            previousContext != pendingPreviousContextWord
+        ) return
         maybeAppendEmojiTail(context)
     }
 
@@ -2375,15 +2396,16 @@ class SuggestionsController internal constructor(
             clearToReservedBand()
             return
         }
+        val previousContext = editor.cachedWordBeforeTrailingWord()
         // Duplicate suppression as in the PREFIX path, plus bandHasActiveLanguageWord: an
         // emoji-only strip also carries displayedContextWord, and skipping the re-request that
         // onCompanionBigramTableReady sends for it would leave the cells empty. The one
         // active-language strip onBigramTableReady re-requests, words predicted without the table,
         // comes with afterBigramTable and bypasses the skip.
-        if (context == displayedContextWord && displayedSessionId == sessionId
-            && bandHasActiveLanguageWord && !afterBigramTable
+        if (context == displayedContextWord && previousContext == displayedPreviousContextWord &&
+            displayedSessionId == sessionId && bandHasActiveLanguageWord && !afterBigramTable
         ) return
-        if (context != displayedContextWord) {
+        if (context != displayedContextWord || previousContext != displayedPreviousContextWord) {
             displayedContextWord = null
             unbindPaintedBand()
         }
@@ -2398,16 +2420,22 @@ class SuggestionsController internal constructor(
             unbindPaintedBand()
         }
         clearCompanionRequest()
+        pendingPreviousContextWord = previousContext
         pendingContextWord = context
         // A new NEXT_WORD moment begins: what the strip painted for the previous one says nothing
         // about this one.
         bandHasActiveLanguageWord = false
         requestSessionId = sessionId
+        val previousContextBytes = TatarWordUtils.toLookupBytes(
+            TatarWordUtils.normalizeForLookup(previousContext)
+        )
         val contextBytes = TatarWordUtils.toLookupBytes(TatarWordUtils.normalizeForLookup(context))
         val language = activeLanguage ?: return
         // Same async round trip as the PREFIX path; see beginLookupTrace.
         beginLookupTrace()
-        val token = activeEngine.requestNextWord(sessionId, language, contextBytes)
+        val token = activeEngine.requestNextWord(
+            sessionId, language, previousContextBytes, contextBytes,
+        )
         if (token == null) {
             endLookupTrace()
             clearToReservedBand()
@@ -2740,6 +2768,7 @@ class SuggestionsController internal constructor(
         } else {
             if (editor.cachedWordBeforeCursor().isNotEmpty()) return
             if (editor.cachedNextWordContext() != boundContext) return
+            if (editor.cachedWordBeforeTrailingWord() != displayedPreviousContextWord) return
         }
         displayedContextWord = null
         unbindPaintedBand()
@@ -2840,7 +2869,9 @@ class SuggestionsController internal constructor(
         }
         displayedPrefix = null
         displayedGlideAlternativesFor = null
+        pendingPreviousContextWord = SENTENCE_START_CONTEXT
         pendingContextWord = SENTENCE_START_CONTEXT
+        displayedPreviousContextWord = SENTENCE_START_CONTEXT
         displayedContextWord = SENTENCE_START_CONTEXT
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = true
@@ -3312,6 +3343,7 @@ class SuggestionsController internal constructor(
                 showSettledEmptyBand()
             } else {
                 displayedGlideAlternativesFor = null
+                displayedPreviousContextWord = pendingPreviousContextWord
                 displayedContextWord = pendingContextWord
                 displayedSessionId = sessionId
                 showBand(listOf(emoji), ranked = false)
@@ -3320,6 +3352,7 @@ class SuggestionsController internal constructor(
             return
         }
         displayedGlideAlternativesFor = null
+        displayedPreviousContextWord = pendingPreviousContextWord
         displayedContextWord = pendingContextWord
         displayedSessionId = sessionId
         bandHasActiveLanguageWord = true
@@ -3770,11 +3803,12 @@ class SuggestionsController internal constructor(
             return
         }
         val context = displayedContextWord
+        val previousContext = displayedPreviousContextWord
         val glideAlternativesFor = displayedGlideAlternativesFor
         if (context != null) {
             // Same second line of defense as the PREFIX path, through the predicted-word commit:
-            // the editor re-derives the live context word and refuses a stale tap itself.
-            if (editor.commitPredictedWord(context, suggestion)) {
+            // the editor re-derives both live context words and refuses a stale tap itself.
+            if (editor.commitPredictedWord(previousContext, context, suggestion)) {
                 suggestionTapFeedback.onSuggestionTap()
                 displayedContextWord = null
                 displayedGlideAlternativesFor = null

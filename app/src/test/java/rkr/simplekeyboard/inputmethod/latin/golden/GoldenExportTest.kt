@@ -75,9 +75,9 @@ class GoldenExportTest {
     private fun openLanguage(lang: String, keysFile: File): Engine {
         val tatar = lang == "tt"
         val dictSpec = if (tatar) DictionaryArtifactSpec.TATAR_TOP100K_V1 else DictionaryArtifactSpec.RUSSIAN_TOP100K_V1
-        val bigramSpec = if (tatar) BigramArtifactSpec.TATAR_BIGRAMS_V1 else BigramArtifactSpec.RUSSIAN_BIGRAMS_V1
+        val bigramSpec = if (tatar) BigramArtifactSpec.TATAR_BIGRAMS_V2 else BigramArtifactSpec.RUSSIAN_BIGRAMS_V1
         val dictAsset = locate("src/main/assets/dictionaries/${if (tatar) "tatar" else "russian"}_top100k_v1.tdict.zlib")
-        val bigramAsset = locate("src/main/assets/bigrams/${if (tatar) "tatar" else "russian"}_bigrams_v1.tatbigr.zlib")
+        val bigramAsset = locate("src/main/assets/bigrams/${if (tatar) "tatar_bigrams_v2" else "russian_bigrams_v1"}.tatbigr.zlib")
 
         val dictRaw = File.createTempFile("golden-dict-", ".tdict")
         val index: TdictPrefixIndex

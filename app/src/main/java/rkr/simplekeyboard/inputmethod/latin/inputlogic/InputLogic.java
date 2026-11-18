@@ -960,20 +960,23 @@ public final class InputLogic {
      * it deletes nothing: each kind of result has its own commit path.
      *
      * <p>Re-checks against the cache: collapsed selection, no letter after the cursor, an empty
-     * trailing word (otherwise the user typed after the request and the tap is stale), and the
-     * context word, re-extracted the same way, equal to {@code expectedContextWord}. The word is
-     * inserted with the auto-space rule of an accepted suggestion.
+     * trailing word (otherwise the user typed after the request and the tap is stale), A re-extracted
+     * with {@code extractWordBeforeTrailingWord} equal to {@code expectedPreviousContextWord}, and
+     * B re-extracted with {@code extractNextWordContext} equal to {@code expectedContextWord}. The
+     * word is inserted with the auto-space rule of an accepted suggestion.
      *
      * <p>An empty context word means a sentence-start prediction; the position must then still be a
      * sentence start, or an empty context would also match after ", ".
      *
-     * @param expectedContextWord the context word the prediction was computed for; empty only for
-     *        a sentence-start prediction.
+     * @param expectedPreviousContextWord A in the "A B " prediction context; empty when unproven.
+     * @param expectedContextWord B in the prediction context; empty only for a sentence start.
      * @param suggestion the predicted word to insert.
      * @return {@code true} if the word was committed, {@code false} otherwise (no edit).
      */
-    public boolean commitPredictedWord(final String expectedContextWord, final String suggestion) {
-        if (expectedContextWord == null || TextUtils.isEmpty(suggestion)) {
+    public boolean commitPredictedWord(final String expectedPreviousContextWord,
+            final String expectedContextWord, final String suggestion) {
+        if (expectedPreviousContextWord == null || expectedContextWord == null
+                || TextUtils.isEmpty(suggestion)) {
             return false;
         }
         if (mConnection.hasSelection()) {
@@ -988,8 +991,15 @@ public final class InputLogic {
             // tap; do not edit.
             return false;
         }
-        // The same extraction the request was built with, including whether the cache reaches
+        // The same extractions the request was built with, including whether the cache reaches
         // the start of the text, so a prediction for the first word of a field is not refused.
+        final String livePreviousContext =
+                TatarWordUtils.extractWordBeforeTrailingWord(mConnection.getCachedTextBeforeCursor(),
+                        mConnection.cacheReachedTextStart());
+        if (!expectedPreviousContextWord.equals(livePreviousContext)) {
+            // Stale tap: A no longer matches even if B still does. Do not edit.
+            return false;
+        }
         final String liveContext =
                 TatarWordUtils.extractNextWordContext(mConnection.getCachedTextBeforeCursor(),
                         mConnection.cacheReachedTextStart());

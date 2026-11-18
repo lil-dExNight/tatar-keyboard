@@ -25,6 +25,26 @@ internal fun interface NextWordComputer {
     fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String>
 }
 
+/** Two-word NEXT_WORD lookup; an empty answer falls back to the one-word table. */
+internal fun interface TwoWordNextWordComputer {
+    fun predict(
+        normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String>
+}
+
+private data class TrigramLayout(
+    val contextCount: Int,
+    val pairCount: Int,
+    val blockCount: Int,
+    val blockIndexOffset: Int,
+    val deltasOffset: Int,
+    val deltasSize: Int,
+    val countsOffset: Int,
+    val successIdsOffset: Int,
+    val successIdsSize: Int,
+)
+
 /**
  * The part of the bundled dictionary a TATBIGR schema-3 table needs: exact-word index lookup and
  * word-by-index resolution. Schema 3 stores no words of its own: heads and successors are indices
@@ -82,15 +102,20 @@ internal class TatBigrPrefixIndex private constructor(
     private val headDeltasOffset: Int,
     private val countsOffset: Int,
     private val successIdsOffset: Int,
-) : NextWordComputer, PackedSuccessorSource {
+    private val trigram: TrigramLayout? = null,
+) : NextWordComputer, PackedSuccessorSource, TwoWordNextWordComputer {
 
     private val queryScratch = ByteArray(MAX_WORD_BYTES)
+    private val previousQueryScratch = ByteArray(MAX_WORD_BYTES)
     private var varintValue = 0
+    private var varintLongValue = 0L
     private var varintNext = 0
     // Worker-confined results of [resolveHeadSuccessors]: the stream position of the resolved
     // head's packed successor ids and that head's stored count. Valid until the next resolution.
     private var headSuccessCursor = 0
     private var headStoredCount = 0
+    private var trigramSuccessCursor = 0
+    private var trigramStoredCount = 0
 
     override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
         if (!resolveHeadSuccessors(normalizedContextWordUtf8)) return emptyList()
@@ -107,6 +132,173 @@ internal class TatBigrPrefixIndex private constructor(
         } catch (_: RuntimeException) {
             emptyList()
         }
+    }
+
+    override fun predict(
+        normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+        normalizedContextWordUtf8: ImmutableUtf8Prefix,
+    ): List<String> {
+        if (trigram == null || !resolveTrigramSuccessors(
+                normalizedPreviousContextWordUtf8, normalizedContextWordUtf8
+            )
+        ) {
+            return emptyList()
+        }
+        return try {
+            val count = minOf(MAX_PREDICT_RESULTS, trigramStoredCount)
+            var successCursor = trigramSuccessCursor
+            ArrayList<String>(count).also { result ->
+                repeat(count) {
+                    decodeVarint(successCursor)
+                    successCursor = varintNext
+                    result += dictionary.wordAt(varintValue)
+                }
+            }
+        } catch (_: RuntimeException) {
+            emptyList()
+        }
+    }
+
+    private fun resolveTrigramSuccessors(
+        previous: ImmutableUtf8Prefix,
+        current: ImmutableUtf8Prefix,
+    ): Boolean {
+        val layout = trigram ?: return false
+        val previousLength = previous.byteCount
+        val currentLength = current.byteCount
+        if (previousLength == 0 || previousLength > MAX_WORD_BYTES ||
+            currentLength == 0 || currentLength > MAX_WORD_BYTES ||
+            !isValidUtf8Scalar(previous) || !isValidUtf8Scalar(current)
+        ) {
+            return false
+        }
+        return try {
+            for (offset in 0 until previousLength) {
+                previousQueryScratch[offset] = previous.byteAt(offset).toByte()
+            }
+            for (offset in 0 until currentLength) {
+                queryScratch[offset] = current.byteAt(offset).toByte()
+            }
+            val first = dictionary.indexOfWord(previousQueryScratch, previousLength)
+            if (first < 0) return false
+            val second = dictionary.indexOfWord(queryScratch, currentLength)
+            if (second < 0) return false
+            val query = first.toLong() * dictionary.entryCount + second
+
+            var low = 0
+            var high = layout.blockCount
+            while (low < high) {
+                val middle = (low + high) ushr 1
+                if (trigramBlockFirstKey(middle) <= query) low = middle + 1 else high = middle
+            }
+            val block = low - 1
+            if (block < 0) return false
+            val firstContext = block * TRIGRAM_BLOCK_SIZE
+            val blockContexts = minOf(TRIGRAM_BLOCK_SIZE, layout.contextCount - firstContext)
+            var cursor = layout.deltasOffset + trigramBlockOffset(block, 8)
+            var context = trigramBlockFirstKey(block)
+            var found = -1
+            for (position in 0 until blockContexts) {
+                if (position > 0) {
+                    decodeVarint64(cursor)
+                    cursor = varintNext
+                    context += varintLongValue
+                }
+                if (context == query) {
+                    found = position
+                    break
+                }
+                if (context > query) return false
+            }
+            if (found < 0) return false
+            val contextIndex = firstContext + found
+            var successCursor = layout.successIdsOffset + trigramBlockOffset(block, 12)
+            for (previousContext in firstContext until contextIndex) {
+                repeat(trigramCountAt(previousContext)) {
+                    decodeVarint(successCursor)
+                    successCursor = varintNext
+                }
+            }
+            trigramSuccessCursor = successCursor
+            trigramStoredCount = trigramCountAt(contextIndex)
+            true
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
+    private fun trigramBlockFirstKey(block: Int): Long {
+        val layout = requireNotNull(trigram)
+        val record = layout.blockIndexOffset + block * TRIGRAM_BLOCK_RECORD_BYTES
+        return u32At(record) * dictionary.entryCount + u32At(record + 4)
+    }
+
+    private fun trigramBlockOffset(block: Int, relative: Int): Int =
+        u32At(requireNotNull(trigram).blockIndexOffset + block * TRIGRAM_BLOCK_RECORD_BYTES + relative)
+            .toInt()
+
+    private fun trigramCountAt(context: Int): Int =
+        bytes.get(requireNotNull(trigram).countsOffset + context).toInt() and 0xff
+
+    private fun u32At(offset: Int): Long = bytes.getInt(offset).toLong() and MAX_U32
+
+    private fun decodeVarint64(offset: Int) {
+        var cursor = offset
+        var value = 0L
+        var shift = 0
+        var lastGroup = 0
+        while (true) {
+            if (shift > 56) throw IllegalArgumentException("varint exceeds u64")
+            val byte = bytes.get(cursor++).toInt() and 0xff
+            value = value or ((byte and 0x7f).toLong() shl shift)
+            lastGroup = byte and 0x7f
+            if (byte and 0x80 == 0) break
+            shift += 7
+        }
+        if (shift > 0 && lastGroup == 0) throw IllegalArgumentException("overlong varint")
+        varintLongValue = value
+        varintNext = cursor
+    }
+
+    private fun validateTrigramStreams(layout: TrigramLayout) {
+        var successCursor = layout.successIdsOffset
+        var pairTotal = 0
+        var previousKey = -1L
+        for (block in 0 until layout.blockCount) {
+            val first = block * TRIGRAM_BLOCK_SIZE
+            val blockContexts = minOf(TRIGRAM_BLOCK_SIZE, layout.contextCount - first)
+            val deltaEnd = layout.deltasOffset + if (block + 1 < layout.blockCount) {
+                trigramBlockOffset(block + 1, 8)
+            } else {
+                layout.deltasSize
+            }
+            require(successCursor == layout.successIdsOffset + trigramBlockOffset(block, 12))
+            var cursor = layout.deltasOffset + trigramBlockOffset(block, 8)
+            var context = trigramBlockFirstKey(block)
+            for (position in 0 until blockContexts) {
+                if (position > 0) {
+                    decodeVarint64(cursor)
+                    require(varintNext <= deltaEnd && varintLongValue >= 1)
+                    cursor = varintNext
+                    context += varintLongValue
+                }
+                require(context > previousKey)
+                previousKey = context
+                val count = trigramCountAt(first + position)
+                require(count >= 1)
+                pairTotal += count
+                require(pairTotal <= layout.pairCount)
+                repeat(count) {
+                    decodeVarint(successCursor)
+                    successCursor = varintNext
+                    require(successCursor <= layout.successIdsOffset + layout.successIdsSize)
+                    require(varintValue.toLong() and MAX_U32 < dictionary.entryCount)
+                }
+            }
+            require(cursor == deltaEnd)
+        }
+        require(pairTotal == layout.pairCount)
+        require(successCursor == layout.successIdsOffset + layout.successIdsSize)
     }
 
     override fun collectSuccessorIds(
@@ -232,6 +424,10 @@ internal class TatBigrPrefixIndex private constructor(
         private const val U32_BYTES = 4
         private const val BLOCK_RECORD_BYTES = 12
         private const val HEAD_BLOCK_SIZE = 64
+        private const val TRIGRAM_BLOCK_SIZE = 64
+        private const val TRIGRAM_BLOCK_RECORD_BYTES = 16
+        private const val TRIGRAM_EXTENSION_OFFSET = 128
+        private const val TRIGRAM_RESERVED_OFFSET = 176
         // One per strip cell (SuggestionStripState.CELL_COUNT): the NEXT_WORD display serves at
         // most this many of a head's successors, whatever the table stores.
         internal const val MAX_PREDICT_RESULTS = 4
@@ -255,20 +451,21 @@ internal class TatBigrPrefixIndex private constructor(
             validationToken: StoreValidationToken? = null,
         ): TatBigrPrefixIndex? = try {
             require(identity.generation > 0)
-            require(identity.schemaId == 3)
+            require(identity.schemaId == 3 || identity.schemaId == 4)
             require(identity.formatVersion == 1)
+            val headerSize = if (identity.schemaId == 4) 224 else HEADER_SIZE
             require(expectedHeadCount in 1..Int.MAX_VALUE.toLong())
-            require(expectedRawSize in HEADER_SIZE.toLong()..Int.MAX_VALUE.toLong())
+            require(expectedRawSize in headerSize.toLong()..Int.MAX_VALUE.toLong())
             require(source.limit().toLong() == expectedRawSize)
 
             val duplicate = source.asReadOnlyBuffer()
             duplicate.position(0)
             val buffer = duplicate.slice().asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN)
-            require(buffer.limit() >= HEADER_SIZE)
+            require(buffer.limit() >= headerSize)
             for (index in MAGIC.indices) require(buffer.get(index) == MAGIC[index])
             require(u16(buffer, 8) == identity.schemaId)
             require(u16(buffer, 10) == identity.formatVersion)
-            require(u16(buffer, 12) == HEADER_SIZE)
+            require(u16(buffer, 12) == headerSize)
             require(u16(buffer, 14) == CHECKSUM_ALGORITHM_SHA256)
 
             val headCount = u32(buffer, 16)
@@ -294,18 +491,52 @@ internal class TatBigrPrefixIndex private constructor(
 
             require(headCount == expectedHeadCount)
             require(blockCount == (headCount + HEAD_BLOCK_SIZE - 1L) / HEAD_BLOCK_SIZE)
-            val expectedBlockIndex = HEADER_SIZE.toLong()
+            val expectedBlockIndex = headerSize.toLong()
             val expectedHeadDeltas = expectedBlockIndex + BLOCK_RECORD_BYTES * blockCount
             val expectedCounts = expectedHeadDeltas + headDeltasSize
             val expectedSuccessIds = expectedCounts + headCount
-            val expectedFileSize = expectedSuccessIds + successIdsSize
+            val bigramEnd = expectedSuccessIds + successIdsSize
             require(blockIndexOffset == expectedBlockIndex)
             require(headDeltasOffset == expectedHeadDeltas)
             require(countsOffset == expectedCounts)
             require(successIdsOffset == expectedSuccessIds)
-            require(fileSize == expectedFileSize && fileSize == expectedRawSize)
-            require(expectedFileSize <= Int.MAX_VALUE)
+            require(fileSize == expectedRawSize)
+            require(identity.schemaId == 4 || fileSize == bigramEnd)
+            require(bigramEnd <= Int.MAX_VALUE)
             require(pairCount <= Int.MAX_VALUE)
+
+            val trigram = if (identity.schemaId == 4) {
+                for (offset in TRIGRAM_RESERVED_OFFSET until headerSize) {
+                    require(buffer.get(offset).toInt() == 0)
+                }
+                val contextCount = u32(buffer, TRIGRAM_EXTENSION_OFFSET)
+                val trigramPairCount = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 4)
+                val trigramBlockCount = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 8)
+                val trigramBlocks = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 12)
+                val trigramDeltas = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 16)
+                val trigramDeltasSize = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 20)
+                val trigramCounts = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 24)
+                val trigramSuccesses = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 28)
+                val trigramSuccessesSize = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 32)
+                val dictionaryWordCount = u32(buffer, TRIGRAM_EXTENSION_OFFSET + 36)
+                require(contextCount in 1..Int.MAX_VALUE.toLong())
+                require(trigramPairCount in 1..Int.MAX_VALUE.toLong())
+                require(dictionaryWordCount == dictionary.entryCount.toLong())
+                require(trigramBlockCount == (contextCount + TRIGRAM_BLOCK_SIZE - 1) / TRIGRAM_BLOCK_SIZE)
+                require(trigramBlocks == bigramEnd)
+                require(trigramDeltas == trigramBlocks + TRIGRAM_BLOCK_RECORD_BYTES * trigramBlockCount)
+                require(trigramCounts == trigramDeltas + trigramDeltasSize)
+                require(trigramSuccesses == trigramCounts + contextCount)
+                require(trigramSuccesses + trigramSuccessesSize == fileSize)
+                require(trigramPairCount <= trigramSuccessesSize)
+                TrigramLayout(
+                    contextCount.toInt(), trigramPairCount.toInt(), trigramBlockCount.toInt(),
+                    trigramBlocks.toInt(), trigramDeltas.toInt(), trigramDeltasSize.toInt(),
+                    trigramCounts.toInt(), trigramSuccesses.toInt(), trigramSuccessesSize.toInt(),
+                )
+            } else {
+                null
+            }
 
             val index = TatBigrPrefixIndex(
                 buffer,
@@ -317,6 +548,7 @@ internal class TatBigrPrefixIndex private constructor(
                 headDeltasOffset.toInt(),
                 countsOffset.toInt(),
                 successIdsOffset.toInt(),
+                trigram,
             )
 
             val skipStructuralWalk =
@@ -337,6 +569,30 @@ internal class TatBigrPrefixIndex private constructor(
                 previousFirstIndex = firstIndex
                 previousDeltaOffset = deltaOffset
                 previousSuccessOffset = successOffset
+            }
+            if (trigram != null) {
+                var previousFirstKey = -1L
+                var previousDelta = 0
+                var previousSuccess = 0
+                for (block in 0 until trigram.blockCount) {
+                    val firstKey = index.trigramBlockFirstKey(block)
+                    val firstId = u32(
+                        buffer, trigram.blockIndexOffset + block * TRIGRAM_BLOCK_RECORD_BYTES
+                    )
+                    val secondId = u32(
+                        buffer, trigram.blockIndexOffset + block * TRIGRAM_BLOCK_RECORD_BYTES + 4
+                    )
+                    val delta = index.trigramBlockOffset(block, 8)
+                    val success = index.trigramBlockOffset(block, 12)
+                    require(firstId < dictionary.entryCount && secondId < dictionary.entryCount)
+                    require(firstKey > previousFirstKey)
+                    require(delta in previousDelta..trigram.deltasSize)
+                    require(success in previousSuccess..trigram.successIdsSize)
+                    if (block == 0) require(delta == 0 && success == 0)
+                    previousFirstKey = firstKey
+                    previousDelta = delta
+                    previousSuccess = success
+                }
             }
 
             // The stream walk: the whole head delta stream, the counts and every successor id,
@@ -384,6 +640,7 @@ internal class TatBigrPrefixIndex private constructor(
                 }
                 require(pairTotal == pairCount)
                 require(successCursor.toLong() == successIdsOffset + successIdsSize)
+                if (trigram != null) index.validateTrigramStreams(trigram)
             }
 
             index

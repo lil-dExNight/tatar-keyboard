@@ -91,11 +91,10 @@ class DeferredEmptyPrefixProbeTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any {
-            events += "next:" + String(contextWordUtf8, Charsets.UTF_8)
-            return ++serial
-        }
+        ): Any { events += "next:" + String(contextWordUtf8, Charsets.UTF_8)
+        return ++serial }
 
         override fun requestEmptyPrefixProbe(word: String, callback: (Int) -> Unit): Boolean {
             events += "probe:$word"

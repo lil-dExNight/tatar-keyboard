@@ -158,14 +158,13 @@ class RecentClipControllerTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? {
-            requestCount++
-            val context = String(contextWordUtf8, Charsets.UTF_8)
-            val token = Any()
-            callback?.onResult(token, nextWordByContext[context] ?: emptyList(), LookupKind.NEXT_WORD)
-            return token
-        }
+        ): Any? { requestCount++
+        val context = String(contextWordUtf8, Charsets.UTF_8)
+        val token = Any()
+        callback?.onResult(token, nextWordByContext[context] ?: emptyList(), LookupKind.NEXT_WORD)
+        return token }
 
         override fun isCurrent(token: Any): Boolean = true
 

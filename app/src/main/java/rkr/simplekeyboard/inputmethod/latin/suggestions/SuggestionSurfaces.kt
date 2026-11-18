@@ -97,12 +97,17 @@ interface EditorSurface {
      * rule as an accepted suggestion.
      *
      * Re-checked against the live cache: collapsed selection, no letter right after the cursor, an
-     * empty trailing word (otherwise the tap is stale), and the live context word from
-     * [cachedNextWordContext] equal to [expectedContextWord]. When both are empty (a sentence
-     * start), the live position must still be a sentence start ([isAtSentenceStart]), so a tap
-     * after ", " commits nothing. Defaults to false.
+     * empty trailing word (otherwise the tap is stale), and the live A from
+     * [cachedWordBeforeTrailingWord] and B from [cachedNextWordContext] equal to
+     * [expectedPreviousContextWord] and [expectedContextWord]. When B is empty (a sentence start),
+     * A must also be empty and the live position must still be a sentence start ([isAtSentenceStart]),
+     * so a tap after ", " commits nothing. Defaults to false.
      */
-    fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = false
+    fun commitPredictedWord(
+        expectedPreviousContextWord: String,
+        expectedContextWord: String,
+        suggestion: String,
+    ): Boolean = false
 
     /**
      * The cursor position in the editor (the expected selection start), or -1 when unknown.

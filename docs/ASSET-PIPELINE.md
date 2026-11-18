@@ -40,7 +40,8 @@ These inputs are not in the repository:
   The rebuild does not read `tat_news_2015_1M`, but it is not held out: the release 1.8.4
   baseline dictionaries carry its word frequencies (see `NOTICE.txt`), and
   `research/corpus/tt_merge_sim.py` uses its sentences as a development set when it selects
-  the bonus weights.
+  the bonus weights. The independent trigram final-set builder also expects that corpus's
+  sentences file in `--corpus-dir`, solely to remove its lines from the evaluation candidates.
 - Held-out evaluation sets. `app/src/test/resources/tt_eval_sentences.txt` (built by
   `scripts/make_eval_set.py`) is the held-out Tatar set: Tatoeba sentences from the
   conversational rows with `id % 10 == 1`, minus every sentence of the Leipzig training corpora.
@@ -59,9 +60,15 @@ These inputs are not in the repository:
   dev-split sentences extracted by `research/corpus/acquire_common_voice_final.py
   --mirror-text` from the hash-verified mirror text, checked for independence against the
   conversational train split, the Leipzig training sentences and the development sets, and
-  frozen before any tuning. The two held-out sets keep their roles: the Tatoeba-based one is
-  the development and regression input, the Common Voice set is the final evaluation, and
-  neither may be trained or tuned on. Split assignments and normalized collisions across
+  frozen before any tuning. A separate frozen final set,
+  `app/src/test/resources/tt_trigram_common_voice_final.txt`, is extracted from the Common Voice
+  test split by `research/corpus/acquire_trigram_common_voice_final.py`. Its builder excludes the
+  Leipzig training corpora, the historical `tat_news_2015_1M` tuning input, the full
+  conversational stream, both existing development and final sets, and the other Common Voice
+  splits; the news exclusion input is pinned in the output provenance. The held-out sets keep
+  their roles: the Tatoeba-based one is the development and regression input, and the Common
+  Voice sets are final evaluations. None may be trained or tuned on. Split assignments and
+  normalized collisions across
   sentences, word-frequency tables, dictionary admissions and bigram training are declared in
   `data/evaluation/splits-tt.json` and checked by `python3 scripts/evaluation_splits.py
   data/evaluation/splits-tt.json` (a cross-split normalized-sentence leak is an error; a word
@@ -187,8 +194,8 @@ the corpus-source comparison, the glide benchmark):
 
 ## `rebuild_assets.py`
 
-This is the single entry point for dictionaries and bigram tables. A table is a set of indices
-into its dictionary, so the two are always rebuilt together.
+This is the single entry point for dictionaries and bigram or combined bigram/trigram tables.
+A table is a set of indices into its dictionary, so the two are always rebuilt together.
 
 ### Full rebuild
 
@@ -232,9 +239,14 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    `scripts/release_check.sh` after you change `TATAR_DICTIONARY_TOP`. The packer's raw size
    bound (`MAX_UNCOMPRESSED_BYTES`) equals the reader's safety bound `TdictFormat.MAX_RAW_SIZE`
    and is not a budget.
-3. **Bigram tables.** `bigram_asset_pack.py pack --schema 3` is run against the new
+3. **Bigram and trigram tables.** `bigram_asset_pack.py pack --schema 3` is run against the new
    dictionaries with the `BIGRAMS` parameters (head count, successors per head, extra heads,
-   training corpora). Change these parameters only together with a rebuild.
+   training corpora). For Tatar, that image is an intermediate: `trigram_asset_pack.py pack`
+   counts the same training corpora, selects two-word contexts, ranks their successors by
+   Jelinek-Mercer interpolation with the full selected-head bigram distributions, and appends the
+   trigram sections to produce `tatar_bigrams_v2.tatbigr.zlib` (schema 4). Its configuration is
+   fixed in the packer and reads no evaluation file. Change any of these parameters only together
+   with a rebuild.
 3b. **Proper-name display.** `proper_name_pack.py build` writes
    `dictionaries/tatar_proper_names_v1.txt` from the proper-name review and the proper-display rows
    of the compound review. Every key must be in the rebuilt Tatar dictionary; a key that does not

@@ -43,6 +43,7 @@ import bigram_asset_pack as BP  # noqa: E402
 import bigram_pack as BIGRAM_PACK  # noqa: E402
 import dictionary_coverage as COV  # noqa: E402
 import dictionary_pack as DP  # noqa: E402
+import suggest_eval  # noqa: E402
 from stream import Split  # noqa: E402
 
 LANG = COV.language_for("tat")
@@ -433,15 +434,9 @@ def build_bigram_with_shipped_dictionary(
 
 
 def load_shipped_bigrams(shipped_words: set[str]) -> dict[str, list[str]]:
-    path = ROOT / "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib"
-    raw = BP.decompress(path.read_bytes())
+    path = ROOT / "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib"
     dictionary_raw = DP.decompress_asset(CL.SHIPPED["tat"].read_bytes(), LANG)
-    try:
-        parsed = BP.validate_raw(raw)
-    except BP.BigramFormatError as error:
-        if "unsupported schema id: 3" not in str(error):
-            raise
-        parsed = BP.validate_raw_v3(raw, sorted(shipped_words), hashlib.sha256(dictionary_raw).digest())
+    parsed = suggest_eval.load_bigram_table(path, sorted(shipped_words), dictionary_raw)
     return {head: list(successors) for head, successors in parsed.successes_by_head.items()}
 
 
@@ -613,7 +608,7 @@ def main() -> int:
         "held_out_evaluations": evaluations,
         "shipped_asset_sizes": {
             "dictionary_compressed_bytes": CL.SHIPPED["tat"].stat().st_size,
-            "bigram_compressed_bytes": (ROOT / "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib").stat().st_size,
+            "bigram_compressed_bytes": (ROOT / "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib").stat().st_size,
         },
     }
     arguments.output.parent.mkdir(parents=True, exist_ok=True)

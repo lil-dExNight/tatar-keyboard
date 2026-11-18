@@ -31,6 +31,7 @@ import bigram_asset_pack  # noqa: E402
 import dictionary_coverage as coverage  # noqa: E402
 import dictionary_pack  # noqa: E402
 import suggest_chain  # noqa: E402
+import trigram_asset_pack  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_EVAL = ROOT / "app" / "src" / "test" / "resources" / "tt_eval_sentences.txt"
@@ -38,7 +39,7 @@ DEFAULT_DICT_ASSET = (
     ROOT / "app" / "src" / "main" / "assets" / "dictionaries" / "tatar_top100k_v1.tdict.zlib"
 )
 DEFAULT_BIGRAM_ASSET = (
-    ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "tatar_bigrams_v1.tatbigr.zlib"
+    ROOT / "app" / "src" / "main" / "assets" / "bigrams" / "tatar_bigrams_v2.tatbigr.zlib"
 )
 RU_EVAL = ROOT / "app" / "src" / "test" / "resources" / "ru_eval_sentences.txt"
 RU_DICT_ASSET = (
@@ -130,17 +131,28 @@ def load_dictionary_words(asset_path: Path) -> tuple[list[str], list[int], bytes
     return list(parsed.words), list(parsed.frequencies), raw
 
 
-def load_bigram_successes(
+def load_bigram_table(
     asset_path: Path, dictionary_words: list[str], dictionary_raw: bytes
-) -> dict[str, list[str]]:
-    """Decode the bundled schema-3 bigram table against its linked dictionary."""
+) -> bigram_asset_pack.ParsedBigramTable:
+    """Load only the one-word part of a linked schema-3 or combined schema-4 table."""
     if not asset_path.is_file():
         raise SuggestEvalError(f"bigram asset is missing: {asset_path}")
     raw = bigram_asset_pack.decompress(asset_path.read_bytes())
-    parsed = bigram_asset_pack.validate_raw_v3(
-        raw, dictionary_words, hashlib.sha256(dictionary_raw).digest()
-    )
-    return parsed.successes_by_head
+    schema_id = bigram_asset_pack.HEADER.unpack_from(raw)[1]
+    dictionary_sha = hashlib.sha256(dictionary_raw).digest()
+    if schema_id == bigram_asset_pack.SCHEMA_ID_V3:
+        return bigram_asset_pack.validate_raw_v3(raw, dictionary_words, dictionary_sha)
+    if schema_id == trigram_asset_pack.SCHEMA_ID_V4:
+        return trigram_asset_pack.validate_raw_v4(
+            raw, dictionary_words, dictionary_sha
+        ).bigram
+    raise SuggestEvalError(f"unsupported bigram table schema id: {schema_id}")
+
+
+def load_bigram_successes(
+    asset_path: Path, dictionary_words: list[str], dictionary_raw: bytes
+) -> dict[str, list[str]]:
+    return load_bigram_table(asset_path, dictionary_words, dictionary_raw).successes_by_head
 
 
 def has_inflectional_suffix(word: str) -> bool:

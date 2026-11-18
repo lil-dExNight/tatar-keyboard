@@ -110,9 +110,9 @@ class EdgeGoldenExportTest {
     private fun openLanguage(lang: String, keysFile: File): Engine {
         val tatar = lang == "tt"
         val dictSpec = if (tatar) DictionaryArtifactSpec.TATAR_TOP100K_V1 else DictionaryArtifactSpec.RUSSIAN_TOP100K_V1
-        val bigramSpec = if (tatar) BigramArtifactSpec.TATAR_BIGRAMS_V1 else BigramArtifactSpec.RUSSIAN_BIGRAMS_V1
+        val bigramSpec = if (tatar) BigramArtifactSpec.TATAR_BIGRAMS_V2 else BigramArtifactSpec.RUSSIAN_BIGRAMS_V1
         val dictAsset = locate("src/main/assets/dictionaries/${if (tatar) "tatar" else "russian"}_top100k_v1.tdict.zlib")
-        val bigramAsset = locate("src/main/assets/bigrams/${if (tatar) "tatar" else "russian"}_bigrams_v1.tatbigr.zlib")
+        val bigramAsset = locate("src/main/assets/bigrams/${if (tatar) "tatar_bigrams_v2" else "russian_bigrams_v1"}.tatbigr.zlib")
 
         val dictRaw = File.createTempFile("edge-dict-", ".tdict")
         val index: TdictPrefixIndex
@@ -416,7 +416,7 @@ class EdgeGoldenExportTest {
             val bigrams = e.bigrams.predict(prefix)
             val chain = e.computer.predict(prefix)
             e.handoffs.clear()
-            val token = e.engine.requestNextWord(1, e.lang, input)
+            val token = e.engine.requestNextWord(1, e.lang, ByteArray(0), input)
             if (token != null) {
                 check(e.handoffs.size == 1 && e.handoffs[0].suggestions == chain) { "engine chain differs: $label" }
             }

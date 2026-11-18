@@ -55,7 +55,11 @@ class PersonalBigramRunTest {
         override fun cachedWordBeforeTrailingWord(): String = wordBeforeTrailing
         override fun cachedNextWordContext(): String = context
         override fun commitSuggestion(expectedPrefix: String, suggestion: String): Boolean = true
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean = true
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean = true
         override fun hasKnownCursor(): Boolean = true
         override fun hasLetterAfterCursor(): Boolean = false
     }
@@ -70,7 +74,12 @@ class PersonalBigramRunTest {
             return ++serial
         }
 
-        override fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? {
+        override fun requestNextWord(
+            editorSessionId: Long,
+            subtypeId: String,
+            previousContextWordUtf8: ByteArray,
+            contextWordUtf8: ByteArray,
+        ): Any? {
             val token = ++serial
             callback?.onResult(token, nextWordAnswer, LookupKind.NEXT_WORD)
             return token

@@ -447,8 +447,8 @@ class LatestOnlyPrefixEngineTest {
 
         val token = requireNotNull(engine.request(1, "tt", utf8("ка"), utf8("дан")))
         assertEquals("дан", token.normalizedContext.decodeUtf8())
-        // NEXT_WORD and GLIDE requests carry no prefix-path context.
-        val nextWord = requireNotNull(engine.requestNextWord(1, "tt", utf8("дан")))
+        // Empty A leaves NEXT_WORD without a previous context.
+        val nextWord = requireNotNull(engine.requestNextWord(1, "tt", ByteArray(0), utf8("дан")))
         assertEquals(0, nextWord.normalizedContext.byteCount)
         executor.runAll()
 
@@ -1094,7 +1094,7 @@ class LatestOnlyPrefixEngineTest {
             EngineTestFixtures.identity, computer, executor, ResultHandoff { published += it },
         )
 
-        val token = requireNotNull(engine.requestNextWord(1, "tt", utf8("өй")))
+        val token = requireNotNull(engine.requestNextWord(1, "tt", ByteArray(0), utf8("өй")))
         executor.runAll()
 
         assertEquals(LookupKind.NEXT_WORD, token.kind)
@@ -1103,6 +1103,110 @@ class LatestOnlyPrefixEngineTest {
         assertEquals(listOf("next:өй"), published.single().suggestions)
         assertEquals(LookupKind.NEXT_WORD, published.single().kind)
         assertEquals(LookupKind.NEXT_WORD, published.single().token.kind)
+    }
+
+    @Test
+    fun nextWordRequestCarriesAAndDispatchesToTwoWordComputer() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val twoWordCalls = mutableListOf<Pair<String, String>>()
+        val oneWordCalls = mutableListOf<String>()
+        val computer = object : PrefixComputer, NextWordComputer, TwoWordNextWordComputer {
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix) = emptyList<String>()
+
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
+                oneWordCalls += normalizedContextWordUtf8.decodeUtf8()
+                return listOf("bigram")
+            }
+
+            override fun predict(
+                normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+            ): List<String> {
+                twoWordCalls += normalizedPreviousContextWordUtf8.decodeUtf8() to
+                    normalizedContextWordUtf8.decodeUtf8()
+                return listOf("trigram")
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff { published += it },
+        )
+
+        val token = requireNotNull(
+            engine.requestNextWord(1, "tt", utf8("бер"), utf8("сүз")),
+        )
+        executor.runAll()
+
+        assertEquals("бер", token.normalizedContext.decodeUtf8())
+        assertEquals("сүз", token.normalizedQuery.decodeUtf8())
+        assertEquals(listOf("бер" to "сүз"), twoWordCalls)
+        assertTrue(oneWordCalls.isEmpty())
+        assertEquals(listOf("trigram"), published.single().suggestions)
+    }
+
+    @Test
+    fun changingAWithTheSameBSupersedesTheOldNextWordToken() {
+        val executor = ManualEngineExecutor()
+        val published = mutableListOf<LookupResult>()
+        val oneWordCalls = mutableListOf<String>()
+        val computer = object : PrefixComputer, NextWordComputer {
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix) = emptyList<String>()
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
+                oneWordCalls += normalizedContextWordUtf8.decodeUtf8()
+                return listOf("bigram")
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff { published += it },
+        )
+
+        val old = requireNotNull(engine.requestNextWord(1, "tt", utf8("бер"), utf8("сүз")))
+        val latest = requireNotNull(engine.requestNextWord(1, "tt", utf8("ике"), utf8("сүз")))
+        executor.runAll()
+
+        assertNotEquals(old, latest)
+        assertFalse(engine.isCurrent(old))
+        assertTrue(engine.isCurrent(latest))
+        assertEquals("ике", latest.normalizedContext.decodeUtf8())
+        assertEquals(listOf("сүз", "сүз"), oneWordCalls)
+        assertEquals(listOf(latest), published.map { it.token })
+    }
+
+    @Test
+    fun invalidANeverRejectsValidBAndFallsBackToBigrams() {
+        val executor = ManualEngineExecutor()
+        val oneWordCalls = mutableListOf<String>()
+        var twoWordCalls = 0
+        val computer = object : PrefixComputer, NextWordComputer, TwoWordNextWordComputer {
+            override fun lookup(normalizedPrefixUtf8: ImmutableUtf8Prefix) = emptyList<String>()
+            override fun predict(normalizedContextWordUtf8: ImmutableUtf8Prefix): List<String> {
+                oneWordCalls += normalizedContextWordUtf8.decodeUtf8()
+                return listOf("bigram")
+            }
+
+            override fun predict(
+                normalizedPreviousContextWordUtf8: ImmutableUtf8Prefix,
+                normalizedContextWordUtf8: ImmutableUtf8Prefix,
+            ): List<String> {
+                twoWordCalls++
+                return listOf("trigram")
+            }
+        }
+        val engine = LatestOnlyPrefixEngine(
+            EngineTestFixtures.identity, computer, executor, ResultHandoff {},
+        )
+
+        for (invalidA in listOf(
+            ByteArray(TatBigrPrefixIndex.MAX_WORD_BYTES + 1),
+            byteArrayOf(0xd0.toByte()),
+        )) {
+            val token = requireNotNull(engine.requestNextWord(1, "tt", invalidA, utf8("сүз")))
+            assertEquals(0, token.normalizedContext.byteCount)
+            executor.runAll()
+        }
+
+        assertEquals(listOf("сүз", "сүз"), oneWordCalls)
+        assertEquals(0, twoWordCalls)
     }
 
     @Test
@@ -1116,7 +1220,7 @@ class LatestOnlyPrefixEngineTest {
             ResultHandoff { published += it },
         )
 
-        engine.requestNextWord(1, "tt", utf8("өй"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("өй"))
         executor.runAll()
 
         // A corrupt, missing or non-activatable bigram file yields 0 predictions; a computer with
@@ -1141,10 +1245,10 @@ class LatestOnlyPrefixEngineTest {
             ResultHandoff {},
         )
 
-        engine.requestNextWord(1, "tt", utf8("old"))
-        assertNull(engine.requestNextWord(1, "tt", ByteArray(0)))
-        assertNull(engine.requestNextWord(1, "tt", ByteArray(TatBigrPrefixIndex.MAX_WORD_BYTES + 1)))
-        assertNull(engine.requestNextWord(1, "tt", byteArrayOf(0xd0.toByte())))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("old"))
+        assertNull(engine.requestNextWord(1, "tt", ByteArray(0), ByteArray(0)))
+        assertNull(engine.requestNextWord(1, "tt", ByteArray(0), ByteArray(TatBigrPrefixIndex.MAX_WORD_BYTES + 1)))
+        assertNull(engine.requestNextWord(1, "tt", ByteArray(0), byteArrayOf(0xd0.toByte())))
         executor.runAll()
 
         assertEquals(1, predicts)
@@ -1172,9 +1276,9 @@ class LatestOnlyPrefixEngineTest {
         )
 
         engine.request(1, "tt", utf8("а"))
-        engine.requestNextWord(1, "tt", utf8("өй"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("өй"))
         engine.request(1, "tt", utf8("аб"))
-        val latest = requireNotNull(engine.requestNextWord(1, "tt", utf8("юл")))
+        val latest = requireNotNull(engine.requestNextWord(1, "tt", ByteArray(0), utf8("юл")))
 
         // Any interleaving of PREFIX and NEXT_WORD still yields at most one running and one
         // pending request — the single-flight/coalescing invariant does not depend on kind.
@@ -1253,14 +1357,14 @@ class LatestOnlyPrefixEngineTest {
                     if (caller % 2 == 0) {
                         engine.request(caller.toLong(), "tt-$caller", utf8("$caller-$request"))
                     } else {
-                        engine.requestNextWord(caller.toLong(), "tt-$caller", utf8("$caller-$request"))
+                        engine.requestNextWord(caller.toLong(), "tt-$caller", ByteArray(0), utf8("$caller-$request"))
                     }
                 }
             }, "mixed-burst-$caller").apply(Thread::start)
         }
         callers.forEach { it.join(2_000) }
         assertTrue(callers.none(Thread::isAlive))
-        val latest = requireNotNull(engine.requestNextWord(99, "tt", utf8("latest")))
+        val latest = requireNotNull(engine.requestNextWord(99, "tt", ByteArray(0), utf8("latest")))
         assertEquals(1, engine.readerCountForTest())
         assertTrue(engine.hasPendingForTest())
 

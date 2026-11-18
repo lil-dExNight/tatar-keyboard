@@ -83,7 +83,7 @@ class TtNextWordPredictP95Test {
                 GlobalTopFrequencyFallbackFactory(DictionaryArtifactSpec.TATAR_TOP100K_V1.harmonyTwins)
                     .createFallbackWords(index),
             ).also {
-                it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, index))
+                it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V2, index))
             }
         }
 

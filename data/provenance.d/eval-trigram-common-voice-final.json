@@ -1,0 +1,32 @@
+{
+  "candidate_count": 3120,
+  "dropped_collision": {
+    "common_voice_other_split": 19,
+    "conversational_or_leipzig_train": 888,
+    "current_final": 1,
+    "historical_development": 121
+  },
+  "dropped_normalized_duplicate": 15,
+  "dropped_word_count_outside_bounds": 800,
+  "generation_command": "python3 research/corpus-sources/fetch_sources.py --sources common_voice && python3 research/corpus/acquire_trigram_common_voice_final.py",
+  "historical_development_exclusion": {
+    "path": "tat_news_2015_1M-sentences.txt",
+    "sha256": "694a9abd42cfa9749dba0839a8487c780da180d96f74d1e4a7d42e48fdcc8032",
+    "size_bytes": 209296988
+  },
+  "id": "eval-trigram-independent-final-tt-v1",
+  "license": "CC0-1.0",
+  "path": "app/src/test/resources/tt_trigram_common_voice_final.txt",
+  "revision": "common_voice_17_0/tt-test/trigram-1000",
+  "sample_seed": "trigram-independent-final/2026-11-18",
+  "selected": 1000,
+  "sha256": "f6b1df6bb6f004c21974f95091e9ae1937283ae9b887d7b2d159c906418fe387",
+  "size_bytes": 69576,
+  "source_candidates_before_exclusions": 4149,
+  "source_revision": "8262c16bf297c87a9cd88c51997c4758ed7a8ba2",
+  "source_role": "final_evaluation_sentences",
+  "source_rows": 4964,
+  "source_sha256": "292ffe6f51cc7f744f4a5dded8771753db2683ac50c849f49e50290cd2026d26",
+  "source_size_bytes": 337601,
+  "split_rule": "final: frozen before trigram tuning; no normalized sentence shared with current or historical train, development or final inputs"
+}

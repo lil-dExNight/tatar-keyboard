@@ -37,7 +37,7 @@ class ValidatorAllocationTest {
     @Test
     fun bigramValidationAllocatesAtMostOneRawCopy() {
         val failures = ArrayList<String>()
-        for (spec in listOf(BigramArtifactSpec.TATAR_BIGRAMS_V1, BigramArtifactSpec.RUSSIAN_BIGRAMS_V1)) {
+        for (spec in listOf(BigramArtifactSpec.TATAR_BIGRAMS_V2, BigramArtifactSpec.RUSSIAN_BIGRAMS_V1)) {
             val raw = inflate(spec.assetPath) { input, output ->
                 TatBigrValidator().inflateAsset(input, output, spec)
             }

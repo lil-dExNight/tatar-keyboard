@@ -74,10 +74,15 @@ interface EngineHandle {
     ): Any? = request(editorSessionId, subtypeId, prefixUtf8)
 
     /**
-     * NEXT_WORD variant of [request]: same engine, token and executor, a different kind. Default
-     * null: a fake handle never predicts a next word.
+     * NEXT_WORD variant of [request]: B is [contextWordUtf8], optional A is
+     * [previousContextWordUtf8]. Default null: a fake handle never predicts a next word.
      */
-    fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? = null
+    fun requestNextWord(
+        editorSessionId: Long,
+        subtypeId: String,
+        previousContextWordUtf8: ByteArray,
+        contextWordUtf8: ByteArray,
+    ): Any? = null
 
     /**
      * GLIDE variant of [request]. The engine snapshots [path] before returning, so the caller's
@@ -216,8 +221,17 @@ class MappedEngineHandle private constructor(
         contextWordUtf8: ByteArray,
     ): Any? = engine.request(editorSessionId, subtypeId, prefixUtf8, contextWordUtf8)
 
-    override fun requestNextWord(editorSessionId: Long, subtypeId: String, contextWordUtf8: ByteArray): Any? =
-        engine.requestNextWord(editorSessionId, subtypeId, contextWordUtf8)
+    override fun requestNextWord(
+        editorSessionId: Long,
+        subtypeId: String,
+        previousContextWordUtf8: ByteArray,
+        contextWordUtf8: ByteArray,
+    ): Any? = engine.requestNextWord(
+        editorSessionId,
+        subtypeId,
+        previousContextWordUtf8,
+        contextWordUtf8,
+    )
 
     override fun requestGlide(
         editorSessionId: Long,

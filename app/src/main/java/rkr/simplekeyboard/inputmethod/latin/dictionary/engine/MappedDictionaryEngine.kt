@@ -57,12 +57,18 @@ class MappedDictionaryEngine private constructor(
         editorSessionId, subtypeId, normalizedPrefixUtf8, normalizedContextWordUtf8,
     )
 
-    /** NEXT_WORD counterpart of [request]: same engine, token and executor, different kind. */
+    /** NEXT_WORD counterpart of [request]: B is required, A is optional two-word context. */
     fun requestNextWord(
         editorSessionId: Long,
         subtypeId: String,
+        normalizedPreviousContextWordUtf8: ByteArray,
         normalizedContextWordUtf8: ByteArray,
-    ): LookupToken? = engine.requestNextWord(editorSessionId, subtypeId, normalizedContextWordUtf8)
+    ): LookupToken? = engine.requestNextWord(
+        editorSessionId,
+        subtypeId,
+        normalizedPreviousContextWordUtf8,
+        normalizedContextWordUtf8,
+    )
 
     /** GLIDE counterpart of [request]: same engine, same rules, plus the committed context word. */
     fun requestGlide(

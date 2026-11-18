@@ -56,9 +56,9 @@ data class LookupToken(
     val kind: LookupKind = LookupKind.PREFIX,
     /**
      * The previous committed word of a [LookupKind.PREFIX] request (the context boost's
-     * condition), empty when there is none; NEXT_WORD and GLIDE carry their context in
-     * [normalizedQuery] instead. The token carries it so a result computed against a stale
-     * context fails the currency check like any other superseded request.
+     * condition), or A in a NEXT_WORD "A B " context; empty when there is none. GLIDE carries
+     * its only context in [normalizedQuery]. The token carries it so a result computed against a
+     * stale context fails the currency check like any other superseded request.
      */
     val normalizedContext: ImmutableUtf8Prefix = ImmutableUtf8Prefix.EMPTY,
 )
@@ -215,32 +215,36 @@ class LatestOnlyPrefixEngine internal constructor(
         normalizedPrefixUtf8: ByteArray,
         normalizedContextWordUtf8: ByteArray = EMPTY_CONTEXT_BYTES,
     ): LookupToken? {
-        val context =
-            if (normalizedContextWordUtf8.isEmpty() ||
-                normalizedContextWordUtf8.size > TatBigrPrefixIndex.MAX_WORD_BYTES ||
-                !isValidUtf8Scalar(normalizedContextWordUtf8)
-            ) {
-                EMPTY_CONTEXT_BYTES
-            } else {
-                normalizedContextWordUtf8
-            }
+        val context = validContextOrEmpty(normalizedContextWordUtf8)
         return requestInternal(
             editorSessionId, subtypeId, normalizedPrefixUtf8,
             LookupKind.PREFIX, TdictPrefixIndex.MAX_PREFIX_BYTES, context,
         )
     }
 
+    private fun validContextOrEmpty(context: ByteArray): ByteArray =
+        if (context.isEmpty() ||
+            context.size > TatBigrPrefixIndex.MAX_WORD_BYTES ||
+            !isValidUtf8Scalar(context)
+        ) {
+            EMPTY_CONTEXT_BYTES
+        } else {
+            context
+        }
+
     /**
-     * NEXT_WORD counterpart of [request]. An empty [normalizedContextWordUtf8] is rejected and
-     * invalidates the generation, exactly like an empty prefix.
+     * NEXT_WORD counterpart of [request]. B remains the required query; A is optional context.
+     * Empty, oversized or invalid A selects the one-word bigram path and never rejects a valid B.
      */
     fun requestNextWord(
         editorSessionId: Long,
         subtypeId: String,
+        normalizedPreviousContextWordUtf8: ByteArray,
         normalizedContextWordUtf8: ByteArray,
     ): LookupToken? = requestInternal(
         editorSessionId, subtypeId, normalizedContextWordUtf8,
         LookupKind.NEXT_WORD, TatBigrPrefixIndex.MAX_WORD_BYTES,
+        validContextOrEmpty(normalizedPreviousContextWordUtf8),
     )
 
     /**
@@ -511,9 +515,16 @@ class LatestOnlyPrefixEngine internal constructor(
                                 else -> lookup.lookup(query)
                             }
                         }
-                        LookupKind.NEXT_WORD ->
-                            (lookup as? NextWordComputer)?.predict(request.token.normalizedQuery)
-                                ?: emptyList()
+                        LookupKind.NEXT_WORD -> {
+                            val query = request.token.normalizedQuery
+                            val previousContext = request.token.normalizedContext
+                            when {
+                                lookup == null -> emptyList()
+                                previousContext.byteCount > 0 && lookup is TwoWordNextWordComputer ->
+                                    lookup.predict(previousContext, query)
+                                else -> (lookup as? NextWordComputer)?.predict(query) ?: emptyList()
+                            }
+                        }
                         LookupKind.GLIDE ->
                             (lookup as? GlideComputer)?.decodeGlide(
                                 request.glidePath ?: GlidePath(0),

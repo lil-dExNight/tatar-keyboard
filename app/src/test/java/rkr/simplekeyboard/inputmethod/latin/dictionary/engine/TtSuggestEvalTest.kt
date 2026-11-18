@@ -1130,10 +1130,10 @@ class TtSuggestEvalTest {
             dictionaryIndexWithoutRules = controlDictionary
 
             val asset = locate(
-                "src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
-                "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+                "src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
+                "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
             )
-            val spec = BigramArtifactSpec.TATAR_BIGRAMS_V1
+            val spec = BigramArtifactSpec.TATAR_BIGRAMS_V2
             val rawFile = File.createTempFile("tt-suggest-eval-bigrams-", ".tatbigr")
             try {
                 rawFile.outputStream().use { output ->

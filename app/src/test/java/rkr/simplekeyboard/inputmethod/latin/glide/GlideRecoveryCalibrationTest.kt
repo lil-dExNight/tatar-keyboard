@@ -2218,7 +2218,7 @@ class GlideRecoveryCalibrationTest {
                 "src/test/resources/ru_eval_sentences.txt",
                 "app/src/test/resources/ru_eval_sentences.txt",
             ).readLines(Charsets.UTF_8).map { it.trim() }
-            tatarBigrams = loadBigramTable(BigramArtifactSpec.TATAR_BIGRAMS_V1, realIndex!!)
+            tatarBigrams = loadBigramTable(BigramArtifactSpec.TATAR_BIGRAMS_V2, realIndex!!)
             russianBigrams = loadBigramTable(BigramArtifactSpec.RUSSIAN_BIGRAMS_V1, russianIndex!!)
         }
 

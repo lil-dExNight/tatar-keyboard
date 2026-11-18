@@ -758,10 +758,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
 
             @Override
-            public boolean commitPredictedWord(final String expectedContextWord,
-                    final String suggestion) {
-                final boolean committed =
-                        mInputLogic.commitPredictedWord(expectedContextWord, suggestion);
+            public boolean commitPredictedWord(final String expectedPreviousContextWord,
+                    final String expectedContextWord, final String suggestion) {
+                final boolean committed = mInputLogic.commitPredictedWord(
+                        expectedPreviousContextWord, expectedContextWord, suggestion);
                 if (committed) {
                     // Refresh auto-caps, as for commitSuggestion.
                     mKeyboardSwitcher.requestUpdatingShiftState(getCurrentAutoCapsState(),

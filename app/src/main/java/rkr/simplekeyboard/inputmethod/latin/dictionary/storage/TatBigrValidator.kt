@@ -22,7 +22,7 @@ data class ValidatedBigramTable(
 )
 
 /**
- * Strict validator for the TATBIGR schema-3 format. Like [TdictValidator] it has two phases:
+ * Strict validator for the TATBIGR schema-3 and schema-4 formats. Like [TdictValidator] it has two phases:
  * inflate with digest, then validate the decompressed structure, and the same two tiers: the
  * full [validateRaw] walks every varint stream over one in-memory copy of the raw file (bounded
  * by [TatBigrFormat.MAX_RAW_SIZE], because the streams are easier to walk over a byte array),
@@ -129,21 +129,22 @@ class TatBigrValidator {
         if (length > spec.maxRawSize) {
             throw BigramValidationException("raw size limit exceeded")
         }
-        if (length < TatBigrFormat.HEADER_SIZE) {
+        val headerSize = expectedHeaderSize(spec)
+        if (length < headerSize) {
             throw BigramValidationException("raw table is shorter than its header")
         }
         if (length != spec.expectedRawSize) {
             throw BigramValidationException("unexpected raw size")
         }
 
-        val header = ByteArray(TatBigrFormat.HEADER_SIZE)
+        val header = ByteArray(headerSize)
         FileInputStream(file).use { stream ->
-            readExact(stream, header, TatBigrFormat.HEADER_SIZE)
+            readExact(stream, header, headerSize)
             val decoded = decodeAndCheckHeader(header, length, spec)
 
             val rawDigest = MessageDigest.getInstance("SHA-256")
             rawDigest.update(header)
-            var remaining = length - TatBigrFormat.HEADER_SIZE
+            var remaining = length - headerSize
             val buffer = ByteArray(VERIFY_BUFFER_SIZE)
             while (remaining > 0) {
                 val count = minOf(VERIFY_BUFFER_SIZE.toLong(), remaining).toInt()
@@ -173,6 +174,7 @@ class TatBigrValidator {
                 decoded.countsOffset,
                 decoded.successIdsOffset,
                 decoded.successIdsSize,
+                decoded.trigram,
             )
         }
     }
@@ -287,6 +289,9 @@ class TatBigrValidator {
         if (successCursor.toLong() != successIdsOffset + successIdsSize) {
             throw BigramValidationException("success id stream does not end exactly at its section end")
         }
+        if (header.trigram != null) {
+            validateTrigramStreams(raw, header.trigram)
+        }
 
         return ValidatedBigramTable(
             rawSize = header.length,
@@ -296,6 +301,94 @@ class TatBigrValidator {
             formatVersion = spec.formatVersion,
             rawSha256 = spec.expectedRawSha256,
         )
+    }
+
+    private fun validateTrigramStreams(raw: ByteArray, header: TrigramHeader) {
+        val width = header.dictionaryWordCount
+        var previousFirstKey = -1L
+        var previousDeltaOffset = 0L
+        var previousSuccessOffset = 0L
+        for (block in 0 until header.blockCount.toInt()) {
+            val record = header.blockIndexOffset + TatBigrFormat.TRIGRAM_BLOCK_RECORD_BYTES * block
+            val first = u32(raw, record)
+            val second = u32(raw, record + 4)
+            val deltaOffset = u32(raw, record + 8)
+            val successOffset = u32(raw, record + 12)
+            if (first >= width || second >= width) {
+                throw BigramValidationException("trigram context index is outside the dictionary")
+            }
+            val firstKey = first * width + second
+            if (firstKey <= previousFirstKey || deltaOffset > header.deltasSize ||
+                deltaOffset < previousDeltaOffset || successOffset > header.successIdsSize ||
+                successOffset < previousSuccessOffset
+            ) {
+                throw BigramValidationException("trigram block records are not canonical")
+            }
+            if (block == 0 && (deltaOffset != 0L || successOffset != 0L)) {
+                throw BigramValidationException("the first trigram block's offsets must be zero")
+            }
+            previousFirstKey = firstKey
+            previousDeltaOffset = deltaOffset
+            previousSuccessOffset = successOffset
+        }
+
+        var successCursor = header.successIdsOffset.toInt()
+        var pairTotal = 0L
+        var previousKey = -1L
+        for (block in 0 until header.blockCount.toInt()) {
+            val first = block * TatBigrFormat.TRIGRAM_BLOCK_SIZE
+            val blockContexts = minOf(
+                TatBigrFormat.TRIGRAM_BLOCK_SIZE.toLong(), header.contextCount - first,
+            ).toInt()
+            val record = header.blockIndexOffset + TatBigrFormat.TRIGRAM_BLOCK_RECORD_BYTES * block
+            val deltaEnd = (header.deltasOffset + if (block + 1 < header.blockCount) {
+                u32(raw, header.blockIndexOffset +
+                    TatBigrFormat.TRIGRAM_BLOCK_RECORD_BYTES * (block + 1) + 8)
+            } else {
+                header.deltasSize
+            }).toInt()
+            if (successCursor.toLong() != header.successIdsOffset + u32(raw, record + 12)) {
+                throw BigramValidationException("trigram success stream starts off its boundary")
+            }
+            var cursor = (header.deltasOffset + u32(raw, record + 8)).toInt()
+            var key = u32(raw, record) * width + u32(raw, record + 4)
+            for (position in 0 until blockContexts) {
+                if (position > 0) {
+                    val packed = decodeVarint64(raw, cursor, deltaEnd)
+                    cursor = packed.nextOffset
+                    if (packed.value < 1) {
+                        throw BigramValidationException("trigram context delta is not positive")
+                    }
+                    key += packed.value
+                }
+                if (key <= previousKey) {
+                    throw BigramValidationException("trigram contexts are not strictly increasing")
+                }
+                previousKey = key
+                val count = raw[(header.countsOffset + first + position).toInt()].toInt() and 0xff
+                if (count < 1 || pairTotal + count > header.pairCount) {
+                    throw BigramValidationException("invalid trigram successor count")
+                }
+                repeat(count) {
+                    val packed = decodeVarint(
+                        raw, successCursor, (header.successIdsOffset + header.successIdsSize).toInt(),
+                    )
+                    successCursor = (packed and 0xffff_ffffL).toInt()
+                    if (packed ushr 32 >= width) {
+                        throw BigramValidationException("trigram successor is outside the dictionary")
+                    }
+                }
+                pairTotal += count
+            }
+            if (cursor != deltaEnd) {
+                throw BigramValidationException("trigram delta stream ends off its boundary")
+            }
+        }
+        if (pairTotal != header.pairCount || successCursor.toLong() !=
+            header.successIdsOffset + header.successIdsSize
+        ) {
+            throw BigramValidationException("trigram streams do not match their declared counts")
+        }
     }
 
     /**
@@ -312,7 +405,7 @@ class TatBigrValidator {
         if (length > spec.maxRawSize) {
             throw BigramValidationException("raw size limit exceeded")
         }
-        if (length < TatBigrFormat.HEADER_SIZE) {
+        if (length < expectedHeaderSize(spec)) {
             throw BigramValidationException("raw table is shorter than its header")
         }
         if (length != spec.expectedRawSize) {
@@ -347,6 +440,7 @@ class TatBigrValidator {
             decoded.countsOffset,
             decoded.successIdsOffset,
             decoded.successIdsSize,
+            decoded.trigram,
         )
     }
 
@@ -368,13 +462,15 @@ class TatBigrValidator {
         val formatVersion = u16(raw, 10)
         val headerSize = u16(raw, 12)
         val checksumAlgorithm = u16(raw, 14)
-        if (schemaId != spec.schemaId || schemaId != TatBigrFormat.SCHEMA_ID) {
+        if (schemaId != spec.schemaId ||
+            schemaId != TatBigrFormat.SCHEMA_ID && schemaId != TatBigrFormat.SCHEMA_ID_V4
+        ) {
             throw BigramValidationException("unsupported schema id")
         }
         if (formatVersion != spec.formatVersion || formatVersion != TatBigrFormat.FORMAT_VERSION) {
             throw BigramValidationException("unsupported format version")
         }
-        if (headerSize != TatBigrFormat.HEADER_SIZE) {
+        if (headerSize != expectedHeaderSize(spec)) {
             throw BigramValidationException("unexpected header size")
         }
         if (checksumAlgorithm != TatBigrFormat.CHECKSUM_ALGORITHM_SHA256) {
@@ -407,21 +503,26 @@ class TatBigrValidator {
         }
 
         val expectedBlockCount = (headCount + TatBigrFormat.HEAD_BLOCK_SIZE - 1) / TatBigrFormat.HEAD_BLOCK_SIZE
-        val expectedBlockIndex = TatBigrFormat.HEADER_SIZE.toLong()
+        val expectedBlockIndex = expectedHeaderSize(spec).toLong()
         val expectedHeadDeltas = expectedBlockIndex + 12 * blockCount
         val expectedCounts = expectedHeadDeltas + headDeltasSize
         val expectedSuccessIds = expectedCounts + headCount
-        val expectedFileSize = expectedSuccessIds + successIdsSize
+        val bigramEnd = expectedSuccessIds + successIdsSize
         if (blockCount != expectedBlockCount ||
             blockIndexOffset != expectedBlockIndex || headDeltasOffset != expectedHeadDeltas ||
             countsOffset != expectedCounts || successIdsOffset != expectedSuccessIds ||
-            declaredFileSize != expectedFileSize || declaredFileSize != length
+            declaredFileSize != length || schemaId == TatBigrFormat.SCHEMA_ID && declaredFileSize != bigramEnd
         ) {
             throw BigramValidationException("noncanonical section layout")
         }
         // Every success id takes at least one byte, so a larger pairCount can never add up.
         if (pairCount > successIdsSize) {
             throw BigramValidationException("success counts do not add up to pairCount")
+        }
+        val trigram = if (schemaId == TatBigrFormat.SCHEMA_ID_V4) {
+            decodeTrigramHeader(raw, bigramEnd, declaredFileSize)
+        } else {
+            null
         }
         return DecodedHeader(
             headCount,
@@ -434,8 +535,69 @@ class TatBigrValidator {
             successIdsOffset,
             successIdsSize,
             raw.copyOfRange(TatBigrFormat.CHECKSUM_OFFSET, TatBigrFormat.CHECKSUM_OFFSET + 32),
+            trigram,
         )
     }
+
+    private fun expectedHeaderSize(spec: BigramArtifactSpec): Int = when (spec.schemaId) {
+        TatBigrFormat.SCHEMA_ID -> TatBigrFormat.HEADER_SIZE
+        TatBigrFormat.SCHEMA_ID_V4 -> TatBigrFormat.HEADER_SIZE_V4
+        else -> throw BigramValidationException("unsupported schema id")
+    }
+
+    private fun decodeTrigramHeader(
+        raw: ByteArray,
+        bigramEnd: Long,
+        declaredFileSize: Long,
+    ): TrigramHeader {
+        for (index in TatBigrFormat.TRIGRAM_RESERVED_OFFSET until TatBigrFormat.HEADER_SIZE_V4) {
+            if (raw[index].toInt() != 0) {
+                throw BigramValidationException("reserved header bytes are not zero")
+            }
+        }
+        val values = LongArray(12) { u32(raw, TatBigrFormat.TRIGRAM_EXTENSION_OFFSET + 4L * it) }
+        val header = TrigramHeader(
+            contextCount = values[0],
+            pairCount = values[1],
+            blockCount = values[2],
+            blockIndexOffset = values[3],
+            deltasOffset = values[4],
+            deltasSize = values[5],
+            countsOffset = values[6],
+            successIdsOffset = values[7],
+            successIdsSize = values[8],
+            dictionaryWordCount = values[9],
+        )
+        val expectedBlockCount = (header.contextCount + TatBigrFormat.TRIGRAM_BLOCK_SIZE - 1) /
+            TatBigrFormat.TRIGRAM_BLOCK_SIZE
+        val expectedDeltas = header.blockIndexOffset +
+            TatBigrFormat.TRIGRAM_BLOCK_RECORD_BYTES * header.blockCount
+        val expectedCounts = header.deltasOffset + header.deltasSize
+        val expectedSuccesses = header.countsOffset + header.contextCount
+        val expectedFileSize = header.successIdsOffset + header.successIdsSize
+        if (header.contextCount == 0L || header.dictionaryWordCount == 0L ||
+            header.blockCount != expectedBlockCount ||
+            header.blockIndexOffset != bigramEnd || header.deltasOffset != expectedDeltas ||
+            header.countsOffset != expectedCounts || header.successIdsOffset != expectedSuccesses ||
+            expectedFileSize != declaredFileSize || header.pairCount > header.successIdsSize
+        ) {
+            throw BigramValidationException("noncanonical trigram section layout")
+        }
+        return header
+    }
+
+    private class TrigramHeader(
+        val contextCount: Long,
+        val pairCount: Long,
+        val blockCount: Long,
+        val blockIndexOffset: Long,
+        val deltasOffset: Long,
+        val deltasSize: Long,
+        val countsOffset: Long,
+        val successIdsOffset: Long,
+        val successIdsSize: Long,
+        val dictionaryWordCount: Long,
+    )
 
     /** The header fields both tiers check, plus the stored checksum bytes. */
     private class DecodedHeader(
@@ -449,6 +611,7 @@ class TatBigrValidator {
         val successIdsOffset: Long,
         val successIdsSize: Long,
         val storedChecksum: ByteArray,
+        val trigram: TrigramHeader?,
     )
 
     /** The decoded and fully pinned header; [raw] carries bytes only for the full walk. */
@@ -464,6 +627,7 @@ class TatBigrValidator {
         val countsOffset: Long,
         val successIdsOffset: Long,
         val successIdsSize: Long,
+        val trigram: TrigramHeader?,
     )
 
     /** Canonical minimal-form u32 varint; returns (value shl 32) or nextOffset. */
@@ -484,6 +648,27 @@ class TatBigrValidator {
         }
         if (shift > 0 && lastGroup == 0) throw BigramValidationException("overlong varint")
         return (value shl 32) or cursor.toLong()
+    }
+
+    private class PackedVarint64(val value: Long, val nextOffset: Int)
+
+    private fun decodeVarint64(raw: ByteArray, offset: Int, limit: Int): PackedVarint64 {
+        var cursor = offset
+        var value = 0L
+        var shift = 0
+        var lastGroup = 0
+        while (true) {
+            if (cursor >= limit || shift > 56) {
+                throw BigramValidationException("truncated or oversized u64 varint")
+            }
+            val byte = raw[cursor++].toInt() and 0xff
+            value = value or ((byte and 0x7f).toLong() shl shift)
+            lastGroup = byte and 0x7f
+            if (byte and 0x80 == 0) break
+            shift += 7
+        }
+        if (shift > 0 && lastGroup == 0) throw BigramValidationException("overlong varint")
+        return PackedVarint64(value, cursor)
     }
 
     private fun u16(raw: ByteArray, offset: Long): Int =

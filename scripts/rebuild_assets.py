@@ -39,6 +39,7 @@ import wordform_gen  # noqa: E402
 from bigram_pack import select_heads  # noqa: E402
 import companion_list_pack  # noqa: E402
 import proper_name_pack  # noqa: E402
+import trigram_asset_pack  # noqa: E402
 
 STORAGE_DIR = Path("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage")
 DICT_CONTRACT = STORAGE_DIR / "DictionaryStorageContracts.kt"
@@ -126,8 +127,8 @@ TATAR_DICTIONARY_ASSET = Path(DICTIONARIES[0].asset)
 BIGRAMS = (
     BigramAsset(
         tag="tat",
-        spec="TATAR_BIGRAMS_V1",
-        asset="app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+        spec="TATAR_BIGRAMS_V2",
+        asset="app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
         dictionary="tat",
         heads=10_132,
         # Up to eight successors per head. The strip shows three; the rest feed the
@@ -852,9 +853,7 @@ def measure_dictionary(asset_path: Path, tag: str) -> Pins:
 
 
 def measure_bigram(asset_path: Path, dictionary_path: Path, tag: str) -> Pins:
-    """Pins of a bigram table. Schema 3 is validated together with its dictionary: heads and
-    successors are indices into it, and the pins include its raw SHA-256 (the link stored in
-    the table header). Schema 2 is still read for older assets."""
+    """Measure the whole image and count heads in its validated one-word bigram part."""
     language = coverage.language_for(tag)
     asset = asset_path.read_bytes()
     raw = bigram_asset_pack.decompress(asset)
@@ -863,14 +862,19 @@ def measure_bigram(asset_path: Path, dictionary_path: Path, tag: str) -> Pins:
         parsed = bigram_asset_pack.validate_raw(raw)
         head_count = len(parsed.head_words)
         dictionary_raw_sha256 = ""
-    elif schema_id == bigram_asset_pack.SCHEMA_ID_V3:
+    elif schema_id in (bigram_asset_pack.SCHEMA_ID_V3, trigram_asset_pack.SCHEMA_ID_V4):
         parsed_dictionary = dictionary_pack.validate_asset(
             dictionary_path.read_bytes(), language=language
         )
         dictionary_raw_sha256 = hashlib.sha256(parsed_dictionary.raw).hexdigest()
-        parsed = bigram_asset_pack.validate_raw_v3(
-            raw, parsed_dictionary.words, bytes.fromhex(dictionary_raw_sha256)
-        )
+        if schema_id == bigram_asset_pack.SCHEMA_ID_V3:
+            parsed = bigram_asset_pack.validate_raw_v3(
+                raw, parsed_dictionary.words, bytes.fromhex(dictionary_raw_sha256)
+            )
+        else:
+            parsed = trigram_asset_pack.validate_raw_v4(
+                raw, parsed_dictionary.words, bytes.fromhex(dictionary_raw_sha256)
+            ).bigram
         head_count = len(parsed.head_words)
     else:
         raise ContractError(f"unknown bigram table schema id: {schema_id}")
@@ -933,13 +937,23 @@ def bigram_drift(
     )
     raw = bigram_asset_pack.decompress(table_path.read_bytes())
     schema_id = bigram_asset_pack.HEADER.unpack_from(raw)[1]
-    if schema_id == bigram_asset_pack.SCHEMA_ID_V3:
-        ordered_words = dictionary_pack.validate_asset(
+    if schema_id in (bigram_asset_pack.SCHEMA_ID_V3, trigram_asset_pack.SCHEMA_ID_V4):
+        parsed_dictionary = dictionary_pack.validate_asset(
             dictionary_path.read_bytes(), language=language
-        ).words
-        parsed = bigram_asset_pack.validate_raw_v3(raw, ordered_words)
-    else:
+        )
+        dictionary_sha = hashlib.sha256(parsed_dictionary.raw).digest()
+        if schema_id == bigram_asset_pack.SCHEMA_ID_V3:
+            parsed = bigram_asset_pack.validate_raw_v3(
+                raw, parsed_dictionary.words, dictionary_sha
+            )
+        else:
+            parsed = trigram_asset_pack.validate_raw_v4(
+                raw, parsed_dictionary.words, dictionary_sha
+            ).bigram
+    elif schema_id == bigram_asset_pack.SCHEMA_ID:
         parsed = bigram_asset_pack.validate_raw(raw)
+    else:
+        raise ContractError(f"unknown bigram table schema id: {schema_id}")
     actual = set(parsed.head_words)
     expected = set(select_heads(frequencies, heads)) | set(extra_heads)
     missing = sorted(expected - actual)
@@ -1523,8 +1537,22 @@ def propagate_calibration_pins(root: Path, dictionary: Pins) -> list[str]:
 # --- rebuild ----------------------------------------------------------------------------------
 
 
+def _schema3_raw_path(work_dir: Path, bigram: BigramAsset) -> Path:
+    stem = Path(bigram.asset).name.removesuffix(".tatbigr.zlib")
+    return work_dir / f"{stem}-schema3.tatbigr"
+
+
 def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: BigramAsset) -> list[str]:
-    """Command line that repacks one table; a separate function so tests can inspect it."""
+    """Build schema 3; Tatar's image is an intermediate for the combined packer."""
+    combined = bigram.tag == "tat"
+    raw_path = (
+        _schema3_raw_path(work_dir, bigram)
+        if combined
+        else work_dir / Path(bigram.asset).name.removesuffix(".zlib")
+    )
+    compressed_path = (
+        raw_path.with_name(raw_path.name + ".zlib") if combined else root / bigram.asset
+    )
     argv = [
         sys.executable,
         str(root / "scripts/bigram_asset_pack.py"),
@@ -1540,9 +1568,9 @@ def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: Bigra
         "--schema",
         "3",
         "--out-raw",
-        str(work_dir / Path(bigram.asset).name.removesuffix(".zlib")),
+        str(raw_path),
         "--out-compressed",
-        str(root / bigram.asset),
+        str(compressed_path),
         "--report",
         str(work_dir / f"{bigram.tag}-pack.generated.json"),
         "--language",
@@ -1552,6 +1580,34 @@ def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: Bigra
         argv += ["--recover-punctuation"]
     if bigram.extra_heads is not None:
         argv += ["--extra-heads", str(root / bigram.extra_heads)]
+    return argv
+
+
+def trigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: BigramAsset) -> list[str]:
+    """Build Tatar's final combined image from the work-dir schema-3 intermediate."""
+    if bigram.tag != "tat":
+        raise ValueError("only the Tatar table has a trigram extension")
+    argv = [
+        sys.executable,
+        str(root / "scripts/trigram_asset_pack.py"),
+        "pack",
+        "--train",
+        *[str(corpus_dir / name) for name in bigram.train],
+        "--source-bigram",
+        str(_schema3_raw_path(work_dir, bigram)),
+        "--dictionary",
+        str(root / next(d.asset for d in DICTIONARIES if d.tag == bigram.dictionary)),
+        "--out-raw",
+        str(work_dir / Path(bigram.asset).name.removesuffix(".zlib")),
+        "--out-compressed",
+        str(root / bigram.asset),
+        "--report",
+        str(work_dir / f"{bigram.tag}-trigram-pack.generated.json"),
+        "--language",
+        bigram.tag,
+    ]
+    if bigram.recover_punctuation:
+        argv.append("--recover-punctuation")
     return argv
 
 
@@ -1769,6 +1825,8 @@ def run_rebuild(
         if bigram.tag not in selected:
             continue
         _run_step(bigram_pack_argv(root, corpus_dir, work_dir, bigram), cwd=root)
+        if bigram.tag == "tat":
+            _run_step(trigram_pack_argv(root, corpus_dir, work_dir, bigram), cwd=root)
     # 2b. Companion lists of the selected languages, derived from the dictionaries of
     # step 1 alone: no corpus and no baseline input.
     for companion in COMPANIONS:

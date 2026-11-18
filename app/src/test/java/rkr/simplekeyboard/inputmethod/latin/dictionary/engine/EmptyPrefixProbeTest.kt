@@ -183,7 +183,7 @@ class EmptyPrefixProbeTest {
         val engine = engine(executor, computer)
         val answer = AtomicInteger(EmptyPrefixProber.NO_EMPTY_PREFIX - 1)
 
-        engine.requestNextWord(1, "tt", "сүз".toByteArray(Charsets.UTF_8))
+        engine.requestNextWord(1, "tt", ByteArray(0), "сүз".toByteArray(Charsets.UTF_8))
         assertTrue(engine.requestEmptyPrefixProbe("сүзләр") { answer.set(it) })
         executor.runAll()
 

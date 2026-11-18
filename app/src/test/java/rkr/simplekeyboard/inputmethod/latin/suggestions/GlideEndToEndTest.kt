@@ -120,7 +120,11 @@ class GlideEndToEndTest {
 
         override fun commitSuggestion(expectedPrefix: String, suggestion: String): Boolean = false
 
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean {
             // The production re-checks, modeled: an empty trailing word, the live context must
             // match, and an empty context binds only at a sentence start.
             if (TatarWordUtils.extractTrailingWord(text).isNotEmpty()) return false
@@ -206,13 +210,12 @@ class GlideEndToEndTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? {
-            val token = Any().also { latest = it }
-            val results = composite.predict(ImmutableUtf8Prefix.copyOf(contextWordUtf8))
-            callback!!.onResult(token, results, LookupKind.NEXT_WORD)
-            return token
-        }
+        ): Any? { val token = Any().also { latest = it }
+        val results = composite.predict(ImmutableUtf8Prefix.copyOf(contextWordUtf8))
+        callback!!.onResult(token, results, LookupKind.NEXT_WORD)
+        return token }
 
         /** When true, [requestGlide] decodes but holds the result until [deliverHeldGlide]. */
         var holdGlide = false
@@ -1492,7 +1495,7 @@ class GlideEndToEndTest {
                 GlobalTopFrequencyFallbackFactory(DictionaryArtifactSpec.TATAR_TOP100K_V1.harmonyTwins)
                     .createFallbackWords(tatarIndex),
             ).also {
-                it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V1, tatarIndex))
+                it.attachBigramSource(openBigrams(BigramArtifactSpec.TATAR_BIGRAMS_V2, tatarIndex))
             }
             russianComputer = CompositePrefixComputer(
                 russianIndex, PersonalCandidateSource.EMPTY,

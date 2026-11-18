@@ -95,7 +95,7 @@ class MappedDictionaryEngineTest {
             ),
         )
 
-        engine.requestNextWord(1, "tt", utf8("әби"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("әби"))
         executor.runAll()
 
         assertEquals(1, factoryCalls)
@@ -483,7 +483,7 @@ class MappedDictionaryEngineTest {
         val executor = ManualEngineExecutor()
         val engine = requireNotNull(startWithDictionaryOnly(executor))
 
-        val token = requireNotNull(engine.requestNextWord(1, "tt", utf8("аб")))
+        val token = requireNotNull(engine.requestNextWord(1, "tt", ByteArray(0), utf8("аб")))
         executor.runAll()
 
         assertEquals(LookupKind.NEXT_WORD, token.kind)
@@ -506,7 +506,7 @@ class MappedDictionaryEngineTest {
         )
         assertTrue(attached)
 
-        engine.requestNextWord(1, "tt", utf8("аб"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
 
         assertEquals(listOf("аба"), published.single().suggestions)
@@ -640,14 +640,14 @@ class MappedDictionaryEngineTest {
         // table.
         assertEquals(0, acquisitions)
 
-        engine.requestNextWord(1, "tt", utf8("аб"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
 
         // The first NEXT_WORD lookup ran the attach on the worker and answers complete.
         assertEquals(listOf("аба"), published.single().suggestions)
         assertEquals(1, acquisitions)
 
-        engine.requestNextWord(2, "tt", utf8("аб"))
+        engine.requestNextWord(2, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
 
         // Attached once per engine lifetime: later lookups reuse the wired source.
@@ -662,7 +662,7 @@ class MappedDictionaryEngineTest {
         val published = mutableListOf<LookupResult>()
         val engine = requireNotNull(startWithDictionaryOnly(executor, published))
 
-        engine.requestNextWord(1, "tt", utf8("аб"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
         assertTrue(engine.lastNextWordWithoutTable)
 
@@ -674,7 +674,7 @@ class MappedDictionaryEngineTest {
 
             override fun cleanupReleasedVersions() = Unit
         })
-        engine.requestNextWord(2, "tt", utf8("аб"))
+        engine.requestNextWord(2, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
 
         assertEquals(listOf("аба"), published.last().suggestions)
@@ -704,14 +704,14 @@ class MappedDictionaryEngineTest {
         }
         engine.deferBigramAttach(catalog)
 
-        engine.requestNextWord(1, "tt", utf8("аб"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
 
         assertEquals(emptyList<String>(), published.single().suggestions)
         assertEquals("a failed attach must close the lease it acquired", 1, closed)
 
         // Parked, not terminal: the next lookup does not retry the attach by itself.
-        engine.requestNextWord(2, "tt", utf8("аб"))
+        engine.requestNextWord(2, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
         assertEquals(1, acquisitions)
         assertTrue(engine.destroy(1, TimeUnit.SECONDS))
@@ -738,7 +738,7 @@ class MappedDictionaryEngineTest {
             override fun cleanupReleasedVersions() = Unit
         }
         engine.deferBigramAttach(brokenCatalog)
-        engine.requestNextWord(1, "tt", utf8("аб"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
         assertEquals(emptyList<String>(), published.last().suggestions)
         assertEquals(1, brokenLeases)
@@ -757,7 +757,7 @@ class MappedDictionaryEngineTest {
         }
         engine.deferBigramAttach(goodCatalog)
 
-        engine.requestNextWord(2, "tt", utf8("аб"))
+        engine.requestNextWord(2, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
 
         assertEquals(listOf("аба"), published.last().suggestions)
@@ -791,18 +791,18 @@ class MappedDictionaryEngineTest {
             override fun cleanupReleasedVersions() = Unit
         }
         engine.deferBigramAttach(catalog)
-        engine.requestNextWord(1, "tt", utf8("аб"))
+        engine.requestNextWord(1, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
         assertEquals(1, acquisitions)
 
         engine.finishInput()
-        engine.requestNextWord(2, "tt", utf8("аб"))
+        engine.requestNextWord(2, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
         assertEquals(2, acquisitions)
 
         // A third field start, then a lookup: no third attempt, the answer stays table-less.
         engine.finishInput()
-        engine.requestNextWord(3, "tt", utf8("аб"))
+        engine.requestNextWord(3, "tt", ByteArray(0), utf8("аб"))
         executor.runAll()
         assertEquals(2, acquisitions)
         assertTrue(engine.lastNextWordWithoutTable)

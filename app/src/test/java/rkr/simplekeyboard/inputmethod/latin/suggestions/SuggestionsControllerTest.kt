@@ -88,6 +88,7 @@ class SuggestionsControllerTest {
         var wordBeforeTrailingWord: String = ""
         var predictedCommitResult: Boolean = true
         val predictedCommits = mutableListOf<Pair<String, String>>()
+        val predictedPreviousContexts = mutableListOf<String>()
 
         override fun cachedWordBeforeCursor(): String = word
 
@@ -107,7 +108,12 @@ class SuggestionsControllerTest {
 
         override fun cachedWordBeforeTrailingWord(): String = wordBeforeTrailingWord
 
-        override fun commitPredictedWord(expectedContextWord: String, suggestion: String): Boolean {
+        override fun commitPredictedWord(
+            expectedPreviousContextWord: String,
+            expectedContextWord: String,
+            suggestion: String,
+        ): Boolean {
+            predictedPreviousContexts.add(expectedPreviousContextWord)
             predictedCommits.add(expectedContextWord to suggestion)
             if (!predictedCommitResult) return false
             applySuccessfulInsert(suggestion)
@@ -125,9 +131,11 @@ class SuggestionsControllerTest {
          */
         private fun applySuccessfulInsert(suggestion: String) {
             if (TatarWordUtils.needsAutoSpace(textAfterCursor)) {
+                wordBeforeTrailingWord = if (word.isEmpty()) nextWordContext else word
                 word = ""
                 nextWordContext = suggestion
             } else {
+                if (word.isEmpty()) wordBeforeTrailingWord = nextWordContext
                 word = suggestion
                 nextWordContext = ""
             }
@@ -166,11 +174,10 @@ class SuggestionsControllerTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? {
-            requestedContexts.add(contextWordUtf8)
-            return nextToken
-        }
+        ): Any? { requestedContexts.add(contextWordUtf8)
+        return nextToken }
 
         override fun isCurrent(token: Any): Boolean = isCurrentResult
 
@@ -1735,9 +1742,14 @@ class SuggestionsControllerTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
-        ): Any? = delegate.requestNextWord(editorSessionId, subtypeId, contextWordUtf8)
-            ?.also { executor.runAll() }
+        ): Any? = delegate.requestNextWord(
+            editorSessionId,
+            subtypeId,
+            previousContextWordUtf8,
+            contextWordUtf8,
+        )?.also { executor.runAll() }
 
         override fun isCurrent(token: Any): Boolean =
             token is LookupToken && delegate.isCurrent(token)

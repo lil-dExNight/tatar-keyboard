@@ -243,10 +243,12 @@ layout (`KeyNeighborTable` derives the adjacency from the key rectangles, center
 normalized per axis by the keys' half-extents) ranks before a non-neighbor substitution at the
 same length tier.
 
-Next-word prediction (`CompositePrefixComputer.predict`): the bundled bigram successors (at
-most four), then learned word pairs in the cells left free (at most `MAX_PERSONAL_BIGRAM_CELLS`;
-a duplicate keeps the bundled spelling), then the dictionary's most frequent words
-(`FallbackWords`), excluding everything shown. When the language's fallback pool holds a
+Next-word prediction (`CompositePrefixComputer.predict`): with a Tatar `A B ` context, bundled
+two-word successors lead and one-word successors of B fill their free cells; with only B, the
+one-word successors answer directly. Learned word pairs keyed on B fill the cells left free (at
+most `MAX_PERSONAL_BIGRAM_CELLS`), then the dictionary's most frequent words (`FallbackWords`),
+excluding everything shown and keeping the bundled spelling of a duplicate. An empty, unsupported
+or failed two-word lookup uses exactly the one-word chain. When the language's fallback pool holds a
 front/back harmony pair (Tatar: `дә`/`да`, pinned in `DictionaryArtifactSpec.harmonyTwins`),
 only the twin matching the committed word's vowel harmony is offered (last vowel front → `дә`,
 else `да`; no deciding vowel keeps the pool order) and the next pool word takes the freed slot.
@@ -346,9 +348,10 @@ and the cell is never offered where suggestions may not run (`LatinIME.onWindowS
 ## Bundled dictionaries
 
 Each language has a dictionary (`*.tdict.zlib`, TATDICT schema 2) and a bigram table
-(`*.tatbigr.zlib`, TATBIGR schema 3) in `app/src/main/assets/`. The bigram table stores dictionary
-word indices and names the dictionary's raw SHA-256 in its header, so it opens only against its own
-dictionary. Formats: [ASSET-FORMATS.md](ASSET-FORMATS.md); build: [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
+(`*.tatbigr.zlib`, TATBIGR schema 3 for Russian, combined bigram/trigram schema 4 for Tatar) in
+`app/src/main/assets/`. The table stores dictionary word indices and names the dictionary's raw
+SHA-256 in its header, so it opens only against its own dictionary. Formats:
+[ASSET-FORMATS.md](ASSET-FORMATS.md); build: [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
 
 On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it in
 full (`TdictValidator.validateRaw`, `TatBigrValidator.validateRaw`) and publish it to

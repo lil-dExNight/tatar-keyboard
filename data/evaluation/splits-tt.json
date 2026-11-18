@@ -17,6 +17,13 @@
       "role": "frozen Common Voice final evaluation; do not tune on these lines"
     },
     {
+      "id": "tt-trigram-independent-final",
+      "kind": "sentences",
+      "split": "final",
+      "path": "app/src/test/resources/tt_trigram_common_voice_final.txt",
+      "role": "frozen independent Common Voice test final for trigram evaluation; do not train or tune on these lines"
+    },
+    {
       "id": "tt-ru-mix-sentences",
       "kind": "sentences",
       "split": "development",

@@ -17,7 +17,7 @@ Dictionaries at the Leipzig Corpora Collection: From 100 to 200 Languages",
 LREC 2012.
 
 --------------------------------------------------------------------------------
-tatar_bigrams_v1.tatbigr.zlib
+tatar_bigrams_v2.tatbigr.zlib
 
 Derived from the Tatar corpora tat_mixed_2015_1M and tat_web_2018_1M.
 A third corpus, tat_news_2015_1M, was used only to measure the table's
@@ -31,23 +31,26 @@ set), counted ten times so that it makes up about a tenth of the training
 token mass. The Russian section below gives the two sources and their
 licensing status.
 
-Changes by the Tatar Keyboard project: adjacent word pairs were counted within
-sentence boundaries from the source corpora, restricted to word forms
-already present in the shipped tatar_top100k_v1 dictionary (which contains a
-CC BY 4.0-licensed component derived from the same collection), ranked per head
-word, capped to the top 10,132 head words by unigram frequency plus a named
-list of 2,786 further words (106 frequent imperative forms, rank
+Changes by the Tatar Keyboard project: adjacent word pairs and triples were
+counted within sentence boundaries from the source corpora, restricted to word
+forms already present in the shipped tatar_top100k_v1 dictionary (which
+contains a CC BY 4.0-licensed component derived from the same collection).
+The one-word part keeps the top 10,132 head words by unigram frequency plus a
+named list of 2,786 further words (106 frequent imperative forms, rank
 10,000..40,000, paradigm-checked, and 2,680 conversationally established words
-below the frequency cutoff) -- top 8 successors per head, packed into a
-versioned binary format (schema 3, distinct from the dictionary's schema 2)
-with SHA-256, and zlib-compressed. Punctuation at token edges was removed
-before word normalization; internal punctuation still rejected the token, and
-sentence-terminal edges continued to break pair adjacency.
+below the frequency cutoff), with up to 8 successors per head. The two-word
+part keeps selected contexts and up to 8 successors per context, ranked by
+interpolated trigram and bigram probabilities. Both parts share a versioned
+binary format (schema 4, distinct from the dictionary's schema 2), with
+SHA-256, and are zlib-compressed. Punctuation at token edges was removed before
+word normalization; internal punctuation still rejected the token, and
+sentence-terminal edges continued to break adjacency.
 The conversational lines were deduplicated before counting, and no sentence
-from either collection is stored in the app -- the table holds word pairs and
-their ranks only. The table is built by scripts/bigram_asset_pack.py, with
-the extra heads listed in scripts/bigram_extra_heads_tat.txt;
-docs/ASSET-PIPELINE.md describes the rebuild.
+from either collection is stored in the app -- the table holds dictionary
+indices and their ranks only. The table is built by
+scripts/bigram_asset_pack.py and scripts/trigram_asset_pack.py, with the extra
+heads listed in scripts/bigram_extra_heads_tat.txt; docs/ASSET-PIPELINE.md
+describes the rebuild.
 
 --------------------------------------------------------------------------------
 russian_bigrams_v1.tatbigr.zlib

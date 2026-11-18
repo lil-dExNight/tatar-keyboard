@@ -74,8 +74,8 @@ class TatBigrValidatorTest {
 
     @Test
     fun fastTierRejectsATamperedCommittedTable() {
-        val spec = BigramArtifactSpec.TATAR_BIGRAMS_V1
-        val asset = locateCommittedAsset("tatar_bigrams_v1.tatbigr.zlib").readBytes()
+        val spec = BigramArtifactSpec.TATAR_BIGRAMS_V2
+        val asset = locateCommittedAsset("tatar_bigrams_v2.tatbigr.zlib").readBytes()
         val rawFile = temporaryFolder.newFile("tampered.tatbigr")
         rawFile.outputStream().use { output ->
             validator.inflateAsset(asset.inputStream(), output, spec)
@@ -112,7 +112,7 @@ class TatBigrValidatorTest {
 
     @Test
     fun acceptsCommittedTatarBigramAssetWithFrozenProvenance() {
-        assertCommittedCounts("tatar_bigrams_v1.tatbigr.zlib", BigramArtifactSpec.TATAR_BIGRAMS_V1)
+        assertCommittedCounts("tatar_bigrams_v2.tatbigr.zlib", BigramArtifactSpec.TATAR_BIGRAMS_V2)
     }
 
     /** The committed Russian table validates against its spec, with the same count checks. */

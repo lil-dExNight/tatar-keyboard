@@ -950,10 +950,10 @@ class PersonalizationEvalTest {
 
             // The committed bigram table, resolved through the dictionary like
             // TtSuggestEvalTest does: the measure walk's NEXT_WORD tap answers read it.
-            val bigramSpec = BigramArtifactSpec.TATAR_BIGRAMS_V1
+            val bigramSpec = BigramArtifactSpec.TATAR_BIGRAMS_V2
             val bigramAsset = locate(
-                "src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
-                "app/src/main/assets/bigrams/tatar_bigrams_v1.tatbigr.zlib",
+                "src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
+                "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
             )
             val bigramRawFile = File.createTempFile("tt-personalization-eval-bigrams-", ".tatbigr")
             try {

@@ -127,7 +127,7 @@ data class DictionaryArtifactSpec(
             expectedEntryCount = 111_212,
             fallbackWords = listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
             harmonyTwins = listOf("дә" to "да"),
-            bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V1,
+            bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V2,
             sentStartAssetPath = "dictionaries/tatar_sentstart_v1.txt",
             properNameAssetPath = "dictionaries/tatar_proper_names_v1.txt",
             personalAlphabet = PersonalSubtypes.TATAR_RU_ALPHABET,

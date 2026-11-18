@@ -153,6 +153,7 @@ class SuggestionAnnouncementTest {
         override fun requestNextWord(
             editorSessionId: Long,
             subtypeId: String,
+            previousContextWordUtf8: ByteArray,
             contextWordUtf8: ByteArray,
         ): Any = TOKEN
 

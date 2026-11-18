@@ -25,6 +25,7 @@ import dict_accept  # noqa: E402
 import dictionary_pack  # noqa: E402
 import proper_name_pack  # noqa: E402
 import rebuild_assets  # noqa: E402
+import trigram_asset_pack  # noqa: E402
 import wordform_gen  # noqa: E402
 
 # Words of the synthetic dictionary, most frequent first. The alphabet is the Tatar one:
@@ -556,12 +557,54 @@ class CheckTest(FakeTreeTest):
         self.assertEqual(2, code)
 
 
+class CombinedSchema4CheckTest(FakeTreeTest):
+    """The corpus-free check measures the combined image but pins one-word head count."""
+
+    def setUp(self):
+        super().setUp()
+        import hashlib
+
+        table_path = self.root / self.bigram.asset
+        source_raw = bigram_asset_pack.decompress(table_path.read_bytes())
+        parsed_dictionary = dictionary_pack.validate_asset(
+            (self.root / DICT_ASSET).read_bytes()
+        )
+        words = list(parsed_dictionary.words)
+        dictionary_sha = hashlib.sha256(parsed_dictionary.raw).digest()
+        context = 1
+        result = trigram_asset_pack.pack_trigram_table_v4(
+            source_raw, words, dictionary_sha, {context: [2]}
+        )
+        table_path.write_bytes(result.compressed)
+        self.combined_raw_size = len(result.raw)
+
+    def test_check_validates_schema4_and_uses_bigram_head_count(self):
+        pin_everything(self.root, self.dictionary, self.bigram)
+        code, report = self.run_check()
+        self.assertEqual(0, code, report)
+        self.assertEqual("ok", report["bigrams"]["tat"]["verdict"])
+        pins = rebuild_assets.read_pins(
+            self.root / rebuild_assets.BIGRAM_CONTRACT,
+            self.bigram.spec,
+            "BigramArtifactSpec",
+            "expectedHeadCount",
+            linked=True,
+        )
+        self.assertEqual(3, pins.count)
+        self.assertEqual(self.combined_raw_size, pins.raw_size)
+
+
 class PackArgvTest(unittest.TestCase):
     """The canned pack commands and their parameters, pinned verbatim."""
 
     def test_tatar_command(self):
+        bigram = rebuild_assets.BIGRAMS[0]
+        self.assertEqual("TATAR_BIGRAMS_V2", bigram.spec)
+        self.assertEqual(
+            "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib", bigram.asset
+        )
         argv = rebuild_assets.bigram_pack_argv(
-            Path("/root"), Path("/corpora"), Path("/work"), rebuild_assets.BIGRAMS[0])
+            Path("/root"), Path("/corpora"), Path("/work"), bigram)
         text = " ".join(argv)
         self.assertIn("--heads 10132", text)
         # Eight successors per head (the table's K; unrelated to the number of strip cells).
@@ -571,8 +614,35 @@ class PackArgvTest(unittest.TestCase):
         self.assertIn("--language tat", text)
         self.assertIn("/corpora/tat_mixed_2015_1M-sentences.txt", text)
         self.assertIn("/corpora/tat_web_2018_1M-sentences.txt", text)
-        # Conversational input.
-        self.assertIn("/corpora/tt_conv_train90-sentences.txt", text)
+        self.assertEqual(10, argv.count("/corpora/tt_conv_train90-sentences.txt"))
+        self.assertIn("--schema 3", text)
+        self.assertIn("--out-raw /work/tatar_bigrams_v2-schema3.tatbigr", text)
+        self.assertIn(
+            "--out-compressed /work/tatar_bigrams_v2-schema3.tatbigr.zlib", text
+        )
+
+    def test_tatar_trigram_command_uses_intermediate_and_final_v2_path(self):
+        argv = rebuild_assets.trigram_pack_argv(
+            Path("/root"), Path("/corpora"), Path("/work"), rebuild_assets.BIGRAMS[0]
+        )
+        text = " ".join(argv)
+        self.assertIn("/root/scripts/trigram_asset_pack.py pack", text)
+        self.assertIn("--source-bigram /work/tatar_bigrams_v2-schema3.tatbigr", text)
+        self.assertIn(
+            "--dictionary /root/app/src/main/assets/dictionaries/"
+            "tatar_top100k_v1.tdict.zlib",
+            text,
+        )
+        self.assertIn("--out-raw /work/tatar_bigrams_v2.tatbigr", text)
+        self.assertIn(
+            "--out-compressed /root/app/src/main/assets/bigrams/"
+            "tatar_bigrams_v2.tatbigr.zlib",
+            text,
+        )
+        self.assertIn("--report /work/tat-trigram-pack.generated.json", text)
+        self.assertIn("--recover-punctuation", text)
+        self.assertEqual(10, argv.count("/corpora/tt_conv_train90-sentences.txt"))
+        self.assertNotIn("eval", text)
 
     def test_russian_command(self):
         argv = rebuild_assets.bigram_pack_argv(
