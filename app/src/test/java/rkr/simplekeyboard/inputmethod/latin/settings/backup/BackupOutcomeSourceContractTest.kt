@@ -28,7 +28,7 @@ class BackupOutcomeSourceContractTest {
         val coordinator = source(
             "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
         val export = coordinator.substringAfter("fun exportTo(").substringBefore("fun importFrom(")
-        val incomplete = export.substringAfter("val bytes = BackupTransfer.export(target)")
+        val incomplete = export.substringAfter("val bytes = BackupTransfer.export(target, password)")
             .substringBefore("} catch (_: Exception)")
         assertTrue(incomplete.contains("if (bytes == null)"))
         assertTrue(incomplete.substringBefore("documentTouched = true").contains("false"))
