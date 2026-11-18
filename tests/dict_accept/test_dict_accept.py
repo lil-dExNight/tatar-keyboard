@@ -532,9 +532,9 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         # tat: conversational cutoff weighting, the bonus-frequency rerank and word forms
         # promote entries above the old cutoff and displace entries from the tail. Explicitly
         # approved forms then ship even when they remain below the new cutoff.
-        self.assertEqual(self.report["tat"]["entries_after"], 111_212)
-        self.assertEqual(self.report["tat"]["words_added"], 21_990)
-        self.assertEqual(self.report["tat"]["words_displaced"], 10_778)
+        self.assertEqual(self.report["tat"]["entries_after"], 111_240)
+        self.assertEqual(self.report["tat"]["words_added"], 22_017)
+        self.assertEqual(self.report["tat"]["words_displaced"], 10_777)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
         # On the prefix `можн` there is no `можно | можна` pair: the curator excluded

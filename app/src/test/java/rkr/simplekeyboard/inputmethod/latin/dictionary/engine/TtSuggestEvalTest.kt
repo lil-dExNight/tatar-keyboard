@@ -402,10 +402,10 @@ class TtSuggestEvalTest {
         assertEquals(PIN_BIGRAM_ENGINE_TOP4_HITS, engineHits)
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
         assertEquals("7.6012", format(ratePct(top1Hits, pairs)))
-        assertEquals("85.2001", format(ratePct(covered, pairs)))
+        assertEquals("85.2224", format(ratePct(covered, pairs)))
         assertEquals("13.7939", format(ratePct(visibleHits, pairs)))
         assertEquals("15.7389", format(ratePct(engineHits, pairs)))
-        assertEquals("18.4728", format(ratePct(engineHits, covered)))
+        assertEquals("18.4680", format(ratePct(engineHits, covered)))
     }
 
     /**
@@ -537,7 +537,7 @@ class TtSuggestEvalTest {
         assertEquals(PIN_PAIRS, nextwordMoments)
         assertEquals(0, nextwordEmpty)
         // Cross-implementation pins: scripts/suggest_eval.py must print the same values.
-        assertEquals("1.9711", format(prefixEmpty * 100.0 / prefixMoments))
+        assertEquals("1.9670", format(prefixEmpty * 100.0 / prefixMoments))
         assertEquals("0.0000", format(nextwordEmpty * 100.0 / nextwordMoments))
     }
 
@@ -981,7 +981,7 @@ class TtSuggestEvalTest {
         private const val PIN_EVAL_LINES = 1_000
         private const val PIN_UNIQUE_WORDS = 2_656
         private const val PIN_PAIRS = 4_473
-        private const val PIN_COVERED = 3_811
+        private const val PIN_COVERED = 3_812
         private const val PIN_BIGRAM_VISIBLE_TOP3_HITS = 617
         private const val PIN_BIGRAM_ENGINE_TOP4_HITS = 704
         private const val PIN_CP1_WORDS = 2_656
@@ -999,7 +999,7 @@ class TtSuggestEvalTest {
         private const val PIN_CP2_TOP1_HITS = 142
         private const val PIN_CP3_TOP1_HITS = 414
         private const val PIN_STRIP_EMPTY_PREFIX_MOMENTS = 24_250
-        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 478
+        private const val PIN_STRIP_EMPTY_PREFIX_EMPTY = 477
         private const val PIN_SAMESTEM_WORDS = 1_823
         private const val PIN_SAMESTEM_TOP1_HITS = 789
         private const val PIN_SAMESTEM_VISIBLE_TOP3_HITS = 1_238
@@ -1011,7 +1011,7 @@ class TtSuggestEvalTest {
         private const val PIN_SENTSTART_ENGINE_TOP4_HITS = 275
         // Unique eval words whose committed-word strip is empty WITHOUT the top-frequency
         // fallback; with the fallback the count is asserted to be 0.
-        private const val PIN_NEXTWORD_EMPTY_BEFORE = 815
+        private const val PIN_NEXTWORD_EMPTY_BEFORE = 814
         private const val PIN_TOP1_HITS = 340
         private const val PIN_CHAIN_TOP1_HITS = 345
         private const val PIN_CHAIN_VISIBLE_TOP3_HITS = 652

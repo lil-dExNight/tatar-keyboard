@@ -16,6 +16,8 @@ These hold for every release:
 
 ### Added
 
+- The Tatar dictionary includes the next reviewed set of stems and word forms, while every
+  previously shipped word stays available.
 - Reviewed Tatar compound words are suggested as whole words with their internal hyphen
   (`азык-төлек`, `санкт-петербург`). The personal dictionary, learned word pairs, the
   word-delete flick and the commit span treat the whole compound as one word.

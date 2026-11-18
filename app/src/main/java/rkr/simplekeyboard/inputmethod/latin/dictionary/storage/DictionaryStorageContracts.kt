@@ -118,13 +118,13 @@ data class DictionaryArtifactSpec(
             storageDirectoryName = "dictionaries",
             generation = 1,
             assetPath = "dictionaries/tatar_top100k_v1.tdict.zlib",
-            expectedCompressedSize = 603_152,
+            expectedCompressedSize = 603_561,
             expectedCompressedSha256 =
-                "f8741087df8b215d3f357ff0c270ba75251be548f08d91a79706a7ad4f374129",
-            expectedRawSize = 1_323_781,
+                "4956fee44bd02accbe7032c87d06ccd3b21dbd84a1d5d6a2492b633366174296",
+            expectedRawSize = 1_325_407,
             expectedRawSha256 =
-                "0ed3206a0df5c41d639abc7918ccb5d2e3389882287d4cd5e5dce1725c61986a",
-            expectedEntryCount = 111_212,
+                "1a64ff2692b658b684bd822c4e8b9dac44b83761bcfb5edf63b3dabfa264ad3d",
+            expectedEntryCount = 111_240,
             fallbackWords = listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
             harmonyTwins = listOf("дә" to "да"),
             bigrams = BigramArtifactSpec.TATAR_BIGRAMS_V2,
