@@ -298,13 +298,22 @@ wait_package_manager() { # wait_package_manager -> 0 when pm answers
 # would hang the whole matrix. Bound each install, reconnect the transport once,
 # and retry; a still-failing install fails the leg instead of the run.
 install_apk() { # install_apk <apk> <log>
-    local attempt remote
-    # --no-incremental forces the streamed install path: on the API 37 image
-    # the incremental-install service crashes system_server mid-install
-    # (services vanish: "Can't find service: package"), so the whole leg dies.
+    local attempt remote api
+    # --no-incremental forces the streamed install path on older images. API 37
+    # has a different defect: its streamed session crashes in
+    # StorageManagerService.allocateBytes, so use the local-file installer from
+    # the start there and keep the existing stream for every other API.
+    remote="/data/local/tmp/$(basename "$1")"
     for attempt in 1 2; do
         wait_package_manager || { log "package manager not ready for $(basename "$1")"; return 1; }
-        if timeout 240 "$ADB" -s "$SERIAL" install --no-incremental -r "$1" >"$2" 2>&1; then
+        api=$(booted_api)
+        if [ "$api" = 37 ]; then
+            if timeout 240 "$ADB" -s "$SERIAL" push "$1" "$remote" >"$2" 2>&1 \
+                    && timeout 240 "$ADB" -s "$SERIAL" shell pm install -r "$remote" >>"$2" 2>&1; then
+                "$ADB" -s "$SERIAL" shell rm -f "$remote" >/dev/null 2>&1 || true
+                return 0
+            fi
+        elif timeout 240 "$ADB" -s "$SERIAL" install --no-incremental -r "$1" >"$2" 2>&1; then
             return 0
         fi
         [ "$attempt" = 1 ] || break
@@ -316,9 +325,9 @@ install_apk() { # install_apk <apk> <log>
         wait_package_manager || true
         sleep 5
     done
+    [ "$api" = 37 ] && return 1
     # Last resort: the sync protocol and the on-device installer are independent
     # of the install stream that wedges, so this path still completes.
-    remote="/data/local/tmp/$(basename "$1")"
     wait_package_manager || return 1
     if timeout 240 "$ADB" -s "$SERIAL" push "$1" "$remote" >>"$2" 2>&1 \
             && timeout 240 "$ADB" -s "$SERIAL" shell pm install -r "$remote" >>"$2" 2>&1; then
@@ -524,6 +533,7 @@ run_avd() { # run_avd <api> <name>
         result FAIL "api.$api.instrumentation-install" "debug package has no listed IME after 30 seconds"
         return 1
     fi
+    result PASS "api.$api.instrumentation-install" "debug and androidTest installed; debug IME listed"
     SHELL ime enable "$debug_ime" >/dev/null 2>&1 || true
     SHELL ime set "$debug_ime" >/dev/null 2>&1 || true
     instrument "$directory" backup-restore.log \

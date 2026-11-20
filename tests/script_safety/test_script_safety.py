@@ -320,6 +320,7 @@ class SmokeSectionTest(unittest.TestCase):
             APK=$OUTDIR/fixture.apk
             PKG=fixture.package
             SETUP_ACTIVITY=rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity
+            SMOKE_SDK=${ADB_API:-36}
             : > "$RESULTS"
             : > "$APK"
             FAILURES=0
@@ -349,6 +350,9 @@ class SmokeSectionTest(unittest.TestCase):
                                 ;;
                         esac
                         ;;
+                    "push"*)
+                        [ "${ADB_PUSH_BEHAVIOR:-ok}" = ok ] || return 1
+                        ;;
                     shell*) fixture_shell "$@" ;;
                 esac
             }
@@ -370,6 +374,10 @@ class SmokeSectionTest(unittest.TestCase):
                     "pm path android")
                         [ "${ADB_PM_READY:-0}" = 1 ] && echo "package:/system/framework/framework-res.apk" || return 1
                         ;;
+                    "pm install"*)
+                        [ "${ADB_PM_INSTALL_BEHAVIOR:-ok}" = ok ] || return 1
+                        ;;
+                    "rm -f"*) : ;;
                     "cmd package resolve-activity"*)
                         case "${ADB_RESOLVE:-}" in
                             1) printf 'fixture.package/%s\n' "$SETUP_ACTIVITY" ;;
@@ -462,6 +470,103 @@ class SmokeInstallTest(SmokeSectionTest):
         # The last-ditch reinstall must fire once on top of the initial install.
         self.assertEqual(2, result.stderr.count("A:install"))
         self.assertIn("--no-incremental", result.stderr)
+
+    def test_api37_uses_push_and_pm_install_without_the_stream(self) -> None:
+        result = self.run_section(
+            self.install,
+            {"ADB_API": "37", "ADB_PM_READY": "1", "ADB_RESOLVE": "1"},
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("RESULT|PASS|install|", result.stdout)
+        self.assertIn("A:push", result.stderr)
+        self.assertIn("A:shell pm install -r /data/local/tmp/fixture.apk", result.stderr)
+        self.assertNotIn("A:install", result.stderr)
+
+    def test_api37_install_failures_are_not_suppressed(self) -> None:
+        result = self.run_section(
+            self.install,
+            {
+                "ADB_API": "37",
+                "ADB_PM_READY": "1",
+                "ADB_PM_INSTALL_BEHAVIOR": "fail",
+                "ADB_RESOLVE": "1",
+            },
+        )
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("RESULT|FAIL|install|", result.stdout)
+        self.assertNotIn("RESULT|PASS|install|", result.stdout)
+        self.assertNotIn("A:install", result.stderr)
+
+    def test_api37_install_retry_is_bounded(self) -> None:
+        result = self.run_section(
+            self.install,
+            {
+                "ADB_API": "37",
+                "ADB_PM_READY": "1",
+                "ADB_PUSH_BEHAVIOR": "fail",
+                "ADB_RESOLVE": "1",
+            },
+        )
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("RESULT|FAIL|install|", result.stdout)
+        self.assertEqual(3, result.stderr.count("A:push"))
+        self.assertNotIn("A:install", result.stderr)
+
+
+class SmokeScreenshotTest(unittest.TestCase):
+    """The API37 screenshot workaround keeps the other APIs on screencap."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.outdir = Path(self.temporary_directory.name)
+        self.shot = shell_function(EMULATOR_SMOKE, "SHOT")
+
+    def run_shot(self, api: str, host_capture: str = "ok") -> subprocess.CompletedProcess[str]:
+        harness = textwrap.dedent(
+            """
+            set -euo pipefail
+            OUTDIR=$1
+            SMOKE_SDK=$2
+            HOST_CAPTURE=$3
+            calls=()
+            trap 'printf "%s\n" "${calls[@]}" >&2' EXIT
+            log() { echo "smoke: $*"; }
+            A() {
+                calls+=("A:$*")
+                case "$*" in
+                    "exec-out screencap -p") printf 'guest-png' ;;
+                    "emu screenrecord screenshot "*)
+                        [ "$HOST_CAPTURE" = ok ] || return 1
+                        printf 'host-png' > "$4/screenshot.png"
+                        ;;
+                esac
+            }
+            """
+        )
+        harness += "\n" + self.shot + "\nSHOT fixture.png\n"
+        return run_bash(harness, str(self.outdir), api, host_capture)
+
+    def test_a_non37_api_still_uses_guest_screencap(self) -> None:
+        result = self.run_shot("36")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual("guest-png", (self.outdir / "fixture.png").read_text(encoding="utf-8"))
+        self.assertIn("A:exec-out screencap -p", result.stderr)
+        self.assertNotIn("screenrecord screenshot", result.stderr)
+
+    def test_api37_uses_the_emulator_host_screenshot(self) -> None:
+        result = self.run_shot("37")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual("host-png", (self.outdir / "fixture.png").read_text(encoding="utf-8"))
+        self.assertIn("A:emu screenrecord screenshot", result.stderr)
+        self.assertNotIn("exec-out screencap", result.stderr)
+
+    def test_api37_a_failed_host_capture_stays_an_empty_image(self) -> None:
+        result = self.run_shot("37", host_capture="fail")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(b"", (self.outdir / "fixture.png").read_bytes())
+        self.assertIn("screenshot fixture.png failed", result.stdout)
+        self.assertNotIn("exec-out screencap", result.stderr)
 
 
 class SmokeFocusRetryTest(SmokeSectionTest):

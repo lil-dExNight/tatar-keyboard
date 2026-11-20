@@ -380,6 +380,9 @@ class InstallApkTest(unittest.TestCase):
         self.install_function = re.search(
             r"(?ms)^install_apk\(\) \{.*?^\}$", text
         ).group(0)
+        self.booted_api_function = re.search(
+            r"(?ms)^booted_api\(\) \{.*?^\}$", text
+        ).group(0)
         self.apk = self.root / "fixture.apk"
         self.apk.write_bytes(b"fixture")
         self.adb = self.bindir / "adb"
@@ -396,7 +399,7 @@ class InstallApkTest(unittest.TestCase):
         )
         self.adb.chmod(0o755)
 
-    def run_install(self, behavior: str) -> subprocess.CompletedProcess[str]:
+    def run_install(self, behavior: str, api: str = "36") -> subprocess.CompletedProcess[str]:
         self.calls.write_text("", encoding="utf-8")
         harness = textwrap.dedent(
             """
@@ -408,10 +411,11 @@ class InstallApkTest(unittest.TestCase):
             SHELL() { "$ADB" -s "$SERIAL" shell "$@"; }
             """
         )
-        harness += self.wait_function + "\n" + self.install_function + "\n"
+        harness += self.wait_function + "\n" + self.booted_api_function + "\n" + self.install_function + "\n"
         harness += 'install_apk "$2" "$3/install.log"\n'
         environment = os.environ.copy()
         environment["ADB_BEHAVIOR"] = behavior
+        environment["ADB_API"] = api
         environment["ADB_CALLS"] = str(self.calls)
         return subprocess.run(
             ["bash", "-c", harness, "bash", str(self.adb), str(self.apk), str(self.root)],
@@ -430,6 +434,8 @@ class InstallApkTest(unittest.TestCase):
                     pm_ready && echo "Service package: found" || return 1 ;;
                 "-s emulator-5554 shell pm path android")
                     pm_ready && echo "package:/system/framework/framework-res.apk" || return 1 ;;
+                "-s emulator-5554 shell getprop ro.build.version.sdk")
+                    echo "$ADB_API" ;;
                 "-s emulator-5554 reconnect") : ;;
                 "-s emulator-5554 install"*)
                     case "$ADB_BEHAVIOR" in
@@ -485,6 +491,41 @@ class InstallApkTest(unittest.TestCase):
         result = self.run_install("never-ready")
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertNotIn("install --no-incremental", self.calls.read_text(encoding="utf-8"))
+
+    def test_api37_uses_push_and_pm_install_without_the_stream(self) -> None:
+        self.write_adb(self.install_stub())
+        result = self.run_install("fail", api="37")
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        calls = self.calls.read_text(encoding="utf-8")
+        self.assertNotIn("install --no-incremental", calls)
+        self.assertIn("push", calls)
+        self.assertIn("shell pm install -r /data/local/tmp/fixture.apk", calls)
+
+    def test_api37_install_failures_are_not_suppressed_by_the_fallback(self) -> None:
+        self.write_adb(
+            self.install_stub().replace(
+                '"-s emulator-5554 shell pm install"*) echo "Success" ;;',
+                '"-s emulator-5554 shell pm install"*) echo "Failure [PM_FIXTURE]" >&2; exit 1 ;;',
+            )
+        )
+        result = self.run_install("fail", api="37")
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        calls = self.calls.read_text(encoding="utf-8")
+        self.assertIn("push", calls)
+        self.assertNotIn("install --no-incremental", calls)
+
+    def test_api37_install_is_bounded_to_two_attempts(self) -> None:
+        self.write_adb(
+            self.install_stub().replace(
+                '"-s emulator-5554 push"*) : ;;',
+                '"-s emulator-5554 push"*) exit 1 ;;',
+            )
+        )
+        result = self.run_install("ok", api="37")
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        calls = self.calls.read_text(encoding="utf-8")
+        self.assertEqual(2, calls.count("push"))
 
 
 class SmokeCriticalSkipTest(unittest.TestCase):

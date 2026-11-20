@@ -223,7 +223,35 @@ SMOKE_SAVED_ROT=$(SHELL settings get system user_rotation 2>/dev/null | tr -d '\
 SHELL settings put system accelerometer_rotation 0 || true
 SHELL settings put system user_rotation 0 || true
 sleep 2
-SHOT() { A exec-out screencap -p > "$OUTDIR/$1" 2>/dev/null; }
+# API 37's gfxstream guest aborts inside screencap's color-buffer readback.
+# Capture that image through the emulator console instead, which produces the
+# same full-screen PNG without invoking the guest renderer. Other APIs retain
+# the faster exec-out path. A failed host capture is deliberately left as an
+# invalid/empty image so the existing pixel assertions still fail.
+SMOKE_SDK=$(SHELL getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)
+SHOT() {
+    local capture_dir host_screenshot
+    if [ "$SMOKE_SDK" != 37 ]; then
+        A exec-out screencap -p > "$OUTDIR/$1" 2>/dev/null
+        return
+    fi
+    capture_dir=$(mktemp -d "$OUTDIR/.screenshot.XXXXXX")
+    # The emulator process does not share the driver's working directory.
+    capture_dir=$(realpath "$capture_dir")
+    host_screenshot=""
+    if A emu screenrecord screenshot "$capture_dir" >/dev/null 2>&1; then
+        # Current emulator builds choose Screenshot_<timestamp>.png rather than
+        # the screenshot.png name used by older builds.
+        host_screenshot=$(find "$capture_dir" -maxdepth 1 -type f -name '*.png' -print -quit)
+    fi
+    if [ -n "$host_screenshot" ] && [ -s "$host_screenshot" ]; then
+        mv "$host_screenshot" "$OUTDIR/$1"
+    else
+        : > "$OUTDIR/$1"
+        log "screenshot $1 failed; pixel checks will remain FAIL"
+    fi
+    rm -rf "$capture_dir"
+}
 DUMP_UI() {                                  # uiautomator dump → stdout + last evidence
     local dump
     SHELL uiautomator dump /data/local/tmp/smoke-ui.xml >"$OUTDIR/uiautomator-dump.log" 2>&1
@@ -404,42 +432,41 @@ fi
 
 # ── install and select the IME ──────────────────────────────────────────────────
 
-# The package service registers before PackageManager is usable, and the API 37
-# image drops it under an install stream ("Broken pipe"): wait for a real query
-# and use the streamed path, exactly like emulator-release-validation.sh.
-pm_ready=0
-for _ in $(seq 1 60); do
-    if SHELL service check package 2>/dev/null | grep -q found \
-            && SHELL pm path android 2>/dev/null | grep -q '^package:'; then
-        pm_ready=1
-        break
-    fi
-    sleep 2
-done
-if [ "$pm_ready" != 1 ]; then
-    result FAIL install "package manager not ready after 120 seconds"
-    exit 1
-fi
-install_ok=0
-for install_attempt in 1 2 3; do
-    if A install --no-incremental -r "$APK" >"$OUTDIR/install.log" 2>&1; then
-        install_ok=1
-        break
-    fi
-    # The API 37 image can restart system_server during an install stream; the
-    # guest recovers, so wait for the package manager and try again instead of
-    # ending the run on a transient "Broken pipe".
-    if [ "$install_attempt" = 3 ]; then
-        break
-    fi
-    A reconnect >/dev/null 2>&1 || true
+# Wait for a real package-manager query before every attempt. API 37 uses a
+# bounded push + local pm install retry from the outset: its streamed session
+# crashes StorageManagerService.allocateBytes. Keep non-incremental adb install
+# on every other API, including its existing reconnect retry.
+wait_package_manager() {
+    local _
     for _ in $(seq 1 60); do
         if SHELL service check package 2>/dev/null | grep -q found \
                 && SHELL pm path android 2>/dev/null | grep -q '^package:'; then
-            break
+            return 0
         fi
         sleep 2
     done
+    return 1
+}
+install_ok=0
+remote_apk="/data/local/tmp/$(basename "$APK")"
+for install_attempt in 1 2 3; do
+    if ! wait_package_manager; then
+        [ "$install_attempt" = 1 ] && result FAIL install "package manager not ready after 120 seconds"
+        break
+    fi
+    if [ "$SMOKE_SDK" = 37 ]; then
+        if A push "$APK" "$remote_apk" >"$OUTDIR/install.log" 2>&1 \
+                && A shell pm install -r "$remote_apk" >>"$OUTDIR/install.log" 2>&1; then
+            install_ok=1
+            A shell rm -f "$remote_apk" >/dev/null 2>&1 || true
+            break
+        fi
+    elif A install --no-incremental -r "$APK" >"$OUTDIR/install.log" 2>&1; then
+        install_ok=1
+        break
+    fi
+    [ "$install_attempt" = 3 ] && break
+    A reconnect >/dev/null 2>&1 || true
     sleep 3
 done
 if [ "$install_ok" = 1 ]; then
