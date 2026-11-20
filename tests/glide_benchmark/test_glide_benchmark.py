@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import csv
 import importlib.util
 import json
 from pathlib import Path
@@ -21,6 +22,7 @@ BRIDGE = (
     "inputmethod" / "latin" / "glide" / "GlideBenchmark.kt"
 )
 COLLECTOR = ROOT / "research" / "glide-collector" / "index.html"
+PROMPTS = ROOT / "research" / "glide-evaluation" / "prompts.tsv"
 
 
 def load_module():
@@ -117,6 +119,69 @@ class VisibleMetricTest(unittest.TestCase):
         self.assertEqual(evaluated[0]["error_class"], "visible_top3_miss_engine_rank4")
 
 
+class PathVerticalTransitionTest(unittest.TestCase):
+    GEOMETRY = {
+        "model": "grid-v1",
+        "grid_width": 1000,
+        "keys": [
+            {"letter": "а", "left": 0, "top": 0, "right": 100, "bottom": 100, "more": []},
+            {"letter": "б", "left": 0, "top": 200, "right": 100, "bottom": 300, "more": []},
+        ],
+    }
+
+    def test_vertical_non_vertical_and_mixed_paths(self):
+        specifications = (
+            ("vertical", [0.5, 2.5]),
+            ("non-vertical", [0.25, 0.5, 0.75]),
+            ("mixed", [0.5, 2.5, 2.5, 0.5, 2.5]),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "paths.jsonl"
+            rows = []
+            for record_id, ys in specifications:
+                rows.append({
+                    "collector_schema": 2,
+                    "record_id": record_id,
+                    "session_id": "path-test",
+                    "device_id": "path-test-device",
+                    "layout_id": "tt",
+                    "prompt": "сәләм",
+                    "path_x": [0.5] * len(ys),
+                    "path_y": ys,
+                    "dt_ms": [0] + [10] * (len(ys) - 1),
+                    "key_geometry": self.GEOMETRY,
+                    "gate_passed": True,
+                })
+            path.write_text(
+                "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+                encoding="utf-8",
+            )
+            records, invalid, sources = benchmark.load_inputs([path])
+        self.assertEqual(invalid, [])
+        results = {record["record_index"]: decoded_fixture(record) for record in records}
+        report = benchmark.build_report(
+            records=records, invalid=invalid, sources=sources, split="development", frozen=False,
+            manifest_path=None, source_kind="synthetic", results=results, bridge_metadata={},
+        )
+        self.assertEqual(report["schema"], "glide-benchmark-report-v1")
+        self.assertEqual(
+            [record["record_fingerprint"] for record in report["records"]],
+            [record["record_fingerprint"] for record in records],
+        )
+        self.assertEqual(
+            [record["path_vertical_transition_count"] for record in report["records"]],
+            [1, 0, 3],
+        )
+        # The prompt-derived bridge diagnostic stays unchanged even when the real path is flat.
+        self.assertEqual(
+            [record["vertical_transition_count"] for record in report["records"]],
+            [1, 1, 1],
+        )
+        self.assertEqual(report["summary"]["path_vertical_transition_records"], 2)
+        self.assertEqual(report["summary"]["path_vertical_transition_record_rate"], 0.666667)
+        self.assertEqual(report["summary"]["path_vertical_transitions"], 4)
+
+
 class DatasetFreezeTest(unittest.TestCase):
     def test_existing_session_is_development_only(self):
         manifest = json.loads(
@@ -188,6 +253,40 @@ class CollectorContractTest(unittest.TestCase):
         self.assertIn("'ё': 'е'", ru)
         self.assertIn("'ъ': 'ь'", ru)
         self.assertIn("'ө': 'о'", ru)
+
+
+class PromptChecklistTest(unittest.TestCase):
+    def test_russian_alias_and_negative_requirements_are_explicit(self):
+        with PROMPTS.open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
+        russian = [row for row in rows if row["layout"] == "ru"]
+        required_aliases = {
+            "а→ә": ("белән", "ә"),
+            "о→ө": ("өчен", "ө"),
+            "у→ү": ("түгел", "ү"),
+            "ж→җ": ("җилләр", "җ"),
+            "н→ң": ("миңа", "ң"),
+            "х→һ": ("һөнәр", "һ"),
+            "ь→ъ": ("вәгъдә", "ъ"),
+        }
+        for pair, (prompt, alias) in required_aliases.items():
+            matches = [
+                row for row in russian
+                if row["prompt"] == prompt and f"alias:{pair}" in row["classes"].split(",")
+            ]
+            self.assertEqual(len(matches), 1, pair)
+            row = matches[0]
+            self.assertIn(f"alias:{alias}", row["classes"].split(","))
+            self.assertIn("vertical_transition", row["classes"].split(","))
+            self.assertEqual(row["speeds"], "slow,normal,fast")
+            self.assertEqual(row["orientation"], "portrait,landscape")
+            self.assertIn("no recorded evidence", row["attribution"])
+            self.assertEqual(row["native_review"], "no")
+        for kind in ("tap", "tremor", "canceled", "short_drag", "unintended_start"):
+            matches = [row for row in russian if row["classes"] == f"negative:{kind}"]
+            self.assertEqual(len(matches), 1, kind)
+            self.assertEqual(matches[0]["prompt"], "—")
+            self.assertIn("no recorded evidence", matches[0]["attribution"])
 
 
 class ComparisonTest(unittest.TestCase):

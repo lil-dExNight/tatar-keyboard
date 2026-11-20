@@ -68,4 +68,16 @@ prompt	layout	classes	speeds	orientation	geometry	attribution	native_review
 лёгкий	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
 тёмный	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
 зелёный	ru	alias,alias:ё,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	corpus-derived word in the embedded collector pool	no
-—	any	negative:tap,negative:tremor,negative:canceled,negative:short_drag,negative:unintended_start	slow,normal,fast	portrait,landscape	each reserved device	protocol procedure; prompt is the displayed word, no new word pool	no
+белән	ru	alias,alias:ә,alias:а→ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	checklist-only Russian-layout alias probe reusing the embedded Tatar prompt; no recorded evidence	no
+өчен	ru	alias,alias:ө,alias:о→ө,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	checklist-only Russian-layout alias probe reusing the embedded Tatar prompt; no recorded evidence	no
+түгел	ru	alias,alias:ү,alias:у→ү,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	checklist-only Russian-layout alias probe reusing the embedded Tatar prompt; no recorded evidence	no
+җилләр	ru	doubled_letter,alias,alias:җ,alias:ж→җ,alias:ә,alias:а→ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	checklist-only Russian-layout alias probe reusing the embedded Tatar prompt; no recorded evidence	no
+миңа	ru	alias,alias:ң,alias:н→ң,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	checklist-only Russian-layout alias probe reusing the embedded Tatar prompt; no recorded evidence	no
+һөнәр	ru	alias,alias:һ,alias:х→һ,alias:ө,alias:о→ө,alias:ә,alias:а→ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	checklist-only Russian-layout alias probe reusing the embedded Tatar prompt; no recorded evidence	no
+вәгъдә	ru	alias,alias:ъ,alias:ь→ъ,alias:ә,alias:а→ә,vertical_transition	slow,normal,fast	portrait,landscape	each reserved device	checklist-only Russian-layout alias probe reusing the embedded Tatar prompt; no recorded evidence	no
+—	tt	negative:tap,negative:tremor,negative:canceled,negative:short_drag,negative:unintended_start	slow,normal,fast	portrait,landscape	each reserved device	protocol procedure; prompt is the displayed word, no new word pool	no
+—	ru	negative:tap	slow,normal,fast	portrait,landscape	each reserved device	checklist-only protocol procedure; prompt is the displayed word, no new word pool; no recorded evidence	no
+—	ru	negative:tremor	slow,normal,fast	portrait,landscape	each reserved device	checklist-only protocol procedure; prompt is the displayed word, no new word pool; no recorded evidence	no
+—	ru	negative:canceled	slow,normal,fast	portrait,landscape	each reserved device	checklist-only protocol procedure; prompt is the displayed word, no new word pool; no recorded evidence	no
+—	ru	negative:short_drag	slow,normal,fast	portrait,landscape	each reserved device	checklist-only protocol procedure; prompt is the displayed word, no new word pool; no recorded evidence	no
+—	ru	negative:unintended_start	slow,normal,fast	portrait,landscape	each reserved device	checklist-only protocol procedure; prompt is the displayed word, no new word pool; no recorded evidence	no

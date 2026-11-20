@@ -491,6 +491,28 @@ def path_metrics(record: dict[str, Any]) -> tuple[float, int, float, str]:
     return length, duration_ms, speed, bucket
 
 
+def path_vertical_transition_count(record: dict[str, Any]) -> int:
+    """Count adjacent-sample changes between nearest key-row bands in the recorded path.
+
+    Path coordinates are normalized by the geometry-derived key radius. Row centers come from the
+    record's concrete geometry, never from the prompt or decoder result. A midpoint tie selects
+    the upper row, making the result deterministic. A segment that skips a row is one transition.
+    """
+    geometry = record["geometry_key"]
+    keys = geometry["keys"]
+    radius = min(min(key["right"] - key["left"], key["bottom"] - key["top"]) for key in keys)
+    row_centers = sorted({key["top"] + key["bottom"] for key in keys})
+    previous_row = None
+    transitions = 0
+    for normalized_y in record["path_y"]:
+        doubled_y = 2.0 * normalized_y * radius
+        row = min(range(len(row_centers)), key=lambda index: (abs(doubled_y - row_centers[index]), index))
+        if previous_row is not None and row != previous_row:
+            transitions += 1
+        previous_row = row
+    return transitions
+
+
 def error_class(record: dict[str, Any], decoded: dict[str, Any]) -> str:
     if record["trial_kind"] != "ordinary":
         return "negative_control"
@@ -538,6 +560,7 @@ def evaluate_records(
     for record in records:
         decoded = results[record["record_index"]]
         length, duration, speed, speed_bucket = path_metrics(record)
+        recorded_vertical_transitions = path_vertical_transition_count(record)
         error = error_class(record, decoded)
         classes = ["in_vocabulary" if decoded["target_indexed"] else "out_of_vocabulary"]
         if decoded["unmappable_letters"]:
@@ -591,6 +614,7 @@ def evaluate_records(
             "alias_letters": decoded["alias_letters"],
             "doubled_letter": decoded["doubled_letter"],
             "vertical_transition_count": decoded["vertical_transition_count"],
+            "path_vertical_transition_count": recorded_vertical_transitions,
             "extra_row_letters": decoded["extra_row_letters"],
             "length_key_radii": round(length, 6),
             "duration_ms": duration,
@@ -623,6 +647,11 @@ def summarize(evaluated: Sequence[dict[str, Any]]) -> dict[str, Any]:
     collector_reasons = collections.Counter(
         str(record["input_rejection_reason"]) for record in evaluated if not record["gate_passed"]
     )
+    path_vertical_counts = [
+        record["path_vertical_transition_count"]
+        for record in evaluated if record["positive"]
+    ]
+    records_with_path_vertical = sum(count > 0 for count in path_vertical_counts)
     return {
         "records": len(evaluated),
         "positive_records": len(positive),
@@ -650,6 +679,11 @@ def summarize(evaluated: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "length_pruned": sum(record["pruning"]["length"] for record in positive),
         "decoder_rejected": sum(record["error_class"] == "decoder_rejected" for record in positive),
         "collector_rejected": sum(not record["gate_passed"] for record in positive),
+        "path_vertical_transition_records": records_with_path_vertical,
+        "path_vertical_transition_record_rate": ratio(
+            records_with_path_vertical, len(path_vertical_counts)
+        ),
+        "path_vertical_transitions": sum(path_vertical_counts),
         "error_classes": dict(sorted(errors.items())),
         "target_stages": dict(sorted(stages.items())),
         "collector_rejection_reasons": dict(sorted(collector_reasons.items())),
@@ -729,6 +763,10 @@ def build_report(
             "unit": "key_radii_per_second", "slow_below": SLOW_SPEED_MAX,
             "normal_inclusive": [SLOW_SPEED_MAX, FAST_SPEED_MIN], "fast_at_or_above": FAST_SPEED_MIN,
         },
+        "path_vertical_transition_metric": (
+            "positive-record adjacent-sample changes between nearest key-row bands, computed from "
+            "path_y and geometry_key; midpoint ties select the upper row"
+        ),
         "summary": summarize(evaluated),
         "breakdowns": {
             "class": {name: summarize(groups) for name, groups in sorted(classes.items())},
@@ -984,7 +1022,10 @@ def print_evaluation_summary(report: dict[str, Any], output: str) -> None:
         f"glide-benchmark: records={summary['records']} positive={summary['positive_records']} "
         f"top1={percent(summary['top1_rate'])} visible_top3={percent(summary['visible_top3_rate'])} "
         f"unmappable={summary['unmappable']} endpoint_pruned={summary['endpoint_pruned']} "
-        f"length_pruned={summary['length_pruned']} rejected={summary['decoder_rejected']}"
+        f"length_pruned={summary['length_pruned']} rejected={summary['decoder_rejected']} "
+        f"vertical_paths={summary['path_vertical_transition_records']}/{summary['positive_records']} "
+        f"({percent(summary['path_vertical_transition_record_rate'])}) "
+        f"vertical_transitions={summary['path_vertical_transitions']}"
     )
     print(f"glide-benchmark: wrote {output}")
 
