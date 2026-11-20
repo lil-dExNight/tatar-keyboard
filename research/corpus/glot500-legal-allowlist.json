@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "dataset": "cis-lmu/Glot500",
+  "language_config": "tat_Cyrl",
+  "dataset_revision": "f7b3e9d11a7e974ec0d021342cd8b41fd67510c1",
+  "default": "deny",
+  "label_matching": "exact",
+  "allow_labels": [
+    "Earthlings",
+    "Flores200",
+    "w2c"
+  ],
+  "known_rejected_labels": [
+    "Leipzig_community",
+    "Leipzig_mixed",
+    "Leipzig_news",
+    "Leipzig_web",
+    "Leipzig_wikipedia",
+    "Lyrics",
+    "mtdata",
+    "nllb_other_til",
+    "OSCAR",
+    "Oscar22",
+    "TIL",
+    "Tatoeba",
+    "Wikipedia",
+    "wiki",
+    "wikidata"
+  ],
+  "shards": [
+    {
+      "path": "tat_Cyrl/train/data-00000-of-00003.arrow",
+      "bytes": 457125000,
+      "sha256": "9b2fbabc769760c97bb8a49836d22cf2955756786faab67c635f34f875befb42"
+    },
+    {
+      "path": "tat_Cyrl/train/data-00001-of-00003.arrow",
+      "bytes": 456938760,
+      "sha256": "155417af8d7a086515ef3e3e3d1c9dfc5a1655e737494b189e66163582e3dd33"
+    },
+    {
+      "path": "tat_Cyrl/train/data-00002-of-00003.arrow",
+      "bytes": 457464712,
+      "sha256": "ba9b06bf1b3ef3ae5836afe49bd60081c07c7ca26954796296e557e019f0336d"
+    }
+  ],
+  "source_review": {
+    "legal_allowlist": "dist/operator-review/hplt-glot/legal-allowlist.json",
+    "legal_allowlist_sha256": "9794d3f100a97f2eaf3a51c150d7dacbf59703721064a42139f964d3b8ff2e62",
+    "source_pins": "dist/operator-review/hplt-glot/source-pins.json",
+    "source_pins_sha256": "66e1fadc56008442c8e07eba4e388b4af52ae46d1ee9b2d52c8dd2ec4b155b60"
+  }
+}
