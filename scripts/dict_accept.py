@@ -5,9 +5,11 @@ OpenSubtitles plus Tatoeba, an existing shipped word, or a Russian Tatoeba-attes
 other forms of its stem in the shipped dictionary. Capitalization evidence and every other
 single-source candidate require an explicit widened review with `approved=yes`,
 `reviewer`, `review_date`, and `note`. Fragments, excluded words, and `approved=no` rows are
-rejected. `pack` builds the dictionary assets from the SHA-256 checked 1.8.4 baseline plus
-accepted words, with written plus conversational frequencies plus the per-word bonus of
-`bonus-freq-*.tsv` when that file exists.
+rejected. The optional `manual_rules`, `written_evidence`, and `written_norm` columns add strict
+per-corpus gates for future manual decisions; legacy accepted files remain valid under their
+recorded automatic or widened-review basis. `pack` builds the dictionary assets from the
+SHA-256 checked 1.8.4 baseline plus accepted words, with written plus conversational frequencies
+plus the per-word bonus of `bonus-freq-*.tsv` when that file exists.
 """
 from __future__ import annotations
 
@@ -43,6 +45,28 @@ MAX_CAP_RATIO = 0.05
 MIN_STEM = 4
 # How many OTHER forms of the same stem must be in the shipped dictionary.
 MIN_PARADIGM_SIBLINGS = 3
+
+# Stable reason codes for manual review. Only written-corpus and interjection can independently
+# admit a row. Neighbor and fused-spelling decisions are always explicit manual rejections.
+FREQUENT_WORD_NEIGHBOR = "frequent-word-neighbor"
+WRITTEN_CORPUS = "written-corpus"
+FUSED_COLLOQUIAL = "fused-colloquial"
+INTERJECTION = "interjection"
+MANUAL_RULES = (
+    FREQUENT_WORD_NEIGHBOR,
+    WRITTEN_CORPUS,
+    FUSED_COLLOQUIAL,
+    INTERJECTION,
+)
+AUTOMATIC_ADMISSION_RULES = frozenset({"two-corpora", "shipped-word", "shipped-paradigm"})
+MANUAL_ADMISSION_RULES = frozenset(
+    {"operator-widened", f"manual-{WRITTEN_CORPUS}", f"manual-{INTERJECTION}"}
+)
+WRITTEN_SOURCES = frozenset({"tatoeba", "leipzig_mixed", "leipzig_web"})
+NON_WRITTEN_SOURCES = frozenset({"opensubtitles", "extra"})
+MIN_WRITTEN_OCCURRENCES = 5
+MIN_WRITTEN_CORPORA = 2
+MIN_INTERJECTION_WRITTEN_OCCURRENCES = 3
 
 # ── fragments and exclusions ───────────────────────────────────────────────────────────────
 # Words rejected at any frequency, listed by hand; the rule never adds to this list. `можна`
@@ -102,15 +126,87 @@ RUSSIAN_ENDINGS = frozenset({
 HEADER = ["word", "heldout_hits", "train_freq", "train_freq_clean", "sources",
           "license_status", "cap_ratio", "enters_top100k", "approved", "reviewer",
           "review_date", "note"]
+REVIEW_HEADER = ["manual_rules", "written_evidence", "written_norm"]
+FULL_HEADER = HEADER + REVIEW_HEADER
+
+
+def parse_manual_rules(text: str) -> tuple[tuple[str, str], ...]:
+    """Parse explicit rule=accept/reject decisions; no word-shape detector is involved."""
+    decisions = []
+    seen = set()
+    if not text:
+        return ()
+    for item in text.split(";"):
+        try:
+            rule, decision = item.split("=", 1)
+        except ValueError as error:
+            raise ValueError(f"manual rule must be rule=accept or rule=reject: {item!r}") from error
+        if rule not in MANUAL_RULES:
+            raise ValueError(f"unknown manual rule {rule!r}")
+        if decision not in ("accept", "reject"):
+            raise ValueError(f"manual decision for {rule!r} must be accept or reject")
+        if rule in seen:
+            raise ValueError(f"duplicate manual rule {rule!r}")
+        seen.add(rule)
+        decisions.append((rule, decision))
+    return tuple(decisions)
+
+
+def parse_written_evidence(text: str) -> tuple[tuple[str, int], ...]:
+    """Parse corpus=positive-count evidence, excluding conversational-only and fused sources."""
+    evidence = []
+    seen = set()
+    if not text:
+        return ()
+    for item in text.split(";"):
+        try:
+            source, raw_count = item.split("=", 1)
+            count = int(raw_count)
+        except ValueError as error:
+            raise ValueError(f"written evidence must be corpus=count: {item!r}") from error
+        if source not in WRITTEN_SOURCES:
+            excluded = " (subtitles and extra are not written evidence)" if source in NON_WRITTEN_SOURCES else ""
+            raise ValueError(f"unknown or excluded written corpus {source!r}{excluded}")
+        if count <= 0:
+            raise ValueError(f"written evidence count must be positive: {item!r}")
+        if source in seen:
+            raise ValueError(f"duplicate written corpus {source!r}")
+        seen.add(source)
+        evidence.append((source, count))
+    return tuple(evidence)
+
+
+def evidence_totals(evidence: tuple[tuple[str, int], ...]) -> tuple[int, int]:
+    return sum(count for _source, count in evidence), len(evidence)
+
+
+def written_corpus_reason(row: Row) -> str:
+    total, corpora = evidence_totals(parse_written_evidence(row.written_evidence))
+    if total >= MIN_WRITTEN_OCCURRENCES and corpora >= MIN_WRITTEN_CORPORA:
+        return ""
+    return (f"{WRITTEN_CORPUS} requires at least {MIN_WRITTEN_OCCURRENCES} written occurrences "
+            f"in more than one corpus, excluding subtitles and extra; got {total} in {corpora}")
+
+
+def interjection_reason(row: Row) -> str:
+    total, _corpora = evidence_totals(parse_written_evidence(row.written_evidence))
+    if total >= MIN_INTERJECTION_WRITTEN_OCCURRENCES:
+        return ""
+    return (f"{INTERJECTION} requires at least {MIN_INTERJECTION_WRITTEN_OCCURRENCES} written "
+            f"occurrences, excluding subtitles and extra; got {total}")
 
 
 class Row:
     __slots__ = ("word", "heldout", "freq", "freq_clean", "sources", "license",
-                 "cap_ratio", "enters_top100k", "approved", "reviewer", "review_date", "note")
+                 "cap_ratio", "enters_top100k", "approved", "reviewer", "review_date", "note",
+                 "manual_rules", "written_evidence", "written_norm")
 
     def __init__(self, fields):
-        if len(fields) != len(HEADER):
-            raise ValueError(f"expected {len(HEADER)} queue columns, got {len(fields)}")
+        if len(fields) not in (len(HEADER), len(FULL_HEADER)):
+            raise ValueError(
+                f"expected {len(HEADER)} legacy or {len(FULL_HEADER)} review queue columns, "
+                f"got {len(fields)}"
+            )
         self.word = fields[0]
         self.heldout = int(fields[1])
         self.freq = int(fields[2])
@@ -123,6 +219,16 @@ class Row:
         self.reviewer = fields[9].strip()
         self.review_date = fields[10].strip()
         self.note = fields[11].strip()
+        self.manual_rules = ""
+        self.written_evidence = ""
+        self.written_norm = ""
+        if len(fields) == len(FULL_HEADER):
+            self.manual_rules = fields[12].strip()
+            self.written_evidence = fields[13].strip()
+            self.written_norm = fields[14].strip()
+        # Validate eagerly so every queue reader fails on malformed or excluded evidence.
+        parse_manual_rules(self.manual_rules)
+        parse_written_evidence(self.written_evidence)
         if self.approved not in ("", "yes", "no"):
             raise ValueError(f"approved must be empty, yes, or no: {self.approved!r}")
 
@@ -153,6 +259,62 @@ def review_metadata_reason(row: Row) -> str:
     return "operator-widened admission requires " + ", ".join(missing)
 
 
+def review_rejection_metadata_reason(row: Row, rule: str) -> str:
+    missing = []
+    if not row.reviewer:
+        missing.append("reviewer")
+    if not row.review_date:
+        missing.append("review_date")
+    else:
+        try:
+            parsed_date = datetime.date.fromisoformat(row.review_date)
+            if parsed_date.isoformat() != row.review_date:
+                raise ValueError("non-canonical date")
+        except ValueError:
+            missing.append("review_date=YYYY-MM-DD")
+    if not row.note:
+        missing.append("note")
+    if not missing:
+        return ""
+    return f"manual {rule} rejection requires " + ", ".join(missing)
+
+
+def manual_decision_reason(row: Row, rule: str, decision: str) -> str:
+    """Validate one declared decision and return its failed reason code, if any."""
+    if decision == "reject":
+        reason = review_rejection_metadata_reason(row, rule)
+        if rule == FUSED_COLLOQUIAL and not row.written_norm:
+            norm_reason = f"{FUSED_COLLOQUIAL} rejection requires the separately written norm"
+            reason = "; ".join(part for part in (reason, norm_reason) if part)
+        return reason
+    if rule in (FREQUENT_WORD_NEIGHBOR, FUSED_COLLOQUIAL):
+        return f"{rule}=accept is invalid: this rule requires manual rejection"
+    if rule == WRITTEN_CORPUS:
+        return written_corpus_reason(row)
+    if rule == INTERJECTION:
+        return interjection_reason(row)
+    return f"unknown manual rule {rule!r}"
+
+
+def manual_review_problems(row: Row) -> list[str]:
+    decisions = parse_manual_rules(row.manual_rules)
+    problems = []
+    for rule, decision in decisions:
+        reason = manual_decision_reason(row, rule, decision)
+        if reason:
+            problems.append(reason)
+        if decision == "accept":
+            metadata_reason = review_metadata_reason(row)
+            if metadata_reason:
+                problems.append(f"{rule}: {metadata_reason}")
+    rules = {rule for rule, _decision in decisions}
+    if row.written_evidence and not rules.intersection({WRITTEN_CORPUS, INTERJECTION}):
+        problems.append("written_evidence requires a written-corpus or interjection decision")
+    if row.written_norm and FUSED_COLLOQUIAL not in rules:
+        problems.append("written_norm requires a fused-colloquial decision")
+    return problems
+
+
 def read_queue(tag: str) -> list[Row]:
     rows = []
     with QUEUE[tag].open(encoding="utf-8") as handle:
@@ -161,7 +323,7 @@ def read_queue(tag: str) -> list[Row]:
                 continue
             fields = line.rstrip("\n").split("\t")
             if fields[0] == "word":
-                if fields != HEADER:
+                if fields not in (HEADER, FULL_HEADER):
                     raise SystemExit(f"{QUEUE[tag]}: unexpected columns {fields}")
                 continue
             if not fields[0]:
@@ -230,12 +392,36 @@ def decide(rows: list[Row], tag: str, shipped: frozenset[str]):
         if reason:
             rejected.append((row, "fragment", f"{reason}; automatic rule: {rule}"))
             continue
+        problems = manual_review_problems(row)
+        if problems:
+            rejected.append((row, "review-required",
+                             "; ".join(problems) + f"; automatic rule: {rule} ({detail})"))
+            continue
+        decisions = parse_manual_rules(row.manual_rules)
+        manual_rejections = [manual_rule for manual_rule, decision in decisions
+                             if decision == "reject"]
+        if manual_rejections:
+            manual_rule = manual_rejections[0]
+            rejection_detail = row.note
+            if manual_rule == FUSED_COLLOQUIAL:
+                rejection_detail = f"separately written norm: {row.written_norm}; {row.note}"
+            rejected.append((row, manual_rule, rejection_detail))
+            continue
         if row.approved == "no":
             rejected.append((row, "review-rejected",
                              row.note or f"reviewer rejected the candidate; automatic rule: {rule}"))
             continue
         if passed:
             accepted.append((row, rule, detail))
+            continue
+        manual_acceptances = [manual_rule for manual_rule, decision in decisions
+                              if decision == "accept"]
+        if manual_acceptances:
+            manual_rule = manual_acceptances[0]
+            total, corpora = evidence_totals(parse_written_evidence(row.written_evidence))
+            accepted.append((row, f"manual-{manual_rule}",
+                             f"{row.written_evidence}; total={total}; corpora={corpora}; "
+                             f"automatic rule: {rule} ({detail})"))
             continue
         metadata_reason = review_metadata_reason(row)
         if metadata_reason:
@@ -256,28 +442,41 @@ PREAMBLE = """\
 # All other non-fragment candidates need explicit review. operator-widened is admitted only with
 # approved=yes, reviewer, review_date=YYYY-MM-DD, and note. Subtitle-only candidates never pass
 # automatically, including Russian forms with a shipped stem.
-#   review-required   - operator-widened review is absent or incomplete
+#   review-required   - review is absent, incomplete, or fails its declared evidence rule
 #   review-rejected   - approved=no
 #   fragment          - a formal fragment: {frag}
 #   operator-excluded - named by hand: {excl}
 #
-# The columns are the queue columns plus rule and rule_detail. Rejected rows stay in
-# rejected-*.tsv: complete the review fields and rerun `python3 scripts/dict_accept.py select`.
+# manual_rules contains explicit rule=accept/reject decisions, never a spelling heuristic:
+#   frequent-word-neighbor=reject  - the note names the masked frequent word
+#   written-corpus=accept          - at least {written_min} occurrences in at least {corpora_min}
+#                                    written corpora; subtitles and extra never count
+#   fused-colloquial=reject        - written_norm records the separately written norm
+#   interjection=accept            - at least {interjection_min} written occurrences
+# Every manual decision needs reviewer, review_date and note; accept also needs approved=yes.
+# The written_evidence format is corpus=count;... using tatoeba, leipzig_mixed or leipzig_web.
+# A passing manual-written-corpus or manual-interjection decision is not an automatic rule.
+#
+# The columns are the queue and explicit review columns plus rule and rule_detail. Rejected rows
+# stay in rejected-*.tsv: complete the review fields and rerun `python3 scripts/dict_accept.py select`.
 """
 
 
 def write_rows(path: Path, kind: str, decided, frag: str):
     with path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(PREAMBLE.format(kind=kind, cap=f"{MAX_CAP_RATIO:.2f}",
-                                     sib=MIN_PARADIGM_SIBLINGS, frag=frag,
-                                     excl=", ".join(sorted(EXCLUDED_WORDS))))
-        handle.write("\t".join(HEADER + ["rule", "rule_detail"]) + "\n")
+        handle.write(PREAMBLE.format(
+            kind=kind, cap=f"{MAX_CAP_RATIO:.2f}", sib=MIN_PARADIGM_SIBLINGS, frag=frag,
+            excl=", ".join(sorted(EXCLUDED_WORDS)), written_min=MIN_WRITTEN_OCCURRENCES,
+            corpora_min=MIN_WRITTEN_CORPORA,
+            interjection_min=MIN_INTERJECTION_WRITTEN_OCCURRENCES))
+        handle.write("\t".join(FULL_HEADER + ["rule", "rule_detail"]) + "\n")
         for row, rule, detail in decided:
             handle.write("\t".join([
                 row.word, str(row.heldout), str(row.freq), str(row.freq_clean),
                 row.sources, row.license, f"{row.cap_ratio:.2f}",
                 "yes" if row.enters_top100k else "no", row.approved, row.reviewer,
-                row.review_date, row.note, rule, detail]) + "\n")
+                row.review_date, row.note, row.manual_rules, row.written_evidence,
+                row.written_norm, rule, detail]) + "\n")
 
 
 SAMPLE_HEAD = """\
@@ -327,6 +526,13 @@ def select(args) -> int:
                        "sample_seed": SAMPLE_SEED, "sample_size": SAMPLE_SIZE,
                        "excluded_words": sorted(EXCLUDED_WORDS),
                        "min_word_len": MIN_WORD_LEN,
+                       "manual_rules": list(MANUAL_RULES),
+                       "written_sources": sorted(WRITTEN_SOURCES),
+                       "excluded_written_sources": sorted(NON_WRITTEN_SOURCES),
+                       "min_written_occurrences": MIN_WRITTEN_OCCURRENCES,
+                       "min_written_corpora": MIN_WRITTEN_CORPORA,
+                       "min_interjection_written_occurrences":
+                           MIN_INTERJECTION_WRITTEN_OCCURRENCES,
                        "vowels": {t: "".join(sorted(v)) for t, v in VOWELS.items()}},
               "languages": {}}
     baseline = Path(args.baseline) if args.baseline else None
@@ -389,9 +595,10 @@ def select(args) -> int:
 
 
 def read_accepted(tag: str) -> dict[str, int]:
-    """Read accepted words and reject missing review evidence or a bypassed exclusion."""
+    """Read accepted words, preserving legacy rows and validating explicit future review."""
     path = OUT_DIR / f"accepted-{SUFFIX[tag]}.tsv"
-    expected_header = HEADER + ["rule", "rule_detail"]
+    legacy_header = HEADER + ["rule", "rule_detail"]
+    review_header = FULL_HEADER + ["rule", "rule_detail"]
     out: dict[str, int] = {}
     with path.open(encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
@@ -399,32 +606,45 @@ def read_accepted(tag: str) -> dict[str, int]:
                 continue
             fields = line.rstrip("\n").split("\t")
             if fields[0] == "word":
-                if fields != expected_header:
+                if fields not in (legacy_header, review_header):
                     raise SystemExit(f"{path}:{line_number}: unexpected columns {fields}")
                 continue
             if not fields[0]:
                 continue
-            if len(fields) != len(expected_header):
+            if len(fields) not in (len(legacy_header), len(review_header)):
                 raise SystemExit(
-                    f"{path}:{line_number}: expected {len(expected_header)} columns, "
-                    f"got {len(fields)}"
+                    f"{path}:{line_number}: expected {len(legacy_header)} legacy or "
+                    f"{len(review_header)} review columns, got {len(fields)}"
                 )
+            row_size = len(fields) - 2
             try:
-                row = Row(fields[: len(HEADER)])
+                row = Row(fields[:row_size])
             except ValueError as error:
                 raise SystemExit(f"{path}:{line_number}: {error}") from error
-            rule = fields[len(HEADER)]
+            rule = fields[row_size]
             if row.word in out:
                 raise SystemExit(f"{path}:{line_number}: duplicate word {row.word!r}")
             if row.word in EXCLUDED_WORDS or fragment_reason(row.word, tag):
                 raise SystemExit(f"{path}:{line_number}: excluded word {row.word!r} was accepted")
             if row.approved == "no":
                 raise SystemExit(f"{path}:{line_number}: approved=no word {row.word!r} was accepted")
-            if rule == "operator-widened":
+            problems = manual_review_problems(row)
+            if problems:
+                raise SystemExit(f"{path}:{line_number}: {'; '.join(problems)}")
+            decisions = dict(parse_manual_rules(row.manual_rules))
+            if "reject" in decisions.values():
+                raise SystemExit(f"{path}:{line_number}: manually rejected word was accepted")
+            if rule in MANUAL_ADMISSION_RULES:
                 reason = review_metadata_reason(row)
                 if reason:
                     raise SystemExit(f"{path}:{line_number}: {reason}")
-            else:
+                if rule.startswith("manual-"):
+                    manual_rule = rule[len("manual-"):]
+                    if decisions.get(manual_rule) != "accept":
+                        raise SystemExit(
+                            f"{path}:{line_number}: {rule} lacks its declared manual decision"
+                        )
+            elif rule in AUTOMATIC_ADMISSION_RULES:
                 if row.cap_ratio >= MAX_CAP_RATIO:
                     raise SystemExit(
                         f"{path}:{line_number}: proper-noun evidence requires operator-widened review"
@@ -434,8 +654,8 @@ def read_accepted(tag: str) -> dict[str, int]:
                     raise SystemExit(f"{path}:{line_number}: invalid two-corpora provenance")
                 if rule == "shipped-paradigm" and "Tatoeba" not in sources:
                     raise SystemExit(f"{path}:{line_number}: shipped-paradigm needs Tatoeba")
-                if rule not in ("two-corpora", "shipped-word", "shipped-paradigm"):
-                    raise SystemExit(f"{path}:{line_number}: unknown admission rule {rule!r}")
+            else:
+                raise SystemExit(f"{path}:{line_number}: unknown admission rule {rule!r}")
             out[row.word] = row.freq
     return out
 
@@ -592,7 +812,7 @@ TATAR_CONV_SELECTION_WEIGHT = 9
 
 
 def read_required_words(path: Path, tag: str) -> frozenset[str]:
-    """Read one canonical word per line; each word must also be in the extra entries."""
+    """Read one canonical word per line for a required or excluded list."""
     import dictionary_coverage as cov
     language = cov.language_for(tag)
     words: set[str] = set()
@@ -631,7 +851,7 @@ def read_extra_entries_many(paths: Sequence[Path], tag: str) -> dict[str, int]:
 
 
 def read_required_words_many(paths: Sequence[Path], tag: str) -> frozenset[str]:
-    """Merge several required-word files; a word repeated in a second file stops the build."""
+    """Merge canonical word files; a word repeated in a second file stops the build."""
     merged: set[str] = set()
     origins: dict[str, Path] = {}
     for path in paths:
@@ -648,7 +868,8 @@ def read_required_words_many(paths: Sequence[Path], tag: str) -> frozenset[str]:
 def merged_entries(tag: str, baseline: Path, top: int = 100_000,
                    extra: dict[str, int] | None = None,
                    required: frozenset[str] = frozenset(),
-                   preserve: dict[str, int] | None = None):
+                   preserve: dict[str, int] | None = None,
+                   excluded: frozenset[str] = frozenset()):
     """Composition and frequencies of the new asset.
 
     Composition: shipped plus accepted words plus `extra`, nothing else. Frequency: written plus
@@ -659,16 +880,23 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     remain unchanged. Other languages use the stored frequency as their selection score.
     `required` words are appended after the cutoff, so an explicit review approval ships
     regardless of its corpus frequency. `preserve` words of the previous asset are appended the
-    same way, so a rebuild never removes a word that already ships.
+    same way, so a rebuild never removes a word that already ships. `excluded` words are explicit
+    review rejections and are removed from every composition source; a conflict with a required
+    or preserved word fails closed instead of silently breaking either guarantee.
     """
+    conflict = sorted((required | set(preserve or {})) & excluded)
+    if conflict:
+        raise SystemExit(
+            f"required or preserved entries are explicitly excluded: {', '.join(conflict)}"
+        )
     shipped, _asset = load_baseline(tag, baseline)
     accepted = read_accepted(tag)
     conv = read_conv_freq(tag)
     bonus = read_bonus_freq(tag)
-    composition = set(shipped) | set(accepted)
+    composition = (set(shipped) | set(accepted)) - excluded
     merged = {word: shipped.get(word, 0) + conv.get(word, 0) for word in composition}
     for word, frequency in (extra or {}).items():
-        if word not in merged:
+        if word not in merged and word not in excluded:
             merged[word] = frequency
     for word, extra_frequency in bonus.items():
         if word in merged:
@@ -715,6 +943,12 @@ def pack(args) -> int:
         )
         if not required <= set(extra or {}):
             raise SystemExit("required entries must also be in --extra-entries")
+        excluded = (
+            read_required_words_many(
+                [Path(item) for item in args.exclude_entries], tag
+            )
+            if args.exclude_entries is not None else frozenset()
+        )
         shipped, before = load_baseline(tag, baseline)
         target = CL.SHIPPED[tag]
         preserve: dict[str, int] = {}
@@ -723,7 +957,7 @@ def pack(args) -> int:
             preserve = dict(zip(previous.words, previous.frequencies))
         _shipped, accepted, entries = merged_entries(
             tag, baseline, top=args.top, extra=extra, required=required,
-            preserve=preserve)
+            preserve=preserve, excluded=excluded)
         raw = dp.serialize_entries(entries, schema=dp.SCHEMA_ID_V2)
         asset = dp.compress_raw(raw)
         before_raw = dp.decompress_asset(before, language)
@@ -753,6 +987,9 @@ def pack(args) -> int:
         if required:
             result[tag]["required_entries_offered"] = len(required)
             result[tag]["required_entries_that_entered"] = len(words & required)
+        if excluded:
+            result[tag]["excluded_entries_offered"] = len(excluded)
+            result[tag]["excluded_entries_that_entered"] = len(words & excluded)
         if args.write:
             dp.validate_asset(asset, language=language)
             _atomic_write(target, asset)
@@ -818,6 +1055,10 @@ def main(argv=None) -> int:
                          "(explicit operator approvals); each word must also be in "
                          "--extra-entries and this requires --only; repeatable, a word "
                          "repeated across files stops the build")
+    pk.add_argument("--exclude-entries", default=None, metavar="FILE", action="append",
+                    help="one explicitly rejected word per line to remove from every composition "
+                         "source; requires --only; repeatable, a word repeated across files "
+                         "stops the build")
     pk.add_argument("--top", type=int, default=100_000,
                     help="composition cutoff size (default %(default)s); requires --only "
                          "when it differs from the default")
@@ -831,6 +1072,8 @@ def main(argv=None) -> int:
             parser.error("--extra-entries requires --only (the entries are per language)")
         if args.require_entries is not None and args.only is None:
             parser.error("--require-entries requires --only (the entries are per language)")
+        if args.exclude_entries is not None and args.only is None:
+            parser.error("--exclude-entries requires --only (the entries are per language)")
         if args.top != 100_000 and args.only is None:
             parser.error("--top other than the default requires --only")
     return args.func(args)

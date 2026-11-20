@@ -100,9 +100,9 @@ COMPANIONS = (
     ),
 )
 
-# Tatar dictionary cutoff. The reviewed compounds enter the ranking above the old tail, so the
-# cutoff carries exactly their number of extra slots to keep every previously shipped word. The
-# release APK size limit is the only size limit, so run release_check.sh after changing it.
+# Tatar dictionary cutoff. Required reviewed entries and --preserve-existing keep every
+# previously shipped word. The release APK size limit is the only
+# size limit, so run release_check.sh after changing it.
 TATAR_DICTIONARY_TOP = 110_082
 
 DICTIONARIES = (
@@ -302,8 +302,9 @@ def read_reviewed_wordforms(path: Path) -> dict[str, int]:
 def read_rejected_wordforms(path: Path) -> frozenset[str]:
     """Read complete widened rejections of the review table.
 
-    A rejected row removes its word from the admitted forms even when the generator emits it.
-    The row must still carry reviewer, review_date, and note, so a rejection is traceable.
+    A rejected row removes its word from the admitted forms and the final dictionary even when
+    the generator or baseline contains it. The row must still carry reviewer, review_date, and
+    note, so a rejection is traceable.
     """
     language = coverage.language_for("tat")
     rejected: set[str] = set()
@@ -379,6 +380,9 @@ def merge_reviewed_wordforms(root: Path, out: Path) -> Path:
     required_path = out.with_name("wordforms-required-tt.txt")
     required_data = "".join(f"{word}\n" for word in sorted(reviewed)).encode("utf-8")
     wordform_gen.write_atomic(required_path, required_data)
+    rejected_path = out.with_name("wordforms-rejected-tt.txt")
+    rejected_data = "".join(f"{word}\n" for word in sorted(rejected)).encode("utf-8")
+    wordform_gen.write_atomic(rejected_path, rejected_data)
 
     report_path = out.with_suffix(".json")
     try:
@@ -399,6 +403,8 @@ def merge_reviewed_wordforms(root: Path, out: Path) -> Path:
         "reviewed_forms_rejected_already_generated": len(rejected & set(generated)),
         "required_output": str(required_path),
         "required_output_sha256": hashlib.sha256(required_data).hexdigest(),
+        "rejected_output": str(rejected_path),
+        "rejected_output_sha256": hashlib.sha256(rejected_data).hexdigest(),
     })
     sources = report["frequency_sources"]
     review_source = str(WORDFORM_REVIEW)
@@ -1644,6 +1650,7 @@ def dict_accept_argv(
     dictionary: DictionaryAsset,
     extra_entries: Path | Sequence[Path] | None,
     required_entries: Path | Sequence[Path] | None = None,
+    excluded_entries: Path | Sequence[Path] | None = None,
 ) -> list[str]:
     """Command line that rebuilds one dictionary; a separate function so tests can inspect it."""
     argv = [
@@ -1665,6 +1672,8 @@ def dict_accept_argv(
         argv += ["--extra-entries", str(path)]
     for path in _path_list(required_entries):
         argv += ["--require-entries", str(path)]
+    for path in _path_list(excluded_entries):
+        argv += ["--exclude-entries", str(path)]
     return argv
 
 
@@ -1788,8 +1797,8 @@ def run_rebuild(
 
     # 1. Dictionaries of the selected languages. dict_accept verifies the baseline SHA-256 and
     # refuses an already rebuilt asset. The Tatar side first runs the word-form stage and writes
-    # the reviewed compound extras; both lists are passed as repeated --extra-entries, and the
-    # reviewed words as --require-entries so they ship below the cutoff.
+    # reviewed compound extras; both lists are passed as repeated --extra-entries. Approved
+    # words are required below the cutoff, and rejected words are excluded from every source.
     wordforms: Path | None = None
     compound_extra: Path | None = None
     compound_required: Path | None = None
@@ -1803,17 +1812,20 @@ def run_rebuild(
         if dictionary.tag == "tat" and wordforms is not None:
             extra: list[Path] = [wordforms]
             required: list[Path] = [wordforms.with_name("wordforms-required-tt.txt")]
+            excluded: list[Path] = [wordforms.with_name("wordforms-rejected-tt.txt")]
             if compound_extra is not None and compound_required is not None:
                 extra.append(compound_extra)
                 required.append(compound_required)
         else:
             extra = []
             required = []
+            excluded = []
         _run_step(
             dict_accept_argv(
                 root, baseline, work_dir, dictionary,
                 extra or None,
                 required or None,
+                excluded or None,
             ),
             cwd=root,
         )

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Tests for scripts/dict_accept.py and scripts/dict_accept_check.py.
 
-The selection rule (accept everything except formal fragments and
-curator-excluded words) is exercised on synthetic Row objects — no corpora,
-no queue files. The select/pack contract runs on tiny temporary inputs: a
+The automatic corpus rules, explicit manual reason codes, written-evidence thresholds and review
+metadata are exercised on synthetic Row objects — no corpora or queue files. Legacy accepted
+rows are checked separately from rows that opt into the strict manual-evidence columns.
+The select/pack contract runs on tiny temporary inputs: a
 synthetic baseline dictionary built with dictionary_pack (its SHA-256 pinned
 into the module under test), a two-row queue and a two-word conv-freq file.
 Fail-closed paths are checked both ways: a wrong baseline SHA-256 must stop
@@ -47,10 +48,14 @@ QUEUE_HEADER = "\t".join(da.HEADER) + "\n"
 def make_row(word: str, *, freq: int = 100, heldout: int = 10,
              sources: str = "OpenSubtitles", cap_ratio: float = 0.0,
              top100k: str = "no", approved: str = "", reviewer: str = "",
-             review_date: str = "", note: str = "") -> da.Row:
-    return da.Row([word, str(heldout), str(freq), str(freq), sources,
-                   "ok", f"{cap_ratio:.2f}", top100k, approved, reviewer,
-                   review_date, note])
+             review_date: str = "", note: str = "", manual_rules: str = "",
+             written_evidence: str = "", written_norm: str = "") -> da.Row:
+    fields = [word, str(heldout), str(freq), str(freq), sources,
+              "ok", f"{cap_ratio:.2f}", top100k, approved, reviewer,
+              review_date, note]
+    if manual_rules or written_evidence or written_norm:
+        fields += [manual_rules, written_evidence, written_norm]
+    return da.Row(fields)
 
 
 def reviewed_row(word: str, **kwargs) -> da.Row:
@@ -62,13 +67,17 @@ def reviewed_row(word: str, **kwargs) -> da.Row:
 
 
 def queue_text(rows: list[da.Row]) -> str:
-    out = QUEUE_HEADER
+    structured = any(row.manual_rules or row.written_evidence or row.written_norm for row in rows)
+    out = "\t".join(da.FULL_HEADER if structured else da.HEADER) + "\n"
     for row in rows:
-        out += "\t".join([
+        fields = [
             row.word, str(row.heldout), str(row.freq), str(row.freq_clean),
             row.sources, row.license, f"{row.cap_ratio:.2f}",
             "yes" if row.enters_top100k else "no", row.approved, row.reviewer,
-            row.review_date, row.note]) + "\n"
+            row.review_date, row.note]
+        if structured:
+            fields += [row.manual_rules, row.written_evidence, row.written_norm]
+        out += "\t".join(fields) + "\n"
     return out
 
 
@@ -187,6 +196,171 @@ class PriorVerdictTest(unittest.TestCase):
         passed, rule, _ = da.prior_verdict(row, "tat", shipped)
         self.assertFalse(passed)
         self.assertEqual(rule, "single-source")
+
+
+class StrictReviewRuleTest(unittest.TestCase):
+    def test_written_corpus_threshold_is_exact(self) -> None:
+        passing = reviewed_row(
+            "приветик", manual_rules="written-corpus=accept",
+            written_evidence="tatoeba=2;leipzig_web=3")
+        accepted, rejected = da.decide([passing], "rus", frozenset())
+        self.assertEqual(rejected, [])
+        self.assertEqual(accepted[0][1], "manual-written-corpus")
+
+        for evidence, detail in (
+            ("tatoeba=2;leipzig_web=2", "got 4 in 2"),
+            ("leipzig_web=5", "got 5 in 1"),
+        ):
+            with self.subTest(evidence=evidence):
+                row = reviewed_row(
+                    "приветик", manual_rules="written-corpus=accept",
+                    written_evidence=evidence)
+                accepted, rejected = da.decide([row], "rus", frozenset())
+                self.assertEqual(accepted, [])
+                self.assertEqual(rejected[0][1], "review-required")
+                self.assertIn("written-corpus", rejected[0][2])
+                self.assertIn(detail, rejected[0][2])
+
+    def test_subtitles_and_extra_are_not_written_evidence(self) -> None:
+        for source in ("opensubtitles", "extra"):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(ValueError, "subtitles and extra"):
+                    make_row("оһ", written_evidence=f"{source}=99")
+
+    def test_interjection_threshold_is_exact(self) -> None:
+        passing = reviewed_row(
+            "оһ", manual_rules="interjection=accept", written_evidence="leipzig_web=3")
+        accepted, rejected = da.decide([passing], "tat", frozenset())
+        self.assertEqual(rejected, [])
+        self.assertEqual(accepted[0][1], "manual-interjection")
+
+        failing = reviewed_row(
+            "оһ", manual_rules="interjection=accept",
+            written_evidence="leipzig_mixed=1;leipzig_web=1")
+        accepted, rejected = da.decide([failing], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertEqual(rejected[0][1], "review-required")
+        self.assertIn("interjection", rejected[0][2])
+        self.assertIn("got 2", rejected[0][2])
+
+    def test_manual_acceptance_requires_every_metadata_field(self) -> None:
+        for field in ("approved", "reviewer", "review_date", "note"):
+            with self.subTest(field=field):
+                row = reviewed_row(
+                    "оһ", manual_rules="interjection=accept",
+                    written_evidence="leipzig_web=3")
+                setattr(row, field, "")
+                accepted, rejected = da.decide([row], "tat", frozenset())
+                self.assertEqual(accepted, [])
+                self.assertEqual(rejected[0][1], "review-required")
+                self.assertIn(field, rejected[0][2])
+
+    def test_frequent_neighbor_requires_explicit_rejection_and_note(self) -> None:
+        row = reviewed_row(
+            "базык", sources="OpenSubtitles+Tatoeba",
+            manual_rules="frequent-word-neighbor=reject", note="would mask бозык")
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertEqual(rejected[0][1], "frequent-word-neighbor")
+        self.assertIn("бозык", rejected[0][2])
+
+        row.manual_rules = "frequent-word-neighbor=accept"
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertIn("requires manual rejection", rejected[0][2])
+
+        row.manual_rules = "frequent-word-neighbor=reject"
+        row.note = ""
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertIn("note", rejected[0][2])
+
+    def test_fused_colloquial_requires_rejection_and_written_norm(self) -> None:
+        row = reviewed_row(
+            "бернишли", sources="OpenSubtitles+Tatoeba",
+            manual_rules="fused-colloquial=reject", written_norm="берни эшли",
+            note="fused colloquial spelling")
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertEqual(rejected[0][1], "fused-colloquial")
+        self.assertIn("берни эшли", rejected[0][2])
+
+        row.written_norm = ""
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertIn("separately written norm", rejected[0][2])
+
+        row.written_norm = "берни эшли"
+        row.manual_rules = "fused-colloquial=accept"
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertIn("requires manual rejection", rejected[0][2])
+
+    def test_manual_rejections_keep_their_reason_codes(self) -> None:
+        for word, rule in (("тәмек", "written-corpus"), ("оһ", "interjection")):
+            with self.subTest(rule=rule):
+                row = reviewed_row(
+                    word, approved="no", manual_rules=f"{rule}=reject",
+                    note="reviewed rejection with its reason")
+                accepted, rejected = da.decide([row], "tat", frozenset())
+                self.assertEqual(accepted, [])
+                self.assertEqual(rejected[0][1], rule)
+                self.assertIn("reviewed rejection", rejected[0][2])
+
+    def test_no_word_shape_detector_claims_a_manual_rule(self) -> None:
+        rows = [make_row("базык", sources="OpenSubtitles+Tatoeba"),
+                make_row("бернишли", sources="OpenSubtitles+Tatoeba")]
+        accepted, rejected = da.decide(rows, "tat", frozenset())
+        self.assertEqual(rejected, [])
+        self.assertEqual([rule for _row, rule, _detail in accepted],
+                         ["two-corpora", "two-corpora"])
+        self.assertTrue(da.AUTOMATIC_ADMISSION_RULES.isdisjoint(da.MANUAL_RULES))
+        self.assertTrue(da.AUTOMATIC_ADMISSION_RULES.isdisjoint(da.MANUAL_ADMISSION_RULES))
+
+    def test_orphaned_evidence_and_unknown_reason_codes_fail_closed(self) -> None:
+        row = reviewed_row("оһ", written_evidence="leipzig_web=3")
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertIn("requires a written-corpus or interjection decision", rejected[0][2])
+        with self.assertRaisesRegex(ValueError, "unknown manual rule"):
+            make_row("оһ", manual_rules="shape-guess=accept")
+
+    def test_legacy_accepted_interjection_is_preserved(self) -> None:
+        row = reviewed_row("оһ", freq=179, note="interjection under prior review")
+        fields = [
+            row.word, str(row.heldout), str(row.freq), str(row.freq_clean), row.sources,
+            row.license, f"{row.cap_ratio:.2f}", "yes", row.approved, row.reviewer,
+            row.review_date, row.note, "operator-widened", "prior single-source review",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            (out_dir / "accepted-tt.tsv").write_text(
+                "\t".join(da.HEADER + ["rule", "rule_detail"]) + "\n"
+                + "\t".join(fields) + "\n", encoding="utf-8")
+            with patched(OUT_DIR=out_dir):
+                self.assertEqual(da.read_accepted("tat"), {"оһ": 179})
+
+    def test_manual_rejection_date_must_be_iso(self) -> None:
+        row = reviewed_row(
+            "базык", review_date="18.11.2026",
+            manual_rules="frequent-word-neighbor=reject", note="would mask бозык")
+        accepted, rejected = da.decide([row], "tat", frozenset())
+        self.assertEqual(accepted, [])
+        self.assertEqual(rejected[0][1], "review-required")
+        self.assertIn("YYYY-MM-DD", rejected[0][2])
+
+    def test_accepted_reader_rechecks_written_evidence(self) -> None:
+        row = reviewed_row(
+            "приветик", manual_rules="written-corpus=accept",
+            written_evidence="tatoeba=2;leipzig_web=2")
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            da.write_rows(out_dir / "accepted-ru.tsv", "ACCEPTED",
+                          [(row, "manual-written-corpus", "tampered evidence")],
+                          da.fragment_rule_text("rus"))
+            with patched(OUT_DIR=out_dir):
+                with self.assertRaisesRegex(SystemExit, "got 4 in 2"):
+                    da.read_accepted("rus")
 
 
 class DecideTest(unittest.TestCase):
@@ -314,6 +488,11 @@ class SelectPackContractTest(unittest.TestCase):
             for stem in ("sample-accepted-", "sample-rejected-"):
                 self.assertTrue((self.out_dir / f"{stem}{suffix}.txt").is_file())
         report = json.loads(stdout)
+        self.assertEqual(report["rule"]["min_written_occurrences"], 5)
+        self.assertEqual(report["rule"]["min_written_corpora"], 2)
+        self.assertEqual(report["rule"]["min_interjection_written_occurrences"], 3)
+        self.assertEqual(report["rule"]["excluded_written_sources"],
+                         ["extra", "opensubtitles"])
         rus = report["languages"]["rus"]
         self.assertEqual(rus["queue_rows"], 4)
         self.assertEqual(rus["accepted"], 2)
@@ -335,9 +514,10 @@ class SelectPackContractTest(unittest.TestCase):
                 if line and not line.startswith("#")
                 and not line.startswith("word\t")]
         by_word = {row[0]: row for row in rows}
-        self.assertEqual(by_word["давай"][12], "two-corpora")
-        self.assertEqual(by_word["работала"][12], "shipped-paradigm")
-        self.assertIn("работа", by_word["работала"][13])
+        self.assertEqual(by_word["давай"][15], "two-corpora")
+        self.assertEqual(by_word["работала"][15], "shipped-paradigm")
+        self.assertIn("работа", by_word["работала"][16])
+        self.assertEqual(by_word["давай"][12:15], ["", "", ""])
         self.assertEqual(by_word["работала"][8:12], ["", "", "", ""])
         rejected = (self.out_dir / "rejected-ru.tsv").read_text(encoding="utf-8")
         self.assertIn("можна", rejected)
@@ -359,6 +539,31 @@ class SelectPackContractTest(unittest.TestCase):
         for index, line in enumerate(lines):
             if line.startswith("док\t"):
                 fields = line.split("\t")
+                fields[9] = ""
+                lines[index] = "\t".join(fields)
+        accepted_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        with patched(OUT_DIR=self.out_dir):
+            with self.assertRaisesRegex(SystemExit, "reviewer"):
+                da.read_accepted("tat")
+
+    def test_strict_interjection_round_trips_and_missing_metadata_stops(self) -> None:
+        self.queues["tat"].write_text(queue_text([
+            reviewed_row("оһ", freq=50, manual_rules="interjection=accept",
+                         written_evidence="leipzig_mixed=1;leipzig_web=2",
+                         note="reviewed interjection with written evidence"),
+        ]), encoding="utf-8")
+        code, _ = self._run_select()
+        self.assertEqual(code, 0)
+        accepted_path = self.out_dir / "accepted-tt.tsv"
+        with patched(OUT_DIR=self.out_dir):
+            self.assertEqual(da.read_accepted("tat"), {"оһ": 50})
+        lines = accepted_path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if line.startswith("оһ\t"):
+                fields = line.split("\t")
+                self.assertEqual(fields[12:15], [
+                    "interjection=accept", "leipzig_mixed=1;leipzig_web=2", ""])
+                self.assertEqual(fields[15], "manual-interjection")
                 fields[9] = ""
                 lines[index] = "\t".join(fields)
         accepted_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -472,6 +677,36 @@ class SelectPackContractTest(unittest.TestCase):
             _shipped, _accepted, entries = da.merged_entries(
                 "tat", self.baseline, top=1, preserve={"кит": 7})
         self.assertEqual(dict(entries), {"сәлам": 42, "кит": 7})
+
+    def test_explicit_rejection_removes_baseline_and_extra_words(self) -> None:
+        code, _ = self._run_select()
+        self.assertEqual(code, 0)
+        self._write_conv_freq()
+        with patched(QUEUE=self.queues, OUT_DIR=self.out_dir,
+                     BASELINE_SHA256=self.pins):
+            _shipped, _accepted, entries = da.merged_entries(
+                "tat", self.baseline, extra={"йөрөп": 1},
+                excluded=frozenset({"су", "йөрөп"}))
+        self.assertEqual(
+            {word for word, _frequency in entries},
+            (set(TAT_WORDS) - {"су"}) | {"сәлам"},
+        )
+
+    def test_explicit_rejection_conflicts_fail_closed(self) -> None:
+        code, _ = self._run_select()
+        self.assertEqual(code, 0)
+        self._write_conv_freq()
+        with patched(QUEUE=self.queues, OUT_DIR=self.out_dir,
+                     BASELINE_SHA256=self.pins):
+            for kwargs in (
+                {"extra": {"йөрөп": 1}, "required": frozenset({"йөрөп"})},
+                {"preserve": {"кит": 7}},
+            ):
+                with self.subTest(kwargs=kwargs):
+                    with self.assertRaisesRegex(SystemExit, "explicitly excluded"):
+                        da.merged_entries(
+                            "tat", self.baseline, excluded=frozenset({"йөрөп", "кит"}),
+                            **kwargs)
 
     def test_russian_cutoff_still_uses_stored_frequency(self) -> None:
         code, _ = self._run_select()

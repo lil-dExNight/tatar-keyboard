@@ -672,7 +672,8 @@ class DictAcceptArgvTest(unittest.TestCase):
         dictionary = rebuild_assets.DICTIONARIES[0]
         argv = rebuild_assets.dict_accept_argv(
             Path("/root"), Path("/baseline"), Path("/work"), dictionary,
-            Path("/work/wordforms-admitted-tt.tsv"))
+            Path("/work/wordforms-admitted-tt.tsv"),
+            excluded_entries=Path("/work/wordforms-rejected-tt.txt"))
         text = " ".join(argv)
         self.assertIn("pack", text)
         self.assertIn("--baseline /baseline", text)
@@ -681,6 +682,7 @@ class DictAcceptArgvTest(unittest.TestCase):
         self.assertIn(f"--top {dictionary.top}", text)
         self.assertIn("--preserve-existing", text)
         self.assertIn("--extra-entries /work/wordforms-admitted-tt.tsv", text)
+        self.assertIn("--exclude-entries /work/wordforms-rejected-tt.txt", text)
         self.assertIn("/work/dict-accept-pack-tat.json", text)
 
     def test_russian_command_has_no_extra_entries(self):

@@ -217,8 +217,9 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    it. The rebuild then reads the complete `operator-widened` approvals from
    `tatar-wordform-review.tsv`, merges their evidence-backed frequencies, and writes their words
    to `<work-dir>/wordforms-required-tt.txt`. An `operator-widened` row with `approved=no`
-   removes its word from the generated forms, so a reviewed rejection overrides a generator
-   match.
+   removes its word from the generated forms and is written to
+   `<work-dir>/wordforms-rejected-tt.txt`; the packer's `--exclude-entries` option keeps that
+   rejection out of the baseline, accepted queue and preserved words too.
    Reviewed compound words come from `data/dictionary/tatar-compound-review.tsv`: the rebuild
    writes their frequencies and the required list, and passes them as additional
    `--extra-entries`/`--require-entries` files. Only that file admits a hyphenated word; corpus
