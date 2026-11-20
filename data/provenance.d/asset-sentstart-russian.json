@@ -6,6 +6,6 @@
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_sentence_start_list",
   "split_rule": "training output; excludes final evaluation records",
-  "generation_command": "python3 scripts/rebuild_assets.py --only russian --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
+  "generation_command": "python3 scripts/sentstart_pack.py build --language rus --sentences <local-corpus-dir>/rus_news_2022_1M-sentences.txt <local-corpus-dir>/rus_news_2019_1M-sentences.txt <local-corpus-dir>/rus_wikipedia_2021_1M-sentences.txt <local-corpus-dir>/rus_conv_thinned60-sentences.txt --dictionary app/src/main/assets/dictionaries/russian_top100k_v1.tdict.zlib --output app/src/main/assets/dictionaries/russian_sentstart_v1.txt",
   "path": "app/src/main/assets/dictionaries/russian_sentstart_v1.txt"
 }

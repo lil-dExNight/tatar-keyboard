@@ -6,6 +6,6 @@
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_sentence_start_list",
   "split_rule": "training output; excludes final evaluation records",
-  "generation_command": "python3 scripts/rebuild_assets.py --only tatar --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
+  "generation_command": "python3 scripts/sentstart_pack.py build --language tat --sentences <local-corpus-dir>/tat_mixed_2015_1M-sentences.txt <local-corpus-dir>/tat_web_2018_1M-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt <local-corpus-dir>/tt_conv_train90-sentences.txt --dictionary app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib --output app/src/main/assets/dictionaries/tatar_sentstart_v1.txt",
   "path": "app/src/main/assets/dictionaries/tatar_sentstart_v1.txt"
 }

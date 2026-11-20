@@ -51,8 +51,9 @@ import rkr.simplekeyboard.inputmethod.latin.settings.Settings
  */
 object BackupFormat {
     /**
-     * The only archive format this build reads and writes. The import journal stores archives too,
-     * and recovery deletes a journal it cannot read, so a bump must still read the previous format.
+     * The only archive format this build reads and writes. [BackupTransfer.recoverPending] fails
+     * closed and leaves a damaged or unreadable import journal untouched; only an explicit erase
+     * discards it.
      */
     const val FORMAT_VERSION = 1
 

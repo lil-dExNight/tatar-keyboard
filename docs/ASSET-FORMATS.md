@@ -95,8 +95,10 @@ the walk adds value only on never-before-seen bytes.
 
 The runtime reader (`engine/TdictPrefixIndex.kt`, `open`) checks the header and the section
 arithmetic again on the memory-mapped file, and walks every entry unless the store hands it a
-validation token for the same content (`storage/StoreValidationToken.kt`). The token proves a
-full validation of that content already ran in this process; the reader skips the walk.
+validation token for the same content (`storage/StoreValidationToken.kt`). The token proves either
+full structural validation or pinned-content verification of the same raw content in this process.
+The reader always rechecks the header and section arithmetic; with a matching token, it skips the
+structural walk.
 
 **On the device.** The raw file is inflated into a temp file, fsynced, validated in full, and
 atomically renamed into device-protected storage under `files/dictionaries/` (Tatar) or

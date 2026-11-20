@@ -176,8 +176,7 @@ leaves the following to you" below stays the authority for what it prints.
 
 ## Measurement contracts
 
-These hold for every quality comparison in the repository (the gate checks, the corpus sims,
-the corpus-source comparison, the glide benchmark):
+The common metric and split rules are:
 
 - Visible top-3 is the user-facing metric: the strip shows three cells by default. The engine
   composes four candidates, and the fourth is diagnostic only — it must never be reported as a
@@ -186,9 +185,12 @@ the corpus-source comparison, the glide benchmark):
   REPORT.json` validates a gate report's top-k roles, denominators and pairing metadata, and
   recomputes every `pct` and the delta from hits and denominators, so a stale or hand-edited
   rate fails; unequal series lengths and hits above a denominator are rejected.
-- Two arms are compared on the same records: the paired bootstrap CI95 draws the same record
-  indices for both arms, and every reported rate carries its denominator. A quality decrease is
-  never accepted by moving pins.
+- Gate reports validated by `scripts/evaluation_metrics.py` use paired bootstrap CI95: two arms
+  are compared on the same records, the bootstrap draws the same record indices for both arms,
+  and every reported rate carries its denominator. A quality decrease is never accepted by moving
+  pins.
+- `scripts/glide-benchmark.py compare` requires identical ordered record fingerprints and reports
+  paired 2×2 counts plus deterministic metric deltas, without a confidence interval.
 - Evaluations run on the split that matches their role (development or final; see the split
   declarations above), never on training inputs and never tuned on the final set.
 
