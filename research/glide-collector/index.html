@@ -185,7 +185,10 @@ var LAYOUTS = {
               /* Doubled letters (one key visited twice in a row). */
               'русский', 'суббота', 'длинный', 'группа', 'ранний',
               /* ё, traced over the е key. */
-              'своё', 'пришёл', 'нашёл', 'лёгкий', 'тёмный', 'зелёный'],
+              'своё', 'пришёл', 'нашёл', 'лёгкий', 'тёмный', 'зелёный',
+              /* Cross-layout alias probes: the Tatar prompt words traced on this board, where
+               * ә ө ү җ ң һ ъ ride their base keys (а о у ж н х ь) via the aliases above. */
+              'белән', 'өчен', 'түгел', 'җилләр', 'миңа', 'һөнәр', 'вәгъдә'],
   },
 };
 
@@ -411,9 +414,12 @@ if (typeof document !== 'undefined') (function () {
   }
 
   /* Guided session plan: per layout and session, every pool word once per speed (slow, then
-   * normal, then fast), doubled-letter words twice (plain and with a loop), and on Tatar five
-   * negative trials per speed. The plan only sets the trial and speed selectors and the prompt;
-   * the record schema is unchanged. A failed ordinary trace keeps the same item for a retry. */
+   * normal, then fast), doubled-letter words twice (plain and with a loop), and five negative
+   * trials per speed on both layouts. The Russian pool includes the seven cross-layout alias
+   * probes, so its plan covers every required alias and negative class. Portrait and landscape
+   * are separate collection sittings (new session each); the plan only sets the trial and speed
+   * selectors and the prompt, and the record schema is unchanged. A failed ordinary trace keeps
+   * the same item for a retry. */
   var DOUBLED = /(.)\1/;
   var NEGATIVES = ['tap', 'tremor', 'canceled', 'short_drag', 'unintended_start'];
   var NEGATIVE_HINTS = {
@@ -449,12 +455,10 @@ if (typeof document !== 'undefined') (function () {
         }
       });
       block = shuffled(block);
-      if (lang === 'tt') {
-        NEGATIVES.forEach(function (kind) {
-          block.push({ word: pool[Math.floor(Math.random() * pool.length)], speed: speed,
-                       trial: kind, hint: NEGATIVE_HINTS[kind] });
-        });
-      }
+      NEGATIVES.forEach(function (kind) {
+        block.push({ word: pool[Math.floor(Math.random() * pool.length)], speed: speed,
+                     trial: kind, hint: NEGATIVE_HINTS[kind] });
+      });
       items = items.concat(block);
     });
     return { session: state.sessionId, items: items, pos: 0 };
