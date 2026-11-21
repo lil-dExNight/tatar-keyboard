@@ -159,7 +159,7 @@ class GlideTrail(val capacity: Int = DEFAULT_CAPACITY, val maxAlpha: Int = MAX_A
         const val TAIL_MS = 300f
 
         /** The post-lift fade-out duration. */
-        const val FADE_OUT_MS = 250f
+        const val FADE_OUT_MS = 400f
 
         /** Default peak opacity at the fingertip; the view overrides it with the trail
             color's own alpha. */
