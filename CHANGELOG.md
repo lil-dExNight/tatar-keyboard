@@ -12,6 +12,14 @@ These hold for every release:
   `apksigner verify --print-certs <apk>`.
 
 
+## [4.0.1] — 2026-11-22
+
+### Changed
+
+- Glide typing on the Russian layout resolves ә through the э key, matching native Tatar writing;
+  ә remains available from long-press on both а and э.
+- The glide trail fades out over 400 ms instead of 250 ms after the finger is lifted.
+
 ## [4.0.0] — 2026-11-14
 
 ### Added
@@ -50,8 +58,6 @@ These hold for every release:
 
 - The glide trail is one continuous rounded line, with a softer light-blue color in both light
   and dark themes.
-- Glide typing on the Russian layout resolves ә through the э key, matching native Tatar writing;
-  ә remains available from long-press on both а and э.
 - Settings now put language removal behind a long press on that language, move keyboard-behavior
   and key-press controls into Preferences, keep Appearance to geometry with one combined
   portrait/landscape offset dialog, and combine Backup and legal links under Information. Once

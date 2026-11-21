@@ -3,6 +3,5 @@
 • Setup ends with a guide card: layout, long-press partners, gestures, personal dictionary
 • Privacy policy now exists in Tatar
 • Suggestions know the forms -абыз/-әбез and -мы/-ме
-• Glide typing on the Russian layout recognises ә through the э key; long-press still offers ә on both а and э
 • Safer backup restore, cleaner deletions, lighter dictionaries
 • A word the dictionary does not know leads the suggestion strip: tap to keep it as typed, long-press to save it

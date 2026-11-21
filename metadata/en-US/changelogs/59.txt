@@ -1,0 +1,2 @@
+• Glide typing on the Russian layout recognises ә through the э key; long-press still offers ә on both а and э
+• The glide trail fades out more smoothly after you lift your finger
