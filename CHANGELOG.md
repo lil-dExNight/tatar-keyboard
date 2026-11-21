@@ -50,6 +50,8 @@ These hold for every release:
 
 - The glide trail is one continuous rounded line, with a softer light-blue color in both light
   and dark themes.
+- Glide typing on the Russian layout resolves ә through the э key, matching native Tatar writing;
+  ә remains available from long-press on both а and э.
 - Settings now put language removal behind a long press on that language, move keyboard-behavior
   and key-press controls into Preferences, keep Appearance to geometry with one combined
   portrait/landscape offset dialog, and combine Backup and legal links under Information. Once

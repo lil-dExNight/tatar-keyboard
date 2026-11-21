@@ -49,7 +49,7 @@
          locale — they name physical keys, not words to translate. -->
     <string name="setup_guide_title">Tatar layout and gestures</string>
     <string name="setup_guide_layout">Top row: ә ө ү җ ң һ ё ъ — every Tatar letter has its own key</string>
-    <string name="setup_guide_long_press">Long-press a key for its partners: е → ё, ь → ъ, а → ә, о → ө, у → ү, ж → җ, н → ң, г and х → һ</string>
+    <string name="setup_guide_long_press">Long-press a key for its partners: е → ё, ь → ъ, а/э → ә, о → ө, у → ү, ж → җ, н → ң, г and х → һ</string>
     <string name="setup_guide_save_word">Save your own words: long-press a word in the suggestion strip above the keyboard to add it to the personal dictionary</string>
 
     <!-- One line per gesture in the setup done-block guide. The gesture name leads, then the

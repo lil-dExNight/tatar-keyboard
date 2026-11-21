@@ -31,7 +31,7 @@
 
     <string name="setup_guide_title">Татарская раскладка и жесты</string>
     <string name="setup_guide_layout">Верхний ряд: ә ө ү җ ң һ ё ъ — у каждой татарской буквы есть своя клавиша</string>
-    <string name="setup_guide_long_press">Долгое нажатие открывает буквы-партнёры: е → ё, ь → ъ, а → ә, о → ө, у → ү, ж → җ, н → ң, г и х → һ</string>
+    <string name="setup_guide_long_press">Долгое нажатие открывает буквы-партнёры: е → ё, ь → ъ, а/э → ә, о → ө, у → ү, ж → җ, н → ң, г и х → һ</string>
     <string name="setup_guide_save_word">Свои слова: нажмите и удерживайте слово в полосе подсказок над клавиатурой, чтобы добавить его в личный словарь</string>
 
     <!-- One line per gesture in the done-block guide: gesture name first, then the effect,

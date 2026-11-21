@@ -573,7 +573,7 @@ keys. A long-press letter without a key of its own is an alias of its base key, 
 is decoded from a gesture over that key and committed with the right letter: on the Russian
 layout the Tatar letters, `ъ` on `ь` and `ё` on `е` work that way; on the Tatar layout every
 alphabet letter has its own key, so no alias is needed there. A letter that is the long
-press of two keys takes its base from `ALIAS_BASES` (`һ` on `х`, `ә` on `а`) or gets no alias;
+press of two keys takes its base from `ALIAS_BASES` (`һ` on `х`, `ә` on `э`) or gets no alias;
 digits and other non-letters never become aliases. Independently of aliases, an indexed word with
 ё also has a plain ideal path with every ё on the е key, and endpoint pruning searches the е/ё
 counterpart bucket when it is not already present. The original path remains, including on the

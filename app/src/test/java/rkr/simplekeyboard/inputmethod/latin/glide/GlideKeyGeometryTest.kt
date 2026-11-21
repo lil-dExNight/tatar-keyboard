@@ -94,27 +94,28 @@ class GlideKeyGeometryTest {
         // on a synthetic layout: a long-press partner without a key of its own resolves to the
         // base key that carries it, and stays an alias rather than becoming a new key.
         val geometry = GlideKeyGeometry.build(
-            listOf(raw('а', 0, 0, 100, 100, "ә"), raw('б', 200, 0, 300, 100)),
+            listOf(raw('е', 0, 0, 100, 100, "ё"), raw('б', 200, 0, 300, 100)),
         )
         assertEquals(2, geometry.keyCount)
-        assertEquals(geometry.keyIndexOfLetter('а'.code), geometry.keyIndexOfLetter('ә'.code))
+        assertEquals(geometry.keyIndexOfLetter('е'.code), geometry.keyIndexOfLetter('ё'.code))
         assertEquals(1, geometry.aliasCount)
-        assertEquals('ә'.code, geometry.aliasLetterAt(0))
-        assertEquals(geometry.keyIndexOfLetter('а'.code), geometry.aliasKeyAt(0))
+        assertEquals('ё'.code, geometry.aliasLetterAt(0))
+        assertEquals(geometry.keyIndexOfLetter('е'.code), geometry.aliasKeyAt(0))
         // The Russian layout still aliases the Tatar letters, which have no keys of their own
-        // there: һ resolves through х, and ъ through ь.
+        // there: һ resolves through х, ә through э, and ъ through ь.
         val russian = GlideTestFixtures.russianGeometry()
         assertEquals(russian.keyIndexOfLetter('х'.code), russian.keyIndexOfLetter('һ'.code))
+        assertEquals(russian.keyIndexOfLetter('э'.code), russian.keyIndexOfLetter('ә'.code))
         assertEquals(russian.keyIndexOfLetter('ь'.code), russian.keyIndexOfLetter('ъ'.code))
     }
 
     @Test
     fun digitsAndMarkersOnLongPressNeverBecomeAliases() {
         val geometry = GlideKeyGeometry.build(
-            listOf(raw('а', 0, 0, 100, 100, "1ә%"), raw('б', 100, 0, 200, 100, "2")),
+            listOf(raw('е', 0, 0, 100, 100, "1ё%"), raw('б', 100, 0, 200, 100, "2")),
         )
         assertEquals(1, geometry.aliasCount)
-        assertEquals('ә'.code, geometry.aliasLetterAt(0))
+        assertEquals('ё'.code, geometry.aliasLetterAt(0))
         assertEquals(-1, geometry.keyIndexOfLetter('1'.code))
         assertEquals(-1, geometry.keyIndexOfLetter('2'.code))
         assertEquals(-1, geometry.keyIndexOfLetter('%'.code))
@@ -126,15 +127,15 @@ class GlideKeyGeometryTest {
 
     @Test
     fun sameLayoutDiffersWhenOnlyTheAliasesDiffer() {
-        val plain = GlideKeyGeometry.build(listOf(raw('а', 0, 0, 100, 100), raw('б', 100, 0, 200, 100)))
-        val aliasOnA = GlideKeyGeometry.build(listOf(raw('а', 0, 0, 100, 100, "ә"), raw('б', 100, 0, 200, 100)))
-        val aliasOnB = GlideKeyGeometry.build(listOf(raw('а', 0, 0, 100, 100), raw('б', 100, 0, 200, 100, "ә")))
-        val shiftedAliasOnA = GlideKeyGeometry.build(
-            listOf(raw('А', 0, 0, 100, 100, "Ә"), raw('Б', 100, 0, 200, 100)),
+        val plain = GlideKeyGeometry.build(listOf(raw('е', 0, 0, 100, 100), raw('б', 100, 0, 200, 100)))
+        val aliasOnE = GlideKeyGeometry.build(listOf(raw('е', 0, 0, 100, 100, "ё"), raw('б', 100, 0, 200, 100)))
+        val aliasOnB = GlideKeyGeometry.build(listOf(raw('е', 0, 0, 100, 100), raw('б', 100, 0, 200, 100, "ё")))
+        val shiftedAliasOnE = GlideKeyGeometry.build(
+            listOf(raw('Е', 0, 0, 100, 100, "Ё"), raw('Б', 100, 0, 200, 100)),
         )
-        assertFalse(plain.sameLayoutAs(aliasOnA))
-        assertFalse(aliasOnA.sameLayoutAs(aliasOnB))
-        assertTrue(aliasOnA.sameLayoutAs(shiftedAliasOnA))
+        assertFalse(plain.sameLayoutAs(aliasOnE))
+        assertFalse(aliasOnE.sameLayoutAs(aliasOnB))
+        assertTrue(aliasOnE.sameLayoutAs(shiftedAliasOnE))
     }
 
     @Test
@@ -143,7 +144,7 @@ class GlideKeyGeometryTest {
         for (order in listOf(keys, keys.reversed())) {
             val geometry = GlideKeyGeometry.build(order)
             assertEquals(geometry.keyIndexOfLetter('х'.code), geometry.keyIndexOfLetter('һ'.code))
-            assertEquals(geometry.keyIndexOfLetter('а'.code), geometry.keyIndexOfLetter('ә'.code))
+            assertEquals(geometry.keyIndexOfLetter('э'.code), geometry.keyIndexOfLetter('ә'.code))
             assertEquals(geometry.keyIndexOfLetter('у'.code), geometry.keyIndexOfLetter('ү'.code))
             assertEquals(geometry.keyIndexOfLetter('н'.code), geometry.keyIndexOfLetter('ң'.code))
             assertEquals(geometry.keyIndexOfLetter('о'.code), geometry.keyIndexOfLetter('ө'.code))

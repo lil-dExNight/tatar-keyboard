@@ -9,7 +9,7 @@ To enable the keyboard:
 
 * Tatar layout: ЙЦУКЕН + a visible fifth row with ә ө ү җ ң һ ё ъ — every Tatar alphabet letter, ё and ъ included, has its own direct key
 * Three languages: Tatar, Russian, English — switch with the globe key
-* Long-press duplicates on the Russian layout: а→ә, о→ө, у→ү, ж→җ, н→ң, х→һ, plus е→ё and ь→ъ
+* Long-press duplicates on the Russian layout: а/э→ә, о→ө, у→ү, ж→җ, н→ң, х→һ, plus е→ё and ь→ъ
 
 <b>Word suggestions and next-word prediction (Tatar and Russian):</b>
 

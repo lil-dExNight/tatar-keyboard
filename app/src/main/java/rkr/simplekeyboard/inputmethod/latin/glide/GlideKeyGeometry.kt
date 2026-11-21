@@ -137,12 +137,13 @@ class GlideKeyGeometry private constructor(
 
         /**
          * The base key of an alias letter that is the long press of more than one key: on the
-         * Russian layout `һ` sits on `г` and `х`, `ә` on `а` and `э`. A letter on several keys
+         * Russian layout `һ` sits on `г` and `х`, `ә` on `а` and `э`. The canonical base is the
+         * key Tatar speakers use for glide paths: `һ` on `х`, `ә` on `э`. A letter on several keys
          * without an entry here, or whose entry names none of those keys, gets no alias.
          */
         internal val ALIAS_BASES: Map<Int, Int> = mapOf(
             0x04BB to 0x0445, // һ on х
-            0x04D9 to 0x0430, // ә on а
+            0x04D9 to 0x044D, // ә on э
         )
 
         /**

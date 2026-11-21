@@ -253,6 +253,8 @@ class CollectorContractTest(unittest.TestCase):
         self.assertIn("'ё': 'е'", ru)
         self.assertIn("'ъ': 'ь'", ru)
         self.assertIn("'ө': 'о'", ru)
+        self.assertIn("'ә': 'э'", ru)
+        self.assertNotIn("'ә': 'а'", ru)
 
 
 class PromptChecklistTest(unittest.TestCase):
@@ -261,7 +263,7 @@ class PromptChecklistTest(unittest.TestCase):
             rows = list(csv.DictReader(stream, delimiter="\t"))
         russian = [row for row in rows if row["layout"] == "ru"]
         required_aliases = {
-            "а→ә": ("белән", "ә"),
+            "э→ә": ("белән", "ә"),
             "о→ө": ("өчен", "ө"),
             "у→ү": ("түгел", "ү"),
             "ж→җ": ("җилләр", "җ"),
@@ -388,7 +390,7 @@ class ReferenceGeometryTest(unittest.TestCase):
                         continue
                     candidates.setdefault(partner, set()).add(base)
         # GlideKeyGeometry.ALIAS_BASES: the alias letters two keys carry, and their base key.
-        named_bases = {0x04BB: 0x0445, 0x04D9: 0x0430}
+        named_bases = {0x04BB: 0x0445, 0x04D9: 0x044D}
         aliases = {}
         for alias, bases in sorted(candidates.items()):
             if len(bases) == 1:
