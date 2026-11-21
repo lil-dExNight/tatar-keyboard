@@ -248,6 +248,10 @@ internal class TdictPrefixIndex private constructor(
     // which the insertion family's end position probes.
     private val probeRangeStart = IntArray(MAX_PREFIX_BYTES + 1)
     private val probeRangeEnd = IntArray(MAX_PREFIX_BYTES + 1)
+    // True while probeRange* hold the ranges of the prefix in exactScratch. One typed prefix per
+    // lookup, so the display tier and the autocorrect pass share them; cleared wherever
+    // [exactScratch] is refilled.
+    private var probeRangesValid = false
     // The block touched by the last access, fully decoded: concatenated word bytes, per-word start
     // offsets and frequencies. Range scans touch every entry of a block, so the block is decoded
     // once instead of re-walked per entry. Worker-confined like the scratches above; the data is
@@ -429,6 +433,7 @@ internal class TdictPrefixIndex private constructor(
             return false
         }
         return try {
+            probeRangesValid = false
             for (offset in 0 until prefixLength) {
                 exactScratch[offset] = normalizedPrefixUtf8.byteAt(offset).toByte()
             }
@@ -490,6 +495,7 @@ internal class TdictPrefixIndex private constructor(
             lastFuzzyVisitedCount = 0
             lastFuzzyProbeCount = 0
             lastFuzzyOverBudget = false
+            probeRangesValid = false
             for (offset in 0 until prefixLength) {
                 exactScratch[offset] = normalizedPrefixUtf8.byteAt(offset).toByte()
             }
@@ -970,7 +976,7 @@ internal class TdictPrefixIndex private constructor(
             return
         }
         fuzzyVariantsUsed++
-        scanVariantBlock(variantBytes, variantLength)
+        scanVariantBlockFrom(variantBytes, variantLength, probe)
     }
 
     /**
@@ -981,6 +987,8 @@ internal class TdictPrefixIndex private constructor(
      * too.
      */
     private fun computeProbeRanges(codePointCount: Int) {
+        if (probeRangesValid) return
+        probeRangesValid = true
         probeRangeStart[0] = 0
         probeRangeEnd[0] = entryCount
         var byteOffset = 0
@@ -1054,7 +1062,20 @@ internal class TdictPrefixIndex private constructor(
     /** Scans one variant's dictionary block, ranking its candidates into [fuzzyIndices]. */
     private fun scanVariantBlock(variantBytes: ByteArray, variantLength: Int) {
         if (fuzzyOverBudget) return
-        val start = lowerBound(variantBytes, variantLength, 0)
+        scanVariantBlockFrom(variantBytes, variantLength, lowerBound(variantBytes, variantLength, 0))
+    }
+
+    /**
+     * [scanVariantBlock] with the block's first entry already in hand. Every entry before a
+     * variant's position range starts below the variant, so a probe inside that range lands on the
+     * same entry the search above would return, and the DL-1 tier can skip it.
+     */
+    private fun scanVariantBlockFrom(
+        variantBytes: ByteArray,
+        variantLength: Int,
+        start: Int,
+    ) {
+        if (fuzzyOverBudget) return
         val end = upperBound(variantBytes, variantLength, start)
         // The exact-word exclusion compares against the TYPED word, not the variant that
         // selected the range, hence exactScratch/fuzzyPrefixLength here. The remainder is
