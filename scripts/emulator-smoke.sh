@@ -145,7 +145,17 @@ PKG=$("$AAPT2" dump packagename "$APK" 2>/dev/null || true)
 
 EMU_PID=""
 SERIAL=""
+SMOKE_ANIMATION_SAVED=""
+SMOKE_SCREEN_OFF=""
 cleanup() {
+    if [ "$SMOKE_SCREEN_OFF" = 1 ]; then
+        rotation_screen_on
+    fi
+    if [ "$SMOKE_ANIMATION_SAVED" = 1 ] && [ -n "$SERIAL" ]; then
+        "$ADB" -s "$SERIAL" shell settings put global window_animation_scale "${SMOKE_SAVED_WINDOW_SCALE:-1}" >/dev/null 2>&1 || true
+        "$ADB" -s "$SERIAL" shell settings put global transition_animation_scale "${SMOKE_SAVED_TRANSITION_SCALE:-1}" >/dev/null 2>&1 || true
+        "$ADB" -s "$SERIAL" shell settings put global animator_duration_scale "${SMOKE_SAVED_ANIMATOR_SCALE:-1}" >/dev/null 2>&1 || true
+    fi
     if [ -n "$EMU_PID" ]; then
         log "гасим эмулятор (pid $EMU_PID)"
         "$ADB" -s "$SERIAL" emu kill >/dev/null 2>&1 || kill "$EMU_PID" 2>/dev/null || true
@@ -220,15 +230,44 @@ SMOKE_SAVED_ACC=$(SHELL settings get system accelerometer_rotation 2>/dev/null |
 SMOKE_SAVED_ROT=$(SHELL settings get system user_rotation 2>/dev/null | tr -d '\r' || true)
 [ "$SMOKE_SAVED_ACC" = "null" ] && SMOKE_SAVED_ACC=1
 [ "$SMOKE_SAVED_ROT" = "null" ] && SMOKE_SAVED_ROT=0
+SMOKE_SDK=$(SHELL getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)
+rotation_screen_off() {
+    [ "$SMOKE_SDK" = 37 ] || return 0
+    [ "$SMOKE_SCREEN_OFF" = 1 ] && return 0
+    SHELL input keyevent KEYCODE_POWER >/dev/null 2>&1 || true
+    SMOKE_SCREEN_OFF=1
+    sleep 2
+}
+rotation_screen_on() {
+    [ "$SMOKE_SCREEN_OFF" = 1 ] || return 0
+    SHELL input keyevent KEYCODE_POWER >/dev/null 2>&1 || true
+    SMOKE_SCREEN_OFF=""
+    SHELL wm dismiss-keyguard >/dev/null 2>&1 || true
+    sleep 1
+}
+if [ "$SMOKE_SDK" = 37 ]; then
+    SMOKE_SAVED_WINDOW_SCALE=$(SHELL settings get global window_animation_scale 2>/dev/null | tr -d '\r' || true)
+    SMOKE_SAVED_TRANSITION_SCALE=$(SHELL settings get global transition_animation_scale 2>/dev/null | tr -d '\r' || true)
+    SMOKE_SAVED_ANIMATOR_SCALE=$(SHELL settings get global animator_duration_scale 2>/dev/null | tr -d '\r' || true)
+    [ "$SMOKE_SAVED_WINDOW_SCALE" = "null" ] && SMOKE_SAVED_WINDOW_SCALE=1
+    [ "$SMOKE_SAVED_TRANSITION_SCALE" = "null" ] && SMOKE_SAVED_TRANSITION_SCALE=1
+    [ "$SMOKE_SAVED_ANIMATOR_SCALE" = "null" ] && SMOKE_SAVED_ANIMATOR_SCALE=1
+    SMOKE_ANIMATION_SAVED=1
+    SHELL settings put global window_animation_scale 0 >/dev/null 2>&1 || true
+    SHELL settings put global transition_animation_scale 0 >/dev/null 2>&1 || true
+    SHELL settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
+fi
+# API 37's gfxstream readback aborts on foreground transition snapshots.
+rotation_screen_off
 SHELL settings put system accelerometer_rotation 0 || true
 SHELL settings put system user_rotation 0 || true
 sleep 2
+rotation_screen_on
 # API 37's gfxstream guest aborts inside screencap's color-buffer readback.
 # Capture that image through the emulator console instead, which produces the
 # same full-screen PNG without invoking the guest renderer. Other APIs retain
 # the faster exec-out path. A failed host capture is deliberately left as an
 # invalid/empty image so the existing pixel assertions still fail.
-SMOKE_SDK=$(SHELL getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)
 SHOT() {
     local capture_dir host_screenshot
     if [ "$SMOKE_SDK" != 37 ]; then
@@ -1711,6 +1750,7 @@ fi
 # rotation values are restored to what the script found.
 ls_saved_acc=$(SHELL settings get system accelerometer_rotation | tr -d '\r' || true)
 ls_saved_rot=$(SHELL settings get system user_rotation | tr -d '\r' || true)
+rotation_screen_off
 # An unset shell setting is the literal string "null"; putting "null" back would
 # fail the settings provider and leave the AVD locked in landscape.
 [ "$ls_saved_acc" = "null" ] && ls_saved_acc=1
@@ -1718,6 +1758,7 @@ ls_saved_rot=$(SHELL settings get system user_rotation | tr -d '\r' || true)
 SHELL settings put system accelerometer_rotation 0 || true
 SHELL settings put system user_rotation 1 || true
 sleep 2
+rotation_screen_on
 ls_detail=""
 ls_field=""
 refocus_tryit || ls_detail="keyboard did not come up in landscape"
@@ -1803,12 +1844,14 @@ fi
 # Restore the accelerometer BEFORE user_rotation: with auto-rotate already on, the
 # user_rotation write re-evaluates the orientation and this image resets
 # accelerometer_rotation to 0, so the reverse order loses the saved value.
+rotation_screen_off
 SHELL settings put system accelerometer_rotation "${ls_saved_acc:-1}" || true
 SHELL settings put system user_rotation "${ls_saved_rot:-0}" || true
 sleep 2
 SHELL settings put system accelerometer_rotation "${SMOKE_SAVED_ACC:-1}" || true
 SHELL settings put system user_rotation "${SMOKE_SAVED_ROT:-0}" || true
 sleep 2
+rotation_screen_on
 if [ -n "$ls_detail" ]; then
     result FAIL landscape-type "$ls_detail"
 elif [ "$ls_field" = "__NOFIELD__" ]; then

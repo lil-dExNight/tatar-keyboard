@@ -337,6 +337,26 @@ install_apk() { # install_apk <apk> <log>
     return 1
 }
 booted_api() { SHELL getprop ro.build.version.sdk 2>/dev/null | tr -d '\r'; }
+disable_api37_task_snapshots() {
+    local directory="$CURRENT_EVIDENCE_DIR/snapshot-control" d8
+    mkdir -p "$directory/classes" "$directory/dex"
+    command -v javac >/dev/null 2>&1 || return 1
+    d8=$(find "$TOOL_ROOT" -maxdepth 2 -name d8 -type f | sort -V | tail -1)
+    [ -n "$d8" ] || return 1
+    javac --release 8 -d "$directory/classes" \
+        "$ROOT/scripts/emulator-api37/SnapshotControl.java" >"$directory/javac.log" 2>&1 || return 1
+    "$d8" --output "$directory/dex" "$directory/classes/SnapshotControl.class" \
+        >"$directory/d8.log" 2>&1 || return 1
+    timeout 60 "$ADB" -s "$SERIAL" push "$directory/dex/classes.dex" \
+        /data/local/tmp/tt-snapshot-control.dex >"$directory/push.log" 2>&1 || return 1
+    timeout 60 "$ADB" -s "$SERIAL" shell \
+        'CLASSPATH=/data/local/tmp/tt-snapshot-control.dex app_process /system/bin SnapshotControl' \
+        >"$directory/run.log" 2>&1 || return 1
+    timeout 60 "$ADB" -s "$SERIAL" shell dumpsys window \
+        >"$directory/dumpsys-window.txt" 2>&1 || return 1
+    awk -F= '/mSnapshotEnabled=/{value=$2} /^[[:space:]]*SnapshotCache Task[[:space:]]*$/ && value=="false" {ok=1} END{exit !ok}' \
+        "$directory/dumpsys-window.txt"
+}
 package_dump() { SHELL dumpsys package "$PKG" 2>/dev/null; }
 package_field() { package_dump | grep -oP "$2=\\K[^[:space:]]+" | head -1; }
 instrument() { # instrument <api-dir> <log-name> <class> <check>
@@ -399,17 +419,25 @@ run_avd() { # run_avd <api> <name>
         return 1
     fi
     sleep 10
-    # Calibrated input coordinates require portrait even if an earlier probe
-    # left this disposable AVD's rotation locked in landscape.
-    SHELL settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
-    SHELL settings put system user_rotation 0 >/dev/null 2>&1 || true
-    sleep 2
     actual=$(booted_api)
     if [ "$actual" != "$api" ]; then
         result FAIL "api.$api.boot" "expected SDK $api, actual '$actual' AVD=$name"
         return 1
     fi
     result PASS "api.$api.boot" "serial=$SERIAL avd=$name sdk=$actual"
+    # The API 37 guest aborts while converting task snapshots through gfxstream.
+    if [ "$actual" = 37 ]; then
+        if ! disable_api37_task_snapshots; then
+            result FAIL "api.$api.task-snapshots" "could not disable and verify task snapshots"
+            return 1
+        fi
+        result PASS "api.$api.task-snapshots" "disabled before application activities"
+    fi
+    # Calibrated input coordinates require portrait even if an earlier probe
+    # left this disposable AVD's rotation locked in landscape.
+    SHELL settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+    SHELL settings put system user_rotation 0 >/dev/null 2>&1 || true
+    sleep 2
 
     # A fresh image registers the system services after sys.boot_completed: the
     # API 37 boot that passed above still had no package service for the first
