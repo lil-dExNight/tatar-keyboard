@@ -1,0 +1,38 @@
+// Host-only compile/task wiring for the DL-2 class measurement bridge. Used with `gradlew -I`;
+// does not alter the repository build files or package measurement code in an APK.
+allprojects { project ->
+    if (project.name != 'app') return
+    project.pluginManager.withPlugin('com.android.application') {
+        // Register eagerly but configure lazily: AGP registers its per-variant test tasks from
+        // its own afterEvaluate, which runs after this init-script callback, so testDebugUnitTest
+        // is only resolvable once the task graph realizes this task.
+        project.tasks.register('dl2Benchmark', JavaExec) {
+            group = 'verification'
+            description = 'Replays reviewed DL-2 class records through the production engines.'
+            def debugTest = project.tasks.named('testDebugUnitTest').get()
+            dependsOn 'compileDebugUnitTestKotlin'
+            classpath = debugTest.classpath + project.files(debugTest.testClassesDirs)
+            mainClass = 'rkr.simplekeyboard.inputmethod.latin.dictionary.engine.Dl2ClassMeasurement'
+            workingDir = project.rootProject.projectDir
+            // The bridge is env-gated: it reads nothing and exits when these are unset. The
+            // Python driver can pass them either through the process environment or through
+            // -Pdl2BenchmarkInput/-Pdl2BenchmarkOutput; unset properties inherit the environment.
+            def inputProperty = project.providers.gradleProperty('dl2BenchmarkInput').orNull
+            def outputProperty = project.providers.gradleProperty('dl2BenchmarkOutput').orNull
+            if (inputProperty != null) environment 'DL2_BENCHMARK_INPUT', inputProperty
+            if (outputProperty != null) environment 'DL2_BENCHMARK_OUTPUT', outputProperty
+            environment 'DL2_BENCHMARK_ROOT', project.rootProject.projectDir.absolutePath
+            doFirst {
+                // Validate the task's effective process environment (inherited plus configured),
+                // not the daemon's System.getenv: the daemon can outlive one class's invocation
+                // and carry another class's variables.
+                def processEnvironment = getEnvironment()
+                ['DL2_BENCHMARK_INPUT', 'DL2_BENCHMARK_OUTPUT'].each { name ->
+                    if (!processEnvironment[name]) {
+                        throw new GradleException("$name is required (pass -Pdl2BenchmarkInput/-Pdl2BenchmarkOutput)")
+                    }
+                }
+            }
+        }
+    }
+}
