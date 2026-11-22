@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -321,6 +322,42 @@ class RealTreeTest(unittest.TestCase):
         self.assertIn(code, (0, 1), out)
         self.assertIn("KEY|OVERALL|", out)
         self.assertNotIn("KEY|MISSING", out)
+
+    def test_ignored_block_key_has_only_the_reviewed_checksum_fallbacks(self) -> None:
+        root = ET.parse(METADATA).getroot()
+        namespace = KEY_CHECK.METADATA_NAMESPACE
+        ignored = root.findall(
+            "./v:configuration/v:ignored-keys/v:ignored-key", namespace)
+        self.assertEqual(["793FD5751A0F0780"], [key.attrib["id"] for key in ignored])
+        self.assertIn(
+            "1D217F8475EEE9F19AB8DD6B793FD5751A0F0780", ignored[0].attrib["reason"])
+
+        expected = {
+            "com.squareup.okio:okio:3.17.0:okio-3.17.0.module",
+            "com.squareup.okio:okio-jvm:3.17.0:okio-jvm-3.17.0.jar",
+            "com.squareup.okio:okio-jvm:3.17.0:okio-jvm-3.17.0.module",
+            "com.squareup.wire:wire-runtime:6.4.0:wire-runtime-6.4.0.module",
+            "com.squareup.wire:wire-runtime-jvm:6.4.0:wire-runtime-jvm-6.4.0.jar",
+            "com.squareup.wire:wire-runtime-jvm:6.4.0:wire-runtime-jvm-6.4.0.module",
+        }
+        fallbacks = {}
+        for component in root.findall("./v:components/v:component", namespace):
+            for artifact in component.findall("v:artifact", namespace):
+                pins = artifact.findall("v:sha256", namespace)
+                missing_key = any(
+                    pin.attrib.get("reason") == "A key couldn't be downloaded" for pin in pins)
+                if missing_key:
+                    coordinates = (
+                        f"{component.attrib['group']}:{component.attrib['name']}:"
+                        f"{component.attrib['version']}:{artifact.attrib['name']}"
+                    )
+                    fallbacks[coordinates] = pins
+        self.assertEqual(expected, set(fallbacks))
+        for coordinates, pins in fallbacks.items():
+            self.assertEqual(1, len(pins), coordinates)
+            digest = pins[0].attrib["value"]
+            self.assertEqual(64, len(digest), coordinates)
+            int(digest, 16)
 
     def test_warning_days_constant_is_the_documented_window(self) -> None:
         source = SCRIPT.read_text(encoding="utf-8")

@@ -181,18 +181,25 @@ jobs:
       # The release_pack.sh packing (zopfli zipalign) must be deterministic too:
       # pack the run-2 APK twice with --no-sign (CI has no keystore) and compare, so the job
       # proves pack determinism from identical bytes without a third and fourth clean build.
-      # The runner image does not carry the build-tools version pinned in
-      # scripts/build-tools-pin.sh, so this job uses the runner's newest build-tools via
-      # TT_BUILD_TOOLS_VERSION. Local releases use the pin.
-      - name: Pack twice without signing
-        env:
-          TT_BUILD_TOOLS_VERSION: ''
+      # Byte-producing tools must be the same pinned version used by local releases.
+      - name: Provision pinned Android build-tools
         run: |
-          set -e
-          latest=$(ls -1 "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)
-          echo "runner build-tools: $latest"
+          set -euo pipefail
+          source scripts/build-tools-pin.sh
+          : "${TT_BUILD_TOOLS_PIN:?scripts/build-tools-pin.sh must set TT_BUILD_TOOLS_PIN}"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?Android SDK root is not set}}"
+          echo "pinned build-tools: $TT_BUILD_TOOLS_PIN"
+          ANDROID_HOME="$SDK_ROOT" ANDROID_SDK_ROOT="$SDK_ROOT" \
+            sdkmanager "build-tools;$TT_BUILD_TOOLS_PIN"
+          test -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN"
+      - name: Pack twice without signing
+        run: |
+          set -euo pipefail
+          source scripts/build-tools-pin.sh
+          : "${TT_BUILD_TOOLS_PIN:?scripts/build-tools-pin.sh must set TT_BUILD_TOOLS_PIN}"
+          echo "packing build-tools: $TT_BUILD_TOOLS_PIN"
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
-          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign --from-apk "$UNSIGNED" /tmp/pack-1.apk
-          TT_BUILD_TOOLS_VERSION="$latest" bash scripts/release_pack.sh --no-sign --from-apk "$UNSIGNED" /tmp/pack-2.apk
+          bash scripts/release_pack.sh --no-sign --from-apk "$UNSIGNED" /tmp/pack-1.apk
+          bash scripts/release_pack.sh --no-sign --from-apk "$UNSIGNED" /tmp/pack-2.apk
           sha256sum /tmp/pack-1.apk /tmp/pack-2.apk
           cmp /tmp/pack-1.apk /tmp/pack-2.apk

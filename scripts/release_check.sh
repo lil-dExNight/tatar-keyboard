@@ -1194,12 +1194,54 @@ fi
 
 # --- 6. version: aapt2 badging against app/build.gradle ----------------------------------------
 if [ -z "$CHECKS" ]; then
-EXPECTED_VC=$(grep -oE 'versionCode [0-9]+' app/build.gradle | awk '{print $2}' | head -1 || true)
-EXPECTED_VN=$(grep -oE 'versionName "[^"]+"' app/build.gradle | head -1 | cut -d'"' -f2 || true)
-if [ -z "$EXPECTED_VC" ] || [ -z "$EXPECTED_VN" ]; then
-    echo "ERROR: versionCode/versionName не разобрались из app/build.gradle" >&2
+if ! VERSION_METADATA=$(python3 - app/build.gradle <<'PYEOF'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+declarations = {"versionCode": [], "versionName": []}
+for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    match = re.match(r"^[ \t]*(versionCode|versionName)\b(.*)$", line)
+    if match:
+        declarations[match.group(1)].append((line_number, match.group(2)))
+
+values = {}
+failed = False
+for name, found in declarations.items():
+    if len(found) != 1:
+        locations = ", ".join(str(line_number) for line_number, _ in found) or "none"
+        print(
+            f"ERROR: app/build.gradle: expected exactly one anchored {name} declaration; "
+            f"found {len(found)} (lines: {locations})",
+            file=sys.stderr,
+        )
+        failed = True
+        continue
+    line_number, arguments = found[0]
+    if name == "versionCode":
+        match = re.fullmatch(r"[ \t]+([0-9]+)[ \t]*", arguments)
+        expected = "versionCode <integer>"
+    else:
+        match = re.fullmatch(r'[ \t]+"([^"\t]+)"[ \t]*', arguments)
+        expected = 'versionName "<version>"'
+    if match is None:
+        print(
+            f"ERROR: app/build.gradle:{line_number}: expected '{expected}' declaration",
+            file=sys.stderr,
+        )
+        failed = True
+    else:
+        values[name] = match.group(1)
+
+if failed:
+    sys.exit(1)
+print(f"{values['versionCode']}\t{values['versionName']}")
+PYEOF
+); then
     exit 1
 fi
+IFS=$'\t' read -r EXPECTED_VC EXPECTED_VN <<<"$VERSION_METADATA"
 
 if BADGE=$("$AAPT2" dump badging "$APK" 2>&1); then
     BADGE=${BADGE%%$'\n'*}

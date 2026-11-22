@@ -7,8 +7,18 @@
          <key-server uri="hkps://keyserver.ubuntu.com"/>
          <key-server uri="hkps://keys.openpgp.org"/>
       </key-servers>
+      <!-- The short key id signs exactly six artifacts: okio-3.17.0.module,
+           okio-jvm-3.17.0.jar/.module, wire-runtime-6.4.0.module, and
+           wire-runtime-jvm-6.4.0.jar/.module. Their SHA-256 pins remain mandatory.
+           The full key is now available at
+           https://keys.openpgp.org/vks/v1/by-fingerprint/1D217F8475EEE9F19AB8DD6B793FD5751A0F0780;
+           Ubuntu's key server identifies it as Block Open Source Releases.
+           Replacement path: corroborate the fingerprint through a publisher-controlled source,
+           import it into both committed keyrings, trust it only for the four listed components,
+           add PGP rules for these six files, run the cold-cache verification, and then delete
+           this ignored-key entry. -->
       <ignored-keys>
-         <ignored-key id="793FD5751A0F0780" reason="Key couldn't be downloaded from any key server"/>
+         <ignored-key id="793FD5751A0F0780" reason="SHA-256 fallback for Block-signed Okio 3.17.0 and Wire 6.4.0; replacement fingerprint 1D217F8475EEE9F19AB8DD6B793FD5751A0F0780"/>
       </ignored-keys>
       <trusted-keys>
          <trusted-key id="04543577D6A9CC626239C50C7ECBD740FF06AEB5">

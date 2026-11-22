@@ -231,6 +231,26 @@ class ReleasePackOutputTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(self.unsigned.read_bytes(), output.read_bytes())
 
+    def test_a_missing_pin_declaration_fails_before_tool_selection(self) -> None:
+        self.repo.environment.pop("TT_BUILD_TOOLS_VERSION")
+        self.repo.write("scripts/build-tools-pin.sh", "# No pin declared.\n")
+        result = self.repo.run(
+            "release_pack.sh", "--no-sign", "--from-apk", str(self.unsigned), "out.apk")
+        output = result.stdout + result.stderr
+        self.assertNotEqual(0, result.returncode, output)
+        self.assertIn("TT_BUILD_TOOLS_PIN", output)
+        self.assertIn("unbound variable", output)
+
+    def test_an_installed_other_version_is_not_a_pin_fallback(self) -> None:
+        self.repo.environment.pop("TT_BUILD_TOOLS_VERSION")
+        self.repo.write("scripts/build-tools-pin.sh", 'TT_BUILD_TOOLS_PIN="missing-pin"\n')
+        result = self.repo.run(
+            "release_pack.sh", "--no-sign", "--from-apk", str(self.unsigned), "out.apk")
+        output = result.stdout + result.stderr
+        self.assertNotEqual(0, result.returncode, output)
+        self.assertIn("build-tools missing-pin", output)
+        self.assertIn("не найдены", output)
+
 
 class CriticalResourcesTest(unittest.TestCase):
     """artifact.critical_resources against a fake aapt2 dump of a fixture tree."""
@@ -410,6 +430,90 @@ class ReleaseGateTest(unittest.TestCase):
         self.assertRegex(result.stdout, r"SKIP\s+gates\.text_hygiene")
 
 
+class ReleaseVersionParsingTest(unittest.TestCase):
+    """The release checker accepts one canonical declaration of each version field."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.repo = FixtureRepository(Path(self.temporary_directory.name))
+        script = RELEASE_CHECK.read_text(encoding="utf-8")
+        self.check = script.split("# --- 6. version:", 1)[1].split("\n", 1)[1].split(
+            "# --- 7. localized store changelogs", 1)[0]
+        self.repo.tool(
+            "aapt2",
+            "#!/bin/sh\n"
+            "echo \"package: name='fixture' versionCode='1' versionName='1.0'\"\n",
+        )
+
+    def run_version_check(self, build_gradle: str) -> subprocess.CompletedProcess[str]:
+        self.repo.write("app/build.gradle", build_gradle)
+        harness = """set -euo pipefail
+CHECKS=""
+AAPT2="${AAPT2:?}"
+APK="${APK:?}"
+FAILURES=0
+report() { printf 'RESULT|%s|%s|%s\n' "$1" "$2" "$3"; }
+""" + self.check + "\nfi\n"
+        # The production default-mode guard closes after section 8; this fixture extracts
+        # only section 6, so close that guard explicitly after its complete version check.
+        environment = self.repo.environment.copy()
+        environment["AAPT2"] = str(self.repo.tools / "aapt2")
+        environment["APK"] = str(self.repo.root.parent / "candidate.apk")
+        return subprocess.run(
+            ["bash", "-c", harness], cwd=self.repo.root, env=environment, check=False,
+            capture_output=True, text=True,
+        )
+
+    def test_one_anchored_declaration_of_each_field_passes(self) -> None:
+        result = self.run_version_check(
+            "android {\n"
+            "    defaultConfig {\n"
+            "        versionCode 1\n"
+            "        versionName \"1.0\"\n"
+            "    }\n"
+            "}\n"
+        )
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("RESULT|PASS|artifact.version|1.0 / versionCode 1", output)
+
+    def test_duplicate_and_reformatted_declarations_fail_clearly(self) -> None:
+        fixtures = {
+            "duplicate code": (
+                "versionCode 1\nversionCode 2\nversionName \"1.0\"\n",
+                "exactly one anchored versionCode declaration; found 2",
+            ),
+            "duplicate name": (
+                "versionCode 1\nversionName \"1.0\"\nversionName \"2.0\"\n",
+                "exactly one anchored versionName declaration; found 2",
+            ),
+            "reformatted duplicate": (
+                "versionCode 1\nversionCode = 2\nversionName \"1.0\"\n",
+                "exactly one anchored versionCode declaration; found 2",
+            ),
+            "equals code": (
+                "versionCode = 1\nversionName \"1.0\"\n",
+                "expected 'versionCode <integer>' declaration",
+            ),
+            "single quoted name": (
+                "versionCode 1\nversionName '1.0'\n",
+                "expected 'versionName \"<version>\"' declaration",
+            ),
+            "unanchored name": (
+                "versionCode 1\ndef versionName = \"1.0\"\n",
+                "exactly one anchored versionName declaration; found 0",
+            ),
+        }
+        for name, (fixture, error) in fixtures.items():
+            with self.subTest(name=name):
+                result = self.run_version_check(fixture)
+                output = result.stdout + result.stderr
+                self.assertNotEqual(0, result.returncode, output)
+                self.assertIn(error, output)
+                self.assertNotIn("RESULT|PASS|artifact.version|", output)
+
+
 class LocalizedChangelogTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -502,6 +606,17 @@ class ContinuousIntegrationChecksTest(unittest.TestCase):
         # other CI builds, so their compilation needs its own gradle invocations.
         self.assertIn("./gradlew :app:assembleDebugAndroidTest", self.workflow)
         self.assertIn("./gradlew :baselineprofile:assemble", self.workflow)
+
+    def test_reproducible_packing_provisions_and_uses_the_release_pin(self) -> None:
+        reproducible = self.workflow.split("  reproducible:\n", 1)[1]
+        self.assertIn('sdkmanager "build-tools;$TT_BUILD_TOOLS_PIN"', reproducible)
+        self.assertGreaterEqual(
+            reproducible.count(": \"${TT_BUILD_TOOLS_PIN:?"), 2, reproducible)
+        self.assertNotIn("TT_BUILD_TOOLS_VERSION", reproducible)
+        self.assertNotRegex(reproducible, r"(?m)^\s*latest=")
+        pack_commands = re.findall(
+            r"(?m)^\s*bash scripts/release_pack\.sh --no-sign --from-apk ", reproducible)
+        self.assertEqual(2, len(pack_commands), reproducible)
 
     def test_the_scheduled_workflow_gates_key_expiry_and_cold_cache(self) -> None:
         nightly = (ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8")
