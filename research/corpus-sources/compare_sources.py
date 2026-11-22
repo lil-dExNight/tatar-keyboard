@@ -68,15 +68,19 @@ def read_lines(path: Path) -> list[str]:
         return [line.rstrip("\r\n") for line in handle if line.strip()]
 
 
-def file_provenance(path: Path) -> dict:
+def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def file_provenance(path: Path) -> dict:
     return {
         "path": str(path.relative_to(ROOT)),
         "size_bytes": path.stat().st_size,
-        "sha256": digest.hexdigest(),
+        "sha256": file_sha256(path),
     }
 
 
@@ -433,6 +437,30 @@ def build_bigram_with_shipped_dictionary(
     return result, candidate_table
 
 
+def shipped_asset_paths() -> dict[str, Path]:
+    """The shipped assets the comparison measured against, keyed for the identity fields."""
+    return {
+        "dictionary": CL.SHIPPED["tat"],
+        "bigram": ROOT / "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib",
+    }
+
+
+def shipped_asset_fields() -> dict:
+    """Size and SHA-256 identity of the shipped assets, so a same-size later replacement of
+    either asset stays detectable as stale comparison evidence."""
+    paths = shipped_asset_paths()
+    return {
+        "shipped_asset_sizes": {
+            "dictionary_compressed_bytes": paths["dictionary"].stat().st_size,
+            "bigram_compressed_bytes": paths["bigram"].stat().st_size,
+        },
+        "shipped_asset_sha256": {
+            "dictionary": file_sha256(paths["dictionary"]),
+            "bigram": file_sha256(paths["bigram"]),
+        },
+    }
+
+
 def load_shipped_bigrams(shipped_words: set[str]) -> dict[str, list[str]]:
     path = ROOT / "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib"
     dictionary_raw = DP.decompress_asset(CL.SHIPPED["tat"].read_bytes(), LANG)
@@ -606,10 +634,7 @@ def main() -> int:
         "source_overlap": overlap_report(source_lines),
         "candidates": candidates,
         "held_out_evaluations": evaluations,
-        "shipped_asset_sizes": {
-            "dictionary_compressed_bytes": CL.SHIPPED["tat"].stat().st_size,
-            "bigram_compressed_bytes": (ROOT / "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib").stat().st_size,
-        },
+        **shipped_asset_fields(),
     }
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     arguments.output.write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -9,8 +9,12 @@ rewrite in the Kotlin storage contracts (between the `// <generated pins>` marke
 regeneration of the Tatar calibration
 sets (typo recovery, glide) with a pin rewrite in their python and JVM tests, then --check.
 --only tatar|russian rebuilds one side; the other must stay identical.
+Before writing any output, an actual rebuild runs the strict raw-corpus provenance preflight
+(`provenance.validate_raw_corpora`): every raw dump in the acquisition-pin registry must be
+declared by a `data/provenance.d` shard and match its pinned size and SHA-256 on disk.
 --check compares assets with pins, bigram heads and cold-companion lists with dictionaries, and
-the corpus manifest with the registry (and with the files, if --corpus-dir is given); head drift
+the corpus manifest with the registry (and with the files, if --corpus-dir is given); it stays
+offline and never requires local corpora; head drift
 passes only with --allow-known-drift and an exact match in known_asset_drift.json. Exit: 0 ok,
 1 mismatch, 2 missing input, failed step or unparsable contract or manifest.
 """
@@ -39,6 +43,7 @@ import wordform_gen  # noqa: E402
 from bigram_pack import select_heads  # noqa: E402
 import companion_list_pack  # noqa: E402
 import proper_name_pack  # noqa: E402
+import provenance  # noqa: E402
 import trigram_asset_pack  # noqa: E402
 
 STORAGE_DIR = Path("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage")
@@ -1727,6 +1732,25 @@ def _side_snapshot(root: Path, tags: frozenset[str]) -> dict[str, object]:
     return snapshot
 
 
+def raw_provenance_preflight(root: Path, stream: TextIO = sys.stdout) -> int:
+    """Require and verify the raw ``research/corpus`` dumps before any rebuild output.
+
+    A rebuild must not run on unverifiable upstream training bytes: every dump in the
+    acquisition-pin registry needs a provenance shard and matching size/SHA-256 on disk.
+    The offline ``--check`` path never calls this, so a clean checkout stays runnable.
+    """
+    try:
+        result = provenance.validate_raw_corpora(root)
+    except (provenance.ProvenanceError, OSError) as error:
+        print(f"error: raw corpus provenance: {error}", file=sys.stderr)
+        return 2
+    print(
+        f"raw corpora: {result['verified_raw_corpora']} dumps size- and hash-verified",
+        file=stream,
+    )
+    return 0
+
+
 def run_rebuild(
     root: Path,
     baseline: Path,
@@ -1792,6 +1816,12 @@ def run_rebuild(
         for name, verdict in sorted(bad_corpora.items()):
             print(f"  {corpus_dir / name}: {verdict}", file=sys.stderr)
         return 1
+
+    # The raw training dumps behind the pinned corpora must be declared and hash-verified
+    # before anything is written (the offline --check path stays clean without them).
+    preflight = raw_provenance_preflight(root, stream)
+    if preflight != 0:
+        return preflight
 
     work_dir.mkdir(parents=True, exist_ok=True)
 

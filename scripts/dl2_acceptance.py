@@ -24,9 +24,9 @@ Evidence contract:
   Any non-null autocorrect advice for a protected word is a false replacement.
 - The paired CI95 aggregates collision groups into one bootstrap unit (hits summed, denominator =
   group row count), so rows sharing a collision group are not resampled as unrelated records.
-- Known telemetry gap: `computeAutocorrectAdvice` can return on probe-generation failure before
-  `lastAutocorrectProbeCount` is written, so the autocorrect-side over-budget gate is reported as
-  unmeasurable; the display-side `lastFuzzyOverBudget` gate is measured.
+- Autocorrect probe telemetry is measured on every return path: `lastAutocorrectProbeCount` and
+  `lastAutocorrectOverBudget` are defined for early generation/probe failures as well as completed
+  advice computations, so the autocorrect over-budget gate is a measured pass or failure.
 
 The reviewed worksheets are not tracked. ``measure`` needs ``--worksheet-dir`` pointing at a
 directory holding ``worksheet-<slug>.tsv`` when the default local path is absent; it fails with
@@ -73,6 +73,7 @@ RESULT_COLUMNS = (
     "baseline_over_budget", "candidate_over_budget",
     "baseline_fuzzy_probes", "candidate_fuzzy_probes",
     "baseline_autocorrect_probes", "candidate_autocorrect_probes",
+    "baseline_autocorrect_over_budget", "candidate_autocorrect_over_budget",
     "baseline_ns", "candidate_ns",
     "baseline_candidates", "candidate_candidates",
     "baseline_fires", "candidate_fires",
@@ -559,10 +560,13 @@ def probes_summary(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         ),
         "baseline_autocorrect_probes": counters("baseline_autocorrect_probes"),
         "candidate_autocorrect_probes": counters("candidate_autocorrect_probes"),
-        # computeAutocorrectAdvice returns on probe-generation failure before
-        # lastAutocorrectProbeCount is written, so a zero counter cannot prove a zero
-        # autocorrect over-budget outcome. The gate is reported as unmeasurable.
-        "autocorrect_probe_telemetry": "gap",
+        "baseline_autocorrect_over_budget_lookups": sum(
+            1 for row in results if _bool(row, "baseline_autocorrect_over_budget")
+        ),
+        "candidate_autocorrect_over_budget_lookups": sum(
+            1 for row in results if _bool(row, "candidate_autocorrect_over_budget")
+        ),
+        "autocorrect_probe_telemetry": "measured",
     }
 
 
@@ -679,11 +683,9 @@ def build_report(slug: str, worksheet: Path, selection: dict[str, Any], exact_pa
         "baseline_over_budget": probes["baseline_fuzzy_over_budget_lookups"],
     }
     gates["zero_autocorrect_over_budget_lookups"] = {
-        "status": "unmeasurable",
-        "reason": (
-            "computeAutocorrectAdvice returns on probe-generation failure before "
-            "lastAutocorrectProbeCount is written, so a zero counter cannot prove the gate"
-        ),
+        "status": "pass" if probes["candidate_autocorrect_over_budget_lookups"] == 0 else "fail",
+        "candidate_over_budget": probes["candidate_autocorrect_over_budget_lookups"],
+        "baseline_over_budget": probes["baseline_autocorrect_over_budget_lookups"],
     }
     gates["host_autocorrect_p95_within_budget"] = {
         "status": "pass" if timing["candidate"]["p95_ms"] <= TIMING_BUDGET_MS else "fail",
@@ -730,8 +732,8 @@ def build_report(slug: str, worksheet: Path, selection: dict[str, Any], exact_pa
         "note": "risk flags are triage; each flagged component needs an explicit disposition",
     }
     hard_gates = ("recovery_delta_ci95_above_zero", "zero_candidate_false_replacements",
-                  "zero_display_over_budget_lookups", "host_autocorrect_p95_within_budget",
-                  "positive_control_engaged")
+                  "zero_display_over_budget_lookups", "zero_autocorrect_over_budget_lookups",
+                  "host_autocorrect_p95_within_budget", "positive_control_engaged")
     if language == "tat":
         hard_gates = hard_gates + ("exact_reviewed_pairs_preserved",)
     blocking = [
@@ -861,6 +863,9 @@ def evaluate_gates(report: Mapping[str, Any]) -> dict[str, Any]:
     gates["zero_candidate_false_replacements"] = safety["candidate_false_replacements"] == 0
     gates["zero_display_over_budget_lookups"] = (
         report["probes"]["candidate_fuzzy_over_budget_lookups"] == 0
+    )
+    gates["zero_autocorrect_over_budget_lookups"] = (
+        report["probes"]["candidate_autocorrect_over_budget_lookups"] == 0
     )
     gates["host_autocorrect_p95_within_budget"] = (
         report["timing"]["candidate"]["p95_ms"] <= TIMING_BUDGET_MS

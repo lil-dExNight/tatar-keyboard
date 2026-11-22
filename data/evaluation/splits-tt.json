@@ -1,6 +1,6 @@
 {
   "language": "tat",
-  "note": "Train/development/final split declarations checked by scripts/evaluation_splits.py. Sentence collisions are checked across splits; frequency and dictionary-admission tables must not contain two rows that normalize to the same word. Raw corpus dumps (research/corpus, gitignored) and Leipzig inputs (~/corpora-leipzig, pinned in data/corpus-manifest.json) are provenance-pinned training inputs, not split-config rows; the eval builders exclude them at build time.",
+  "note": "Train/development/final split declarations checked by scripts/evaluation_splits.py. Sentence collisions are checked across splits; frequency and dictionary-admission tables must not contain two rows that normalize to the same word. Optional ${CORPUS_DIR}/ sources declare the pinned bigram-training inputs without making clean-archive validation depend on local corpora; when present they are parsed and checked. Final builders require every input in the shared final-exclusions-tt.json inventory.",
   "sources": [
     {
       "id": "tt-eval-sentences",
@@ -66,6 +66,33 @@
       "split": "train",
       "path": "data/dictionary/dict-accept/bonus-freq-tt.tsv",
       "role": "extra-corpus bonus frequency of dictionary pool words"
+    },
+    {
+      "id": "tt-bigram-tat-mixed-2015",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/tat_mixed_2015_1M-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Tatar bigram training input; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "tt-bigram-tat-web-2018",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/tat_web_2018_1M-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Tatar bigram training input; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "tt-bigram-conversational-train90",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/tt_conv_train90-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Tatar bigram training input with weight 10; pin in data/corpus-manifest.json"
     }
   ]
 }

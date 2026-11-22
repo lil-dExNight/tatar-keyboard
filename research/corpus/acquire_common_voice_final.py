@@ -2,9 +2,11 @@
 """Extract the independent Tatar Common Voice final evaluation set.
 
 The set must be independent of every training and development input: candidate sentences are
-normalized like the development evaluator, then checked against the conversational train
-split, the Leipzig Tatar training sentences, and the committed development sets, and the
-survivors are sampled deterministically and frozen before tuning.
+normalized like the development evaluator, then checked against the legacy pin-verified training
+and development namespaces and the shared data/evaluation/final-exclusions-tt.json inventory.
+That inventory also covers historical news, the other frozen final, every TatSC split, the other
+Common Voice splits, and extra Tatar tuning inputs. Survivors are sampled deterministically and
+frozen before tuning.
 
 Two acquisition paths feed the same pipeline:
 
@@ -38,13 +40,14 @@ import json
 import sys
 import tarfile
 from pathlib import Path
-from typing import BinaryIO, Iterator, Sequence
+from typing import BinaryIO, Iterable, Iterator, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import final_evaluation_exclusions as final_exclusions  # noqa: E402
 import make_eval_set  # noqa: E402
 import suggest_eval  # noqa: E402
 
@@ -196,61 +199,62 @@ def canonical(line: str) -> list[str]:
     return make_eval_set.normalize_sentence(line)
 
 
-def heldout_namespaces(corpus_dir: Path, leipzig_dir: Path, workdir: Path) -> dict[str, frozenset[str]]:
+def common_voice_skip_ids(*, mirror_dev_source: bool) -> frozenset[str]:
+    """Skip this builder's output and, only for mirror-dev, the identical source split."""
+    skip = {"final-common-voice"}
+    if mirror_dev_source:
+        skip.add("common-voice-dev")
+    return frozenset(skip)
+
+
+def heldout_namespaces(
+    corpus_dir: Path,
+    leipzig_dir: Path,
+    workdir: Path,
+    *,
+    mirror_dev_source: bool,
+    inventory_path: Path = final_exclusions.DEFAULT_INVENTORY,
+) -> dict[str, frozenset[str]]:
     recipe = make_eval_set.run_conv_recipe(corpus_dir, workdir)
     train: set[str] = set()
     for content in recipe.train90_contents:
         words = canonical(content)
         if words:
             train.add(" ".join(words))
-    return {
+    excluded = {
         "conversational_train": frozenset(train),
-        "leipzig_train": make_eval_set.load_leipzig_normalized(leipzig_dir, make_eval_set.CORPUS_MANIFEST),
+        "leipzig_train": make_eval_set.load_leipzig_normalized(
+            leipzig_dir, make_eval_set.CORPUS_MANIFEST
+        ),
         "development": frozenset(suggest_eval.load_eval_lines(make_eval_set.DEFAULT_OUT)),
     }
+    # The common output is never independent. The dev mirror text is this builder's own source;
+    # official archive input may contain other Common Voice material, so its source split is not
+    # skipped without an explicit identity. Every other entry is mandatory and shared with the
+    # trigram builder. The recipe supplies the full conversational exclusion after verification.
+    excluded.update(
+        final_exclusions.load_exclusion_namespaces(
+            ROOT,
+            leipzig_dir,
+            inventory_path=inventory_path,
+            skip_ids=common_voice_skip_ids(mirror_dev_source=mirror_dev_source),
+            provided_namespaces={
+                "conversational-full-stream": final_exclusions.normalized_recipe_sentences(
+                    recipe.rows
+                )
+            },
+        )
+    )
+    return excluded
 
 
-def build_final_set(
-    corpus_dir: Path,
-    leipzig_dir: Path,
-    workdir: Path,
-    output: Path,
-    limit: int,
+def collect_candidates(
+    rows: "Iterable[dict[str, str]]",
+    excluded: dict[str, frozenset[str]],
+    *,
     min_words: int,
     max_words: int,
-    *,
-    archive: Path | None = None,
-    mirror_text: Path | None = None,
-) -> dict[str, object]:
-    if (archive is None) == (mirror_text is None):
-        raise CommonVoiceError("exactly one of --archive or --mirror-text is required")
-    if limit <= 0:
-        raise CommonVoiceError("limit must be positive")
-    if not 0 < min_words <= max_words:
-        raise CommonVoiceError("word bounds must satisfy 0 < min <= max")
-
-    if mirror_text is not None:
-        source_label, rows, source_sha256 = mirror_sentence_rows(mirror_text)
-        input_description = (
-            f"Mirror {MIRROR_DATASET} tt-{MIRROR_SPLIT} text, "
-            "pin-verified against corpus-common-voice.json"
-        )
-        archive_bytes = source_sha256_extra = None
-    else:
-        assert archive is not None
-        if not archive.is_file():
-            raise CommonVoiceError(
-                "official Common Voice archive is missing; download it with an authenticated "
-                "Mozilla Data Collective account and pass --archive"
-            )
-        source_label, rows, source_sha256 = sentence_rows(archive)
-        input_description = (
-            f"Official Mozilla Data Collective archive {REVISION} (dataset ID {DATASET_ID})"
-        )
-        archive_bytes = archive.stat().st_size
-        source_sha256_extra = source_sha256
-
-    excluded = heldout_namespaces(corpus_dir, leipzig_dir, workdir)
+) -> tuple[list[str], dict[str, object], dict[str, int]]:
     seen: set[str] = set()
     candidates: list[str] = []
     stats = {
@@ -284,6 +288,60 @@ def build_final_set(
             continue
         seen.add(normalized)
         candidates.append(normalized)
+    return candidates, stats, source_counts
+
+
+def build_final_set(
+    corpus_dir: Path,
+    leipzig_dir: Path,
+    workdir: Path,
+    output: Path,
+    limit: int,
+    min_words: int,
+    max_words: int,
+    *,
+    archive: Path | None = None,
+    mirror_text: Path | None = None,
+    inventory_path: Path = final_exclusions.DEFAULT_INVENTORY,
+) -> dict[str, object]:
+    if (archive is None) == (mirror_text is None):
+        raise CommonVoiceError("exactly one of --archive or --mirror-text is required")
+    if limit <= 0:
+        raise CommonVoiceError("limit must be positive")
+    if not 0 < min_words <= max_words:
+        raise CommonVoiceError("word bounds must satisfy 0 < min <= max")
+
+    if mirror_text is not None:
+        source_label, rows, source_sha256 = mirror_sentence_rows(mirror_text)
+        input_description = (
+            f"Mirror {MIRROR_DATASET} tt-{MIRROR_SPLIT} text, "
+            "pin-verified against corpus-common-voice.json"
+        )
+        archive_bytes = source_sha256_extra = None
+    else:
+        assert archive is not None
+        if not archive.is_file():
+            raise CommonVoiceError(
+                "official Common Voice archive is missing; download it with an authenticated "
+                "Mozilla Data Collective account and pass --archive"
+            )
+        source_label, rows, source_sha256 = sentence_rows(archive)
+        input_description = (
+            f"Official Mozilla Data Collective archive {REVISION} (dataset ID {DATASET_ID})"
+        )
+        archive_bytes = archive.stat().st_size
+        source_sha256_extra = source_sha256
+
+    excluded = heldout_namespaces(
+        corpus_dir,
+        leipzig_dir,
+        workdir,
+        mirror_dev_source=mirror_text is not None,
+        inventory_path=inventory_path,
+    )
+    candidates, stats, source_counts = collect_candidates(
+        rows, excluded, min_words=min_words, max_words=max_words
+    )
 
     if len(candidates) < limit:
         raise CommonVoiceError(
@@ -298,9 +356,9 @@ def build_final_set(
         "# Tatar FINAL evaluation sentences; frozen before tuning. Do not train or tune on these.",
         f"# Source: {input_description}. License: {LICENSE}.",
         "# Extracted from sentence text only; no audio or speaker metadata is kept.",
-        "# Independent of training and development: no normalized sentence appears in the",
-        "# conversational train split, the Leipzig training sentences, or the development set",
-        "# (enforced here at build time and by scripts/evaluation_splits.py before gates).",
+        "# Independent of every source in data/evaluation/final-exclusions-tt.json: training,",
+        "# historical news and development, the other final set, TatSC, extra Tatar inputs, and",
+        "# the other Common Voice splits (enforced here and by evaluation_splits.py).",
         f"# Sample: sha256-seeded top {limit} of {len(candidates)} survivors, seed {SAMPLE_SEED!r}.",
         "# Generation command: research/corpus/acquire_common_voice_final.py --mirror-text",
         "",
@@ -321,6 +379,7 @@ def build_final_set(
             "min_words": min_words,
             "max_words": max_words,
             "selected": len(selected),
+            "exclusion_namespaces": sorted(excluded),
             "source_rows_by_source": dict(sorted(source_counts.items())),
         }
     )
@@ -415,7 +474,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             archive=args.archive,
             mirror_text=mirror_text,
         )
-    except (CommonVoiceError, make_eval_set.EvalSetError, OSError) as error:
+    except (
+        CommonVoiceError,
+        final_exclusions.FinalExclusionError,
+        make_eval_set.EvalSetError,
+        OSError,
+    ) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))

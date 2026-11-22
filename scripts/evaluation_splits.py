@@ -11,9 +11,13 @@ word_namespace, defaulting to the source id; tables that must stay mutually disj
 design (conversational and bonus frequencies) keep separate namespaces.
 
 Config: {"language":"tat", "sources":[{"id", "kind", "split", "path", ...}]}. Kinds are
-sentences, frequencies, dictionary_admissions, and bigram_training. Splits are train,
-development, and final. Sentence sources may set sentence_column for TSV input; word tables
-may set word_column and word_namespace. All paths are repository-relative.
+sentences, frequencies, dictionary_admissions, evaluation_words, and bigram_training. Splits
+are train, development, and final. Sentence sources may set sentence_column for TSV input;
+word tables may set word_column and word_namespace. Paths are repository-relative except the
+portable ${CORPUS_DIR}/ prefix used by optional raw-corpus declarations; committed files cannot
+be optional. An optional source is skipped only while its file is absent; a present file is
+always parsed. Cross-split leak classification is fixed to development/final, while an optional
+`evaluation_splits` field only controls which committed sentence roles are required.
 """
 from __future__ import annotations
 
@@ -29,9 +33,15 @@ import dictionary_coverage as coverage
 
 ROOT = Path(__file__).resolve().parents[1]
 EDGE_CHARS = "\"'«»„“”‘’()[]{}<>.,!?;:…—–-*_/\\|~`^&#№%+=@$"
-KINDS = frozenset(("sentences", "frequencies", "dictionary_admissions", "bigram_training"))
+KINDS = frozenset(
+    ("sentences", "frequencies", "dictionary_admissions", "evaluation_words", "bigram_training")
+)
+WORD_TABLE_KINDS = frozenset(("frequencies", "dictionary_admissions", "evaluation_words"))
+UNIQUE_WORD_TABLE_KINDS = frozenset(("frequencies", "dictionary_admissions"))
 SPLITS = frozenset(("train", "development", "final"))
 EVALUATION_SPLITS = frozenset(("development", "final"))
+CORPUS_DIR_PREFIX = "${CORPUS_DIR}/"
+DEFAULT_CORPUS_DIR = Path.home() / "corpora-leipzig"
 
 
 class SplitConfigError(ValueError):
@@ -84,11 +94,21 @@ def _rows(path: Path) -> Iterator[tuple[int, list[str]]]:
             yield line_number, fields
 
 
+def _source_path(root: Path, source: dict[str, object], corpus_dir: Path) -> Path:
+    configured = str(source["path"])
+    if configured.startswith(CORPUS_DIR_PREFIX):
+        return corpus_dir.expanduser() / configured[len(CORPUS_DIR_PREFIX):]
+    return root / configured
+
+
 def _records(
-    root: Path, source: dict[str, object], alphabet: frozenset[str]
+    root: Path,
+    source: dict[str, object],
+    alphabet: frozenset[str],
+    corpus_dir: Path,
 ) -> Iterable[tuple[str, int, str]]:
     relative = Path(str(source["path"]))
-    path = root / relative
+    path = _source_path(root, source, corpus_dir)
     kind = source["kind"]
     if kind in ("sentences", "bigram_training"):
         column = int(source.get("sentence_column", 0))
@@ -112,7 +132,9 @@ def _records(
                 yield normalized, line_number, fields[column]
 
 
-def _validate_config(config: object) -> tuple[str, list[dict[str, object]]]:
+def _validate_config(
+    config: object,
+) -> tuple[str, list[dict[str, object]], frozenset[str]]:
     if not isinstance(config, dict) or not isinstance(config.get("sources"), list):
         raise SplitConfigError("config must be an object with a sources array")
     language = config.get("language", "tat")
@@ -134,59 +156,97 @@ def _validate_config(config: object) -> tuple[str, list[dict[str, object]]]:
             raise SplitConfigError(f"source {source['id']} has unknown kind {source['kind']}")
         if source["split"] not in SPLITS:
             raise SplitConfigError(f"source {source['id']} has unknown split {source['split']}")
-        relative = Path(source["path"])
-        if relative.is_absolute() or ".." in relative.parts:
+        configured_path = str(source["path"])
+        relative_text = (
+            configured_path[len(CORPUS_DIR_PREFIX):]
+            if configured_path.startswith(CORPUS_DIR_PREFIX) else configured_path
+        )
+        relative = Path(relative_text)
+        if not relative_text or relative.is_absolute() or ".." in relative.parts:
             raise SplitConfigError(f"source {source['id']} path is not repository-relative")
-        key = relative.as_posix()
+        if "optional" in source:
+            if not isinstance(source["optional"], bool):
+                raise SplitConfigError(f"source {source['id']} optional must be a boolean")
+            if source["optional"] and not configured_path.startswith(CORPUS_DIR_PREFIX):
+                raise SplitConfigError(
+                    f"source {source['id']} cannot make a committed artifact optional"
+                )
+        key = configured_path
         if key in paths:
             raise SplitConfigError(
                 f"artifact {key} is assigned to both {paths[key]} and {source['id']}"
             )
         paths[key] = source["id"]
         sources.append(source)
-    # Development and final need committed sentence sources so the collision gate can run
-    # offline. Train sentences (Leipzig, conversational streams) are not committed to the
-    # repository and are excluded from development/final by the evaluation builders themselves
-    # (make_eval_set.py verifies the conversational digest; build_provenance.py re-checks
-    # the pinned bundle), so a train sentence source is optional here.
-    for split in ("development", "final"):
+    configured_evaluation_splits = config.get(
+        "evaluation_splits", sorted(EVALUATION_SPLITS)
+    )
+    if (
+        not isinstance(configured_evaluation_splits, list)
+        or not configured_evaluation_splits
+        or any(
+            not isinstance(split, str) or split not in EVALUATION_SPLITS
+            for split in configured_evaluation_splits
+        )
+        or len(set(configured_evaluation_splits)) != len(configured_evaluation_splits)
+    ):
+        raise SplitConfigError("evaluation_splits must contain development and/or final once")
+    # Required evaluation splits need committed sentence sources so the collision gate can run
+    # offline. Raw bigram inputs are declared as optional: clean archives skip only absent files,
+    # while builders require every exclusion input they consume.
+    for split in configured_evaluation_splits:
         if not any(
-            source["split"] == split and source["kind"] == "sentences" for source in sources
+            source["split"] == split
+            and source["kind"] == "sentences"
+            and not source.get("optional", False)
+            for source in sources
         ):
-            raise SplitConfigError(f"{split} has no sentence source")
-    return language, sources
+            raise SplitConfigError(f"{split} has no committed sentence source")
+    return language, sources, frozenset(configured_evaluation_splits)
 
 
-def check_splits(root: Path, config_path: Path) -> dict[str, object]:
+def check_splits(
+    root: Path, config_path: Path, *, corpus_dir: Path = DEFAULT_CORPUS_DIR
+) -> dict[str, object]:
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise SplitConfigError(f"cannot read {config_path}: {error}") from error
-    language, sources = _validate_config(config)
+    language, sources, required_evaluation_splits = _validate_config(config)
     alphabet = coverage.RUSSIAN.alphabet if language == "rus" else coverage.TATAR.alphabet
     sentence_owners: dict[str, tuple[str, str, int, str]] = {}
     word_owners: dict[tuple[str, str, str], tuple[str, int, str]] = {}
     counts: Counter[str] = Counter()
     collisions: list[dict[str, object]] = []
+    optional_missing: list[str] = []
     for source in sources:
         kind = str(source["kind"])
         split = str(source["split"])
         identifier = str(source["id"])
-        for normalized, line_number, raw in _records(root, source, alphabet):
+        path = _source_path(root, source, corpus_dir)
+        if source.get("optional", False) and not path.exists():
+            optional_missing.append(identifier)
+            continue
+        for normalized, line_number, raw in _records(root, source, alphabet, corpus_dir):
             counts[f"{split}:{kind}"] += 1
-            if kind in ("frequencies", "dictionary_admissions"):
-                namespace = str(source.get("word_namespace", identifier))
-                key = (kind, namespace, normalized)
-                previous = word_owners.get(key)
-                if previous is not None:
-                    collisions.append({
-                        "kind": kind,
-                        "normalized": normalized,
-                        "first": {"source": previous[0], "line": previous[1], "raw": previous[2]},
-                        "second": {"source": identifier, "line": line_number, "raw": raw},
-                    })
-                else:
-                    word_owners[key] = (identifier, line_number, raw)
+            if kind in WORD_TABLE_KINDS:
+                if kind in UNIQUE_WORD_TABLE_KINDS:
+                    namespace = str(source.get("word_namespace", identifier))
+                    key = (kind, namespace, normalized)
+                    previous = word_owners.get(key)
+                    if previous is not None:
+                        collisions.append({
+                            "kind": kind,
+                            "normalized": normalized,
+                            "first": {
+                                "source": previous[0], "line": previous[1], "raw": previous[2]
+                            },
+                            "second": {"source": identifier, "line": line_number, "raw": raw},
+                        })
+                    else:
+                        word_owners[key] = (identifier, line_number, raw)
+                # Evaluation word targets may repeat with different typo operations; they are
+                # measurements, not merge inputs, so they do not enter sentence/word ownership.
                 continue
             previous = sentence_owners.get(normalized)
             if previous is None:
@@ -194,7 +254,9 @@ def check_splits(root: Path, config_path: Path) -> dict[str, object]:
                 continue
             first_id, first_split, first_line, first_raw = previous
             cross_split = first_split != split
-            evaluation_leak = split in EVALUATION_SPLITS or first_split in EVALUATION_SPLITS
+            evaluation_leak = (
+                split in EVALUATION_SPLITS or first_split in EVALUATION_SPLITS
+            )
             if cross_split and evaluation_leak:
                 collisions.append({
                     "kind": "normalized_sentence",
@@ -214,6 +276,8 @@ def check_splits(root: Path, config_path: Path) -> dict[str, object]:
                 })
     report = {
         "language": language,
+        "required_evaluation_splits": sorted(required_evaluation_splits),
+        "optional_missing": optional_missing,
         "records": dict(sorted(counts.items())),
         "unique_normalized_sentences": len(sentence_owners),
         "unique_normalized_words": len(word_owners),
@@ -230,11 +294,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("config", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--corpus-dir", type=Path, default=DEFAULT_CORPUS_DIR)
     args = parser.parse_args(argv)
     root = args.root.resolve()
     config_path = args.config if args.config.is_absolute() else root / args.config
     try:
-        report = check_splits(root, config_path)
+        report = check_splits(root, config_path, corpus_dir=args.corpus_dir)
     except SplitCollisionError as error:
         print(json.dumps(error.report, ensure_ascii=False, indent=2, sort_keys=True))
         return 1

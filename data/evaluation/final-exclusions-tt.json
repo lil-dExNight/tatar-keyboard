@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "language": "tat",
+  "note": "Single normalized-sentence exclusion inventory for both Common Voice final builders. Every selected input is required when a final set is rebuilt. A builder skips only its own output id and its own Common Voice source split; it never skips another training, development, final, TatSC, or extra-Tatar input.",
+  "sources": [
+    {
+      "id": "leipzig-tat-mixed-2015",
+      "path": "${CORPUS_DIR}/tat_mixed_2015_1M-sentences.txt",
+      "format": "text",
+      "sentence_column": 1
+    },
+    {
+      "id": "leipzig-tat-web-2018",
+      "path": "${CORPUS_DIR}/tat_web_2018_1M-sentences.txt",
+      "format": "text",
+      "sentence_column": 1
+    },
+    {
+      "id": "conversational-train90",
+      "path": "${CORPUS_DIR}/tt_conv_train90-sentences.txt",
+      "format": "text",
+      "sentence_column": 1
+    },
+    {
+      "id": "conversational-full-stream",
+      "format": "recipe_provided"
+    },
+    {
+      "id": "historical-news-development",
+      "path": "${CORPUS_DIR}/tat_news_2015_1M-sentences.txt",
+      "format": "text",
+      "sentence_column": 1
+    },
+    {
+      "id": "development-tatoeba",
+      "path": "app/src/test/resources/tt_eval_sentences.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "development-russian-mix",
+      "path": "app/src/test/resources/tt_ru_mix_sentences.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "final-common-voice",
+      "path": "app/src/test/resources/tt_common_voice_final.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "final-trigram",
+      "path": "app/src/test/resources/tt_trigram_common_voice_final.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "common-voice-train",
+      "path": "build/corpus-sources/text/common-voice/tt-train.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "common-voice-dev",
+      "path": "build/corpus-sources/text/common-voice/tt-dev.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "common-voice-test",
+      "path": "build/corpus-sources/text/common-voice/tt-test.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "tatsc-audiobooks-train",
+      "path": "build/corpus-sources/text/tatsc/tt-audiobooks-train.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "tatsc-audiobooks-dev",
+      "path": "build/corpus-sources/text/tatsc/tt-audiobooks-dev.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "tatsc-audiobooks-test",
+      "path": "build/corpus-sources/text/tatsc/tt-audiobooks-test.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "tatsc-crowdsourced-tg-train",
+      "path": "build/corpus-sources/text/tatsc/tt-crowdsourced_tg-train.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "tatsc-crowdsourced-web-train",
+      "path": "build/corpus-sources/text/tatsc/tt-crowdsourced_web-train.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "tatsc-crowdsourced-web-dev",
+      "path": "build/corpus-sources/text/tatsc/tt-crowdsourced_web-dev.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "tatsc-crowdsourced-web-test",
+      "path": "build/corpus-sources/text/tatsc/tt-crowdsourced_web-test.txt",
+      "format": "text",
+      "sentence_column": 0
+    },
+    {
+      "id": "extra-tatar-qed",
+      "path": "research/corpus/QED-v2.0a.tt.txt.gz",
+      "format": "gzip_text",
+      "sentence_column": 0
+    },
+    {
+      "id": "extra-tatar-ted2020",
+      "path": "research/corpus/TED2020-v1.tt.txt.gz",
+      "format": "gzip_text",
+      "sentence_column": 0
+    },
+    {
+      "id": "extra-tatar-tatoeba-snapshot",
+      "path": "research/corpus/tat_sentences.tsv.bz2",
+      "format": "tatoeba_tsv_bz2",
+      "pin": {
+        "size_bytes": 1449374,
+        "sha256": "519c78706d82b9953580a5806e5e41efb0a81cf86f743dba63f7e50c2a9034f2"
+      }
+    }
+  ]
+}

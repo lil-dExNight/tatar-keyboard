@@ -1,0 +1,108 @@
+{
+  "language": "rus",
+  "evaluation_splits": [
+    "development"
+  ],
+  "note": "Offline Russian evaluation declarations. Russian has no committed final sentence set, so only development is required. Optional ${CORPUS_DIR}/ sources declare every shipped Russian bigram-training input; clean archives skip absent local corpora, while present files are normalized and collision-checked.",
+  "sources": [
+    {
+      "id": "ru-eval-sentences",
+      "kind": "sentences",
+      "split": "development",
+      "path": "app/src/test/resources/ru_eval_sentences.txt",
+      "role": "Tatoeba id % 10 == 0 held-out development and regression input"
+    },
+    {
+      "id": "ru-valid-oov-safety",
+      "kind": "dictionary_admissions",
+      "split": "development",
+      "path": "app/src/test/resources/ru_valid_oov_safety_set.tsv",
+      "role": "held-out plausible forms the Russian engine must not replace"
+    },
+    {
+      "id": "ru-typo-evaluation-targets",
+      "kind": "evaluation_words",
+      "split": "development",
+      "path": "app/src/test/resources/ru_typo_eval_set.tsv",
+      "word_column": 0,
+      "role": "correct targets of deterministic deletion, insertion, substitution and transposition probes"
+    },
+    {
+      "id": "ru-accepted-admissions",
+      "kind": "dictionary_admissions",
+      "split": "train",
+      "path": "data/dictionary/dict-accept/accepted-ru.tsv",
+      "word_namespace": "admission-decisions",
+      "role": "admission queue rows entering the shipped Russian dictionary"
+    },
+    {
+      "id": "ru-rejected-admissions",
+      "kind": "dictionary_admissions",
+      "split": "train",
+      "path": "data/dictionary/dict-accept/rejected-ru.tsv",
+      "word_namespace": "admission-decisions",
+      "role": "admission queue rows rejected by rule or review"
+    },
+    {
+      "id": "ru-conv-frequencies",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "data/dictionary/dict-accept/conv-freq-ru.tsv",
+      "role": "conversational training frequency of dictionary pool words"
+    },
+    {
+      "id": "ru-bigram-news-2022",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/rus_news_2022_1M-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Russian bigram training input; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "ru-bigram-news-2019",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/rus_news_2019_1M-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Russian bigram training input; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "ru-bigram-wikipedia-2021",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/rus_wikipedia_2021_1M-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Russian bigram training input; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "ru-bigram-news-2023",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/rus_news_2023_1M-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Russian bigram training input; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "ru-bigram-news-2024",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/rus_news_2024_1M-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Russian bigram training input; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "ru-bigram-conversational-thinned60",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/rus_conv_thinned60-sentences.txt",
+      "sentence_column": 1,
+      "optional": true,
+      "role": "shipped Russian bigram training input; pin in data/corpus-manifest.json"
+    }
+  ]
+}

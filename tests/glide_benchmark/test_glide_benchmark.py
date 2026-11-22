@@ -18,7 +18,7 @@ SCRIPT = ROOT / "scripts" / "glide-benchmark.py"
 FIXTURE = ROOT / "research" / "glide-evaluation" / "fixtures" / "synthetic.jsonl"
 FIXTURE_GEOMETRY = ROOT / "research" / "glide-evaluation" / "fixtures" / "reference-geometry.json"
 BRIDGE = (
-    ROOT / "research" / "glide-evaluation" / "kotlin" / "rkr" / "simplekeyboard" /
+    ROOT / "app" / "src" / "test" / "java" / "rkr" / "simplekeyboard" /
     "inputmethod" / "latin" / "glide" / "GlideBenchmark.kt"
 )
 COLLECTOR = ROOT / "research" / "glide-collector" / "index.html"
@@ -532,6 +532,22 @@ class DecoderFingerprintTest(unittest.TestCase):
         finally:
             benchmark.sha256_file = original
         self.assertNotEqual(baseline, changed)
+
+
+class StandardTestSourceSetTest(unittest.TestCase):
+    def test_bridge_and_parity_case_use_ordinary_jvm_test_paths(self) -> None:
+        self.assertTrue(BRIDGE.is_file())
+        self.assertTrue(
+            (ROOT / "app/src/test/java/rkr/simplekeyboard/inputmethod/latin/glide/"
+             "GlideBenchmarkPruningTest.kt").is_file()
+        )
+        self.assertFalse((ROOT / "research/glide-evaluation/kotlin").exists())
+        self.assertNotIn(
+            "task.source bridgeSource",
+            (ROOT / "research/glide-evaluation/glide-benchmark.init.gradle").read_text(
+                encoding="utf-8"
+            ),
+        )
 
 
 class ExtraRowClassificationTest(unittest.TestCase):

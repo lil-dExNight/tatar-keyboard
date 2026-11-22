@@ -83,6 +83,13 @@
     "native_common_voice_filtered": "data/corpus-sources/native-split/common-voice-filtered.json",
     "tatsc_provenance": "data/provenance.d/corpus-tatsc.json"
   },
+  "evidence_blockers": [
+    "shipped bigram identity is unverifiable: the comparison records no SHA-256 for bigram; rerun compare_sources.py so a same-size asset change stays detectable",
+    "shipped bigram changed since the comparison: the comparison records 212223 bytes, the current asset is 1124062 bytes; rerun compare_sources.py over the current assets",
+    "shipped dictionary identity is unverifiable: the comparison records no SHA-256 for dictionary; rerun compare_sources.py so a same-size asset change stays detectable",
+    "shipped dictionary changed since the comparison: the comparison records 597694 bytes, the current asset is 610928 bytes; rerun compare_sources.py over the current assets"
+  ],
+  "evidence_status": "stale",
   "later_integration_instructions": [
     "Regenerate and verify the text inputs with fetch_sources.py --sources common_voice, the pinned DuckDB Parquet extractor, and write_provenance.py. Require the bundle SHA-256 values in data/provenance.d to match.",
     "Keep Common Voice test and TatSC test out of training and tuning. Use train for training and dev only for development. Keep the current native id % 10 == 1 held-out slice excluded.",
@@ -130,5 +137,6 @@
       "dev__train": 1921,
       "test__train": 1776
     }
-  }
+  },
+  "stale_reason": "The source comparison no longer matches the current shipped assets or packer limits. The recorded measurements are retained for history only and are not release evidence."
 }

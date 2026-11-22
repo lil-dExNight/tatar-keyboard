@@ -59,7 +59,7 @@ class ProvenanceTest(unittest.TestCase):
             root = Path(temporary)
             artifact, shard = self.make_tree(root)
             self.assertEqual(
-                provenance.validate_shards(root, covered_roots=(Path("app/src/main/assets"),))[
+                provenance.validate_shards(root, covered_roots=(Path("app/src/main/assets"),), raw_corpus_inventory=())[
                     "artifacts"
                 ],
                 1,
@@ -67,14 +67,14 @@ class ProvenanceTest(unittest.TestCase):
             artifact.write_bytes(b"changed")
             with self.assertRaisesRegex(provenance.ProvenanceError, "size mismatch"):
                 provenance.validate_shards(
-                    root, covered_roots=(Path("app/src/main/assets"),)
+                    root, covered_roots=(Path("app/src/main/assets"),), raw_corpus_inventory=()
                 )
             artifact.write_bytes(b"immutable\x00payload")
             extra = artifact.parent / "unmanifested.bin"
             extra.write_bytes(b"new")
             with self.assertRaisesRegex(provenance.ProvenanceError, "missing provenance"):
                 provenance.validate_shards(
-                    root, covered_roots=(Path("app/src/main/assets"),)
+                    root, covered_roots=(Path("app/src/main/assets"),), raw_corpus_inventory=()
                 )
             extra.unlink()
             duplicate = dict(shard)
@@ -85,8 +85,240 @@ class ProvenanceTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(provenance.ProvenanceError, "duplicate id"):
                 provenance.validate_shards(
-                    root, covered_roots=(Path("app/src/main/assets"),)
+                    root, covered_roots=(Path("app/src/main/assets"),), raw_corpus_inventory=()
                 )
+
+
+class RawCorpusShardTest(unittest.TestCase):
+    """Raw dumps are optional local inputs; the registry lists them, not the shards.
+
+    The temporary roots have no ``.git`` directory, mirroring a clean ``git archive HEAD``
+    extraction: validation must not depend on ``git check-ignore`` for raw dump shards, and
+    the required dump set must not shrink when a shard or the registry is deleted.
+    """
+
+    DUMP = "Example-v1.tt.txt.gz"
+
+    def write_registry(self, root: Path, names: tuple[str, ...]) -> None:
+        registry = root / provenance.RAW_CORPUS_REGISTRY
+        registry.parent.mkdir(parents=True, exist_ok=True)
+        entries = ",\n".join(f'    "{name}": {{"license": "CC0-1.0"}}' for name in names)
+        registry.write_text(f"CORPUS_DUMPS = {{\n{entries},\n}}\n", encoding="utf-8")
+
+    def write_shards(self, root: Path, dump_relative: str) -> None:
+        pairs = [
+            ("example", "app/src/main/assets/example.bin", "generated_test_asset"),
+            ("dump", dump_relative, "raw_corpus"),
+        ]
+        for identifier, path, role in pairs:
+            artifact = root / path
+            shard = {
+                "id": identifier,
+                "revision": f"{identifier}/v1",
+                "size_bytes": artifact.stat().st_size,
+                "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                "license": "Apache-2.0",
+                "source_role": role,
+                "split_rule": "not-applicable",
+                "generation_command": "fixture generator",
+                "path": path,
+            }
+            (root / "data/provenance.d" / f"{identifier}.json").write_text(
+                json.dumps(shard), encoding="utf-8"
+            )
+
+    def make_root(self, root: Path, registry_names: tuple[str, ...] = ()) -> None:
+        (root / "app/src/main/assets").mkdir(parents=True)
+        (root / "research/corpus").mkdir(parents=True)
+        (root / "data/provenance.d").mkdir(parents=True)
+        (root / "app/src/main/assets/example.bin").write_bytes(b"immutable\x00payload")
+        (root / "research/corpus" / self.DUMP).write_bytes(b"raw corpus bytes")
+        self.write_registry(root, registry_names or (self.DUMP,))
+        self.write_shards(root, f"research/corpus/{self.DUMP}")
+
+    def test_absent_raw_dump_is_optional_unless_required(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            (root / "research/corpus" / self.DUMP).unlink()
+            result = provenance.validate_shards(root)
+            self.assertEqual(result["missing_raw_corpora"], 1)
+            self.assertEqual(result["verified_raw_corpora"], 0)
+            with self.assertRaisesRegex(provenance.ProvenanceError, "raw corpus dump is required"):
+                provenance.validate_shards(root, require_raw_corpora=True)
+            self.assertEqual(provenance.main(["--root", str(root)]), 0)
+            self.assertEqual(provenance.main(["--root", str(root), "--require-raw-corpora"]), 2)
+
+    def test_present_raw_dump_is_hash_verified_without_git(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            result = provenance.validate_shards(root)
+            self.assertEqual(result["verified_raw_corpora"], 1)
+            self.assertEqual(result["missing_raw_corpora"], 0)
+            dump = root / "research/corpus" / self.DUMP
+            dump.write_bytes(b"raw corpus byt3s")  # same size, different bytes
+            for required in (False, True):
+                with self.assertRaisesRegex(provenance.ProvenanceError, "SHA-256 mismatch"):
+                    provenance.validate_shards(root, require_raw_corpora=required)
+            dump.write_bytes(b"raw corpus bytes plus drift")
+            for required in (False, True):
+                with self.assertRaisesRegex(provenance.ProvenanceError, "size mismatch"):
+                    provenance.validate_shards(root, require_raw_corpora=required)
+
+    def test_tracked_artifact_is_mandatory_even_when_raw_dumps_are_optional(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            (root / "research/corpus" / self.DUMP).unlink()
+            (root / "app/src/main/assets/example.bin").unlink()
+            for required in (False, True):
+                with self.assertRaisesRegex(provenance.ProvenanceError, "artifact is missing"):
+                    provenance.validate_shards(root, require_raw_corpora=required)
+
+    def test_deleted_raw_shard_still_requires_the_registry_dump(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            (root / "data/provenance.d/dump.json").unlink()
+            for required in (False, True):
+                with self.assertRaisesRegex(
+                    provenance.ProvenanceError,
+                    "no provenance shard declares the required raw corpus dump",
+                ):
+                    provenance.validate_shards(root, require_raw_corpora=required)
+            # Deleting the dump too does not help: the shard was the only declaration.
+            (root / "research/corpus" / self.DUMP).unlink()
+            with self.assertRaisesRegex(
+                provenance.ProvenanceError, "no provenance shard declares"
+            ):
+                provenance.validate_shards(root)
+            self.assertEqual(provenance.main(["--root", str(root)]), 2)
+
+    def test_unregistered_raw_shard_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            (root / "data/provenance.d/extra.json").write_text(
+                json.dumps(
+                    {
+                        "id": "extra-dump",
+                        "revision": "extra/v1",
+                        "size_bytes": 4,
+                        "sha256": hashlib.sha256(b"bytes").hexdigest(),
+                        "license": "CC0-1.0",
+                        "source_role": "raw_corpus",
+                        "split_rule": "not-applicable",
+                        "generation_command": "fixture generator",
+                        "path": "research/corpus/Unknown-v1.tt.txt.gz",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                provenance.ProvenanceError, "absent from the acquisition-pin registry"
+            ):
+                provenance.validate_shards(root)
+
+    def test_missing_registry_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            (root / provenance.RAW_CORPUS_REGISTRY).unlink()
+            for call in (
+                lambda: provenance.validate_shards(root),
+                lambda: provenance.validate_raw_corpora(root),
+            ):
+                with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "raw corpus inventory is missing"
+                ):
+                    call()
+
+    def test_required_dump_cannot_escape_by_renaming_its_role(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            shard_path = root / "data/provenance.d/dump.json"
+            shard = json.loads(shard_path.read_text(encoding="utf-8"))
+            shard["source_role"] = "generated_training_input"
+            shard_path.write_text(json.dumps(shard), encoding="utf-8")
+            # The registry requires a raw-corpus declaration for the dump: downgrading the
+            # role removes the declaration, not the requirement.
+            for dump_present in (True, False):
+                if not dump_present:
+                    (root / "research/corpus" / self.DUMP).unlink()
+                with self.subTest(dump_present=dump_present):
+                    with self.assertRaisesRegex(
+                        provenance.ProvenanceError, "no provenance shard declares"
+                    ):
+                        provenance.validate_shards(root)
+
+    def test_raw_role_outside_the_dump_directory_is_not_declared(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            shard_path = root / "data/provenance.d/dump.json"
+            shard = json.loads(shard_path.read_text(encoding="utf-8"))
+            shard["path"] = f"research/other/{self.DUMP}"
+            (root / "research/other").mkdir(parents=True)
+            (root / "research/other" / self.DUMP).write_bytes(b"raw corpus bytes")
+            shard["size_bytes"] = 16
+            shard["sha256"] = hashlib.sha256(b"raw corpus bytes").hexdigest()
+            shard_path.write_text(json.dumps(shard), encoding="utf-8")
+            # The registry lists dumps under research/corpus only: the re-pointed shard
+            # leaves the required dump undeclared instead of becoming an optional entry.
+            with self.assertRaisesRegex(
+                provenance.ProvenanceError, "no provenance shard declares"
+            ):
+                provenance.validate_shards(root)
+
+    def test_strict_preflight_requires_declared_verified_dumps(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            self.assertEqual(
+                provenance.validate_raw_corpora(root), {"verified_raw_corpora": 1}
+            )
+            dump = root / "research/corpus" / self.DUMP
+            dump.write_bytes(b"raw corpus byt3s")
+            with self.assertRaisesRegex(provenance.ProvenanceError, "SHA-256 mismatch"):
+                provenance.validate_raw_corpora(root)
+            (root / "data/provenance.d/dump.json").unlink()
+            with self.assertRaisesRegex(
+                provenance.ProvenanceError, "no provenance shard declares"
+            ):
+                provenance.validate_raw_corpora(root)
+
+    def test_strict_preflight_fails_on_absent_dump(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_root(root)
+            (root / "research/corpus" / self.DUMP).unlink()
+            with self.assertRaisesRegex(
+                provenance.ProvenanceError, "raw corpus dump is required but missing"
+            ):
+                provenance.validate_raw_corpora(root)
+
+
+class LiveRawInventoryTest(unittest.TestCase):
+    """The committed registry, shards, and dumps form one consistent required set."""
+
+    def test_registry_and_committed_shards_agree(self) -> None:
+        inventory = provenance.load_raw_corpus_inventory(ROOT)
+        self.assertEqual(len(inventory), 4)
+        for relative in inventory:
+            self.assertTrue(relative.startswith("research/corpus/"))
+            self.assertTrue(relative.endswith(".txt.gz"))
+        result = provenance.validate_shards(ROOT)
+        self.assertEqual(result["verified_raw_corpora"] + result["missing_raw_corpora"], 4)
+
+    def test_strict_preflight_when_local_dumps_are_present(self) -> None:
+        inventory = provenance.load_raw_corpus_inventory(ROOT)
+        if not all((ROOT / relative).is_file() for relative in inventory):
+            self.skipTest("local raw corpora absent (clean checkout)")
+        self.assertEqual(
+            provenance.validate_raw_corpora(ROOT)["verified_raw_corpora"], len(inventory)
+        )
 
 
 class EvaluationMetricTest(unittest.TestCase):

@@ -312,7 +312,10 @@ def base_report() -> dict:
                 "guard_blocked_fires": 0,
             },
         },
-        "probes": {"candidate_fuzzy_over_budget_lookups": 0},
+        "probes": {
+            "candidate_fuzzy_over_budget_lookups": 0,
+            "candidate_autocorrect_over_budget_lookups": 0,
+        },
         "timing": {"candidate": {"p95_ms": 1.0}, "baseline": {"p95_ms": 1.0}},
         "gates": {
             "exact_reviewed_pairs_preserved": {
@@ -399,6 +402,26 @@ class SafetySummaryTest(unittest.TestCase):
         self.assertEqual(1, combined["baseline_false_replacements"])
 
 
+class ProbesSummaryTest(unittest.TestCase):
+    def test_normal_completion_measures_zero_autocorrect_over_budget_lookups(self):
+        summary = acceptance.probes_summary([
+            bridge_result(candidate_autocorrect_probes="65"),
+            bridge_result(candidate_autocorrect_probes="0"),
+        ])
+        self.assertEqual(0, summary["candidate_autocorrect_over_budget_lookups"])
+        self.assertEqual("measured", summary["autocorrect_probe_telemetry"])
+
+    def test_early_generation_and_probe_failures_keep_their_measured_outcomes(self):
+        summary = acceptance.probes_summary([
+            # Variant generation can trip before the first class-4 probe.
+            bridge_result(candidate_autocorrect_over_budget="1"),
+            # A later probe-family trip retains the probes issued before the early return.
+            bridge_result(candidate_autocorrect_over_budget="1", candidate_autocorrect_probes="37"),
+        ])
+        self.assertEqual(2, summary["candidate_autocorrect_over_budget_lookups"])
+        self.assertEqual(37, summary["candidate_autocorrect_probes"]["max"])
+
+
 class EvaluateGatesTest(unittest.TestCase):
     def test_every_hard_gate_passes_on_a_healthy_report(self):
         self.assertTrue(all(acceptance.evaluate_gates(base_report()).values()))
@@ -413,6 +436,13 @@ class EvaluateGatesTest(unittest.TestCase):
         report["safety"]["combined"]["candidate_false_replacements"] = 1
         self.assertFalse(
             acceptance.evaluate_gates(report)["zero_candidate_false_replacements"]
+        )
+
+    def test_an_actual_autocorrect_over_budget_lookup_fails(self):
+        report = base_report()
+        report["probes"]["candidate_autocorrect_over_budget_lookups"] = 1
+        self.assertFalse(
+            acceptance.evaluate_gates(report)["zero_autocorrect_over_budget_lookups"]
         )
 
     def test_the_timing_gate_is_an_absolute_budget(self):
@@ -524,6 +554,70 @@ class BuildReportTest(unittest.TestCase):
         self.assertTrue(any(
             "too small" in limitation for limitation in report["limitations"]
         ))
+
+    def fully_passing_inputs(self) -> tuple[dict, list[dict[str, str]]]:
+        recovery = [
+            {"record_id": f"C{index}", "word": "китем", "correction": "китәм",
+             "collision_group": f"G{index}"}
+            for index in range(10)
+        ]
+        safety = [
+            {"record_id": f"S{index}", "word": "бар", "predecessor": ""}
+            for index in range(10)
+        ]
+        selection = dict(self.selection)
+        selection.update(
+            recovery=recovery,
+            safety=safety,
+            final_pair_rows=len(recovery),
+            risk_exposure={key: 0 for key in self.selection["risk_exposure"]},
+        )
+        results = [
+            self.result_row(index, row["record_id"], "recovery", candidate_hit="1")
+            for index, row in enumerate(recovery)
+        ]
+        results.append(
+            self.result_row(10, "C3", "control", advice_source="class", class_variants="һай:9")
+        )
+        results.extend(
+            self.result_row(11 + index, row["record_id"], "safety")
+            for index, row in enumerate(safety)
+        )
+        results.extend([
+            self.result_row(21, "safety:тоз", "safety"),
+            self.result_row(22, "safety:кич", "safety"),
+            self.result_row(23, "safety:сүзташ", "safety"),
+        ])
+        results.extend(
+            self.result_row(24 + index, f"P{index}", "baseline_pair",
+                            baseline_fires="1", candidate_fires="1")
+            for index in range(219)
+        )
+        return selection, results
+
+    def test_a_fully_passing_candidate_is_accepted(self):
+        selection, results = self.fully_passing_inputs()
+        report = acceptance.build_report(
+            "ae", self.worksheet, selection, self.exact_pairs, self.exact_safety,
+            self.valid_oov, results, self.metadata,
+        )
+        acceptance.validate_report(report)
+        self.assertEqual(
+            "pass", report["gates"]["zero_autocorrect_over_budget_lookups"]["status"]
+        )
+        self.assertTrue(report["accepted_candidate"])
+
+    def test_an_autocorrect_over_budget_candidate_is_rejected(self):
+        selection, results = self.fully_passing_inputs()
+        results[0]["candidate_autocorrect_over_budget"] = "1"
+        report = acceptance.build_report(
+            "ae", self.worksheet, selection, self.exact_pairs, self.exact_safety,
+            self.valid_oov, results, self.metadata,
+        )
+        self.assertEqual(
+            "fail", report["gates"]["zero_autocorrect_over_budget_lookups"]["status"]
+        )
+        self.assertFalse(report["accepted_candidate"])
 
     def test_a_class_without_approved_final_pairs_is_ineligible(self):
         selection = dict(self.selection)

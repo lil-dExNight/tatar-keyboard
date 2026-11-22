@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Build the frozen independent Tatar Common Voice final evaluation set."""
+"""Build the frozen final using the shared Tatar final-exclusion inventory."""
 from __future__ import annotations
 
-import bz2
 import hashlib
 import json
 import os
@@ -12,6 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import final_evaluation_exclusions as final_exclusions  # noqa: E402
 import make_eval_set  # noqa: E402
 
 SOURCE = ROOT / "build" / "corpus-sources" / "text" / "common-voice" / "tt-test.txt"
@@ -28,31 +28,30 @@ MIN_WORDS = 3
 MAX_WORDS = 12
 LICENSE = "CC0-1.0"
 REVISION = "8262c16bf297c87a9cd88c51997c4758ed7a8ba2"
+RECIPE_WORKDIR = ROOT / "build" / "trigram-final-common-voice"
 GENERATION_COMMAND = (
     "python3 research/corpus-sources/fetch_sources.py --sources common_voice && "
     "python3 research/corpus/acquire_trigram_common_voice_final.py"
 )
 
-EXCLUSIONS = (
-    (CORPUS_DIR / "tat_mixed_2015_1M-sentences.txt", 1, "conversational_or_leipzig_train"),
-    (CORPUS_DIR / "tat_web_2018_1M-sentences.txt", 1, "conversational_or_leipzig_train"),
-    (NEWS_DEVELOPMENT, 1, "historical_development"),
-    # The full stream also excludes held-out rows used for earlier bonus-weight tuning.
-    (CORPUS_DIR / "tt_conv_all-sentences.txt", 1, "conversational_or_leipzig_train"),
-    (ROOT / "app/src/test/resources/tt_eval_sentences.txt", 0, "current_development"),
-    (ROOT / "app/src/test/resources/tt_ru_mix_sentences.txt", 0, "current_development"),
-    (ROOT / "app/src/test/resources/tt_common_voice_final.txt", 0, "current_final"),
-    (
-        ROOT / "build/corpus-sources/text/common-voice/tt-train.txt",
-        0,
-        "common_voice_other_split",
-    ),
-    (
-        ROOT / "build/corpus-sources/text/common-voice/tt-dev.txt",
-        0,
-        "common_voice_other_split",
-    ),
-)
+def heldout_namespaces(
+    corpus_dir: Path = CORPUS_DIR,
+    *,
+    conversation_corpus_dir: Path = make_eval_set.DEFAULT_CORPUS_DIR,
+    workdir: Path = RECIPE_WORKDIR,
+    inventory_path: Path = final_exclusions.DEFAULT_INVENTORY,
+) -> dict[str, frozenset[str]]:
+    """Load verified shared exclusions except this builder's own test source and output."""
+    recipe = make_eval_set.run_conv_recipe(conversation_corpus_dir, workdir)
+    return final_exclusions.load_exclusion_namespaces(
+        ROOT,
+        corpus_dir,
+        inventory_path=inventory_path,
+        skip_ids=frozenset(("final-trigram", "common-voice-test")),
+        provided_namespaces={
+            "conversational-full-stream": final_exclusions.normalized_recipe_sentences(recipe.rows)
+        },
+    )
 
 
 def sha256(path: Path) -> str:
@@ -85,6 +84,8 @@ def main() -> int:
     if source_sha256 != pin["text_sha256"] or SOURCE.stat().st_size != pin["text_size_bytes"]:
         raise ValueError("Common Voice test text does not match its provenance pin")
 
+    # Load and pin every required exclusion before selecting candidates or writing any output.
+    excluded = heldout_namespaces()
     candidates: set[str] = set()
     source_rows = 0
     outside_word_bounds = 0
@@ -100,33 +101,13 @@ def main() -> int:
     before_exclusions = len(candidates)
     collision_counts: dict[str, int] = {}
 
-    def exclude(line: str, owner: str) -> None:
-        if line in candidates:
+    for line in tuple(candidates):
+        owner = next(
+            (identifier for identifier, names in excluded.items() if line in names), None
+        )
+        if owner is not None:
             candidates.remove(line)
             collision_counts[owner] = collision_counts.get(owner, 0) + 1
-
-    for path, column, owner in EXCLUSIONS:
-        with path.open("r", encoding="utf-8") as stream:
-            for raw in stream:
-                raw = raw.rstrip("\r\n")
-                if not raw or raw.startswith("#"):
-                    continue
-                fields = raw.split("\t")
-                if column >= len(fields):
-                    continue
-                line = canonical(fields[column])
-                if line:
-                    exclude(line, owner)
-
-    # This snapshot feeds extra-corpus frequency experiments and is also held out.
-    tatoeba_snapshot = ROOT / "research" / "corpus" / "tat_sentences.tsv.bz2"
-    with bz2.open(tatoeba_snapshot, "rt", encoding="utf-8") as stream:
-        for raw in stream:
-            fields = raw.rstrip("\r\n").split("\t")
-            if len(fields) >= 3 and fields[1] == "tat":
-                line = canonical(fields[2])
-                if line:
-                    exclude(line, "extra_corpus_tuning")
 
     if len(candidates) < LIMIT:
         raise ValueError(f"only {len(candidates)} independent candidates remain")
@@ -141,8 +122,8 @@ def main() -> int:
         "# Source: Mozilla Common Voice Corpus 17.0 Tatar test transcript, mirror "
         "fsicoli/common_voice_17_0.",
         f"# Source revision: {REVISION}; license: {LICENSE}; text only, no audio or speakers.",
-        "# Normalized sentences are disjoint from all current train, development and final "
-        "sources and from the other Common Voice splits.",
+        "# Normalized sentences are disjoint from every selected source in the shared "
+        "data/evaluation/final-exclusions-tt.json inventory.",
         f"# Sample: SHA-256 ordered top {LIMIT} of {len(candidates)} survivors; seed {SEED!r}.",
         "# Generation: python3 research/corpus/acquire_trigram_common_voice_final.py",
         "",
@@ -174,6 +155,7 @@ def main() -> int:
         "source_candidates_before_exclusions": before_exclusions,
         "candidate_count": len(candidates),
         "selected": len(selected),
+        "exclusion_namespaces": sorted(excluded),
         "dropped_normalized_duplicate": (
             source_rows - outside_word_bounds - before_exclusions
         ),

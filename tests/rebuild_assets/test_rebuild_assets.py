@@ -10,8 +10,11 @@ a consistent set and red — with the right diagnosis — on a diverged one.
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import io
 import json
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -214,6 +217,43 @@ def write_corpus_manifest(root: Path, contents=None) -> Path:
     return path
 
 
+def write_raw_corpora(root: Path) -> list[Path]:
+    """Satisfy the strict raw-corpus preflight: the real acquisition-pin registry plus one
+    small dump per declared name and a provenance shard pinning that dump's bytes."""
+    registry = root / rebuild_assets.provenance.RAW_CORPUS_REGISTRY
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(
+        REPOSITORY_ROOT / rebuild_assets.provenance.RAW_CORPUS_REGISTRY, registry
+    )
+    shard_dir = root / "data/provenance.d"
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    dumps: list[Path] = []
+    for index, relative in enumerate(
+        rebuild_assets.provenance.load_raw_corpus_inventory(root), start=1
+    ):
+        dump = root / relative
+        dump.parent.mkdir(parents=True, exist_ok=True)
+        dump.write_bytes(f"raw dump {index}\n".encode("utf-8"))
+        name = Path(relative).name
+        stem = name.replace(".txt.gz", "").lower()
+        shard = {
+            "id": f"corpus-dump-{stem}",
+            "revision": name.replace(".txt.gz", ""),
+            "size_bytes": dump.stat().st_size,
+            "sha256": hashlib.sha256(dump.read_bytes()).hexdigest(),
+            "license": "CC0-1.0",
+            "source_role": "raw_corpus",
+            "split_rule": "fixture split",
+            "generation_command": f"research/corpus/dl.sh  # {name}",
+            "path": relative,
+        }
+        (shard_dir / f"corpus-dump-{stem}.json").write_text(
+            json.dumps(shard), encoding="utf-8"
+        )
+        dumps.append(dump)
+    return dumps
+
+
 class FakeTreeTest(unittest.TestCase):
     """A fake repository root: one Tatar dictionary, one bigram table, both contracts."""
 
@@ -401,6 +441,16 @@ class CheckTest(FakeTreeTest):
         self.assertTrue(report["ok"])
         self.assertEqual("ok", report["dictionaries"]["tat"]["verdict"])
         self.assertEqual("ok", report["bigrams"]["tat"]["verdict"])
+
+    def test_check_never_demands_raw_corpora(self) -> None:
+        # The fake tree carries no acquisition-pin registry, no dumps, and no raw shards:
+        # --check must stay offline (a rebuild would stop here).
+        pin_everything(self.root, self.dictionary, self.bigram)
+        self.assertFalse((self.root / rebuild_assets.provenance.RAW_CORPUS_REGISTRY).exists())
+        self.assertFalse((self.root / "research/corpus").exists())
+        code, report = self.run_check()
+        self.assertEqual(0, code, report)
+        self.assertTrue(report["ok"])
 
     def test_red_when_the_asset_moved_but_the_pins_did_not(self):
         pin_everything(self.root, self.dictionary, self.bigram)
@@ -775,6 +825,9 @@ class TwoSideTreeTest(unittest.TestCase):
         # The tests below write every corpus file empty, so the manifest pins empty files.
         write_corpus_manifest(
             self.root, {name: b"" for name in rebuild_assets.corpus_names()})
+        # Rebuilds verify the raw training dumps before writing; the fake tree carries a
+        # consistent registry, one small dump per name, and their shards.
+        self.raw_dumps = write_raw_corpora(self.root)
 
     def _restore(self):
         (rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS,
@@ -890,6 +943,69 @@ class CorpusManifestRebuildTest(TwoSideTreeTest):
         self.write_corpora({})
         (self.root / rebuild_assets.CORPUS_MANIFEST).unlink()
         self.assert_stops_without_writing("russian", 2, "corpus manifest")
+
+
+class RawCorpusProvenanceRebuildTest(TwoSideTreeTest):
+    """A rebuild stops before any output when the raw corpus provenance is incomplete."""
+
+    def complete_inputs(self) -> None:
+        # Pass the earlier gates: the Russian side then needs only its empty corpus files,
+        # which the manifest already pins.
+        for name in rebuild_assets.corpus_names():
+            (self.corpora / name).write_bytes(b"")
+
+    def tree_state(self) -> dict[str, bytes]:
+        return {
+            str(path.relative_to(self.root)): path.read_bytes()
+            for path in sorted(self.root.rglob("*"))
+            if path.is_file()
+        }
+
+    def assert_preflight_blocks(self, message: str) -> None:
+        self.complete_inputs()
+        before = self.tree_state()
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            code = rebuild_assets.run_rebuild(
+                self.root,
+                self.baseline,
+                self.corpora,
+                self.root / "work",
+                None,
+                only="russian",
+                stream=stdout,
+            )
+        self.assertEqual(2, code, stderr.getvalue())
+        self.assertIn(message, stderr.getvalue())
+        self.assertNotIn("raw corpora:", stdout.getvalue())  # the preflight never passed
+        self.assertFalse((self.root / "work").exists())
+        self.assertEqual(before, self.tree_state())  # nothing rewritten
+
+    def test_missing_raw_dump_stops_the_rebuild(self) -> None:
+        self.raw_dumps[0].unlink()
+        self.assert_preflight_blocks("raw corpus dump is required but missing")
+
+    def test_deleted_raw_shard_stops_the_rebuild(self) -> None:
+        shards = sorted((self.root / "data/provenance.d").glob("corpus-dump-*.json"))
+        self.assertEqual(len(shards), len(self.raw_dumps))
+        shards[0].unlink()
+        self.assert_preflight_blocks("no provenance shard declares the required raw corpus dump")
+
+    def test_same_size_raw_dump_drift_stops_the_rebuild(self) -> None:
+        dump = self.raw_dumps[0]
+        original = dump.read_bytes()
+        dump.write_bytes(b"X" + original[1:])  # identical size, different digest
+        self.assertEqual(dump.stat().st_size, len(original))
+        self.assert_preflight_blocks("SHA-256 mismatch")
+
+    def test_missing_registry_stops_the_rebuild(self) -> None:
+        (self.root / rebuild_assets.provenance.RAW_CORPUS_REGISTRY).unlink()
+        self.assert_preflight_blocks("raw corpus inventory is missing")
+
+    def test_preflight_passes_on_a_consistent_tree(self) -> None:
+        stdout = io.StringIO()
+        self.assertEqual(0, rebuild_assets.raw_provenance_preflight(self.root, stdout))
+        self.assertIn("dumps size- and hash-verified", stdout.getvalue())
 
 
 class CorpusManifestFormatTest(unittest.TestCase):
