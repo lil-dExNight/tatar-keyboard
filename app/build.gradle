@@ -33,8 +33,8 @@ android {
         applicationId "org.tatarkeyboard.ime"
         minSdkVersion 24
         targetSdkVersion 37
-        versionCode 59
-        versionName "4.0.1"
+        versionCode 60
+        versionName "4.0.2"
         // The app ships three locales only: Tatar, Russian, English.
         resConfigs "tt", "ru", "en"
         // Instrumentation tests (androidTest only). The legacy platform runner needs no external
@@ -95,18 +95,21 @@ android {
     }
 }
 
-// Error Prone findings stay warnings (allErrorsAsWarnings): the legacy Java sources
-// predate the tool, and ERROR-severity checks would otherwise abort compilation.
+// Production Java compilation fails on Error Prone errors. Test-only compilation
+// keeps findings as warnings while its legacy findings are reviewed separately. Any
+// production suppression must name the exact check and carry a concrete reason;
+// do not restore a blanket allErrorsAsWarnings policy.
 // Under AGP the net.ltgt.errorprone plugin is inert by design: it neither wires Error
 // Prone into AGP's compile tasks nor enables itself. The wiring goes through the
 // annotationProcessor configurations (see dependencies below); setting
 // options.annotationProcessorPath directly does not work because AGP overwrites it
 // and passes -proc:none. Only the per-task enablement lives here.
 tasks.withType(JavaCompile).configureEach {
+    def errorProneTestOnlyCode = name.toLowerCase().contains('test')
     options.errorprone {
         enabled = true
-        allErrorsAsWarnings = true
-        compilingTestOnlyCode = name.toLowerCase().contains('test')
+        allErrorsAsWarnings = errorProneTestOnlyCode
+        compilingTestOnlyCode = errorProneTestOnlyCode
     }
 }
 

@@ -1,0 +1,6 @@
+• Fixed long presses on suggestions when your finger slides away and back
+• Invalid long-press delays now use the nearest valid value, including for the space trackpad
+• Learned emoji your system font cannot show no longer appear as suggestions
+• Number row, special character and emoji key changes now always refresh the layout
+• Saved words recovers damaged sentence starts; deleting a word removes its quarantined copy too
+• Saved backups are verified, and failed saves are no longer reported as complete

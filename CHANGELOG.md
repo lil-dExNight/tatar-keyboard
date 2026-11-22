@@ -12,6 +12,29 @@ These hold for every release:
   `apksigner verify --print-certs <apk>`.
 
 
+## [Unreleased]
+
+## [4.0.2] — 2026-11-23
+
+### Fixed
+
+- A long press on a suggestion-strip word no longer commits the word when the finger slides off
+  the cell and back before release; taps stay suppressed until the gesture ends or the strip
+  changes.
+- A stored long-press delay outside the settings slider's range (including the old `-1` sentinel
+  or a huge imported value) is clamped to that range when read, for ordinary long presses and the
+  space-bar trackpad alike.
+- A learned emoji that the system font cannot draw no longer appears as a suggestion; the
+  keyboard remembers the check, so typing stays fast.
+- Turning the number row, the extended character set or the emoji key on or off now always
+  rebuilds the keyboard instead of sometimes showing the old layout.
+- When the sentence-start suggestions file is damaged, the "Saved words" screen offers recovery:
+  the readable words can be restored and the damaged copy discarded or kept for inspection, and
+  deleting a word also removes its quarantined copy so it cannot come back.
+- Saving a backup to a file reports success only after reading the document back and verifying the
+  whole archive. A write that fails is deleted when possible and reported as a possibly partial
+  document instead of a finished backup.
+
 ## [4.0.1] — 2026-11-22
 
 ### Changed
