@@ -5,6 +5,29 @@ The scripts use only the standard library, give the same bytes for the same inpu
 nonzero without writing output when an input or a result is invalid. The binary formats are
 described in [ASSET-FORMATS.md](ASSET-FORMATS.md).
 
+## Clean checkouts and rebuild preflights
+
+Every tracked asset and test resource is required in every environment; `python3
+scripts/provenance.py` validates those first. The raw corpus dumps under `research/corpus/` are
+the only optional inputs: a clean checkout with no `.git` directory and no local corpora passes
+source validation, and each declared dump is size- and SHA-256-verified whenever it is present,
+reported by name when it is not.
+
+The required raw set does not come from the shards. The inventory is read from the acquisition-pin
+registry (`research/corpus-sources/build_provenance.py`, `CORPUS_DUMPS`, committed as
+`data/provenance.d/corpus-dump-*.json`), and validation requires the declared raw shard set to
+equal that registry in both modes, so a deleted or extra shard fails instead of silently dropping
+a requirement.
+
+Every command that rebuilds assets runs the strict
+preflight (`scripts/provenance.py validate_raw_corpora`): the declaration match plus presence and
+hash match for every declared dump, before any output is written. `scripts/rebuild_assets.py`
+calls it in the rebuild path and exits 2 on failure; `--check` never demands raw corpora, so the
+offline consistency check stays runnable in a clean checkout. `provenance.py --require-raw-corpora`
+exposes the same strictness on the command line. The final-set builders verify their exclusion
+inputs against provenance or inventory pins through the shared inventory (below) before any
+candidate is selected.
+
 | Asset (`app/src/main/assets/`) | Built by | Inputs |
 |---|---|---|
 | `dictionaries/*.tdict.zlib` | `scripts/rebuild_assets.py` (runs `dict_accept.py pack`) | release 1.8.4 baseline dictionaries, `data/dictionary/dict-accept/`, Tatar word forms |
@@ -68,11 +91,11 @@ These inputs are not in the repository:
   splits; the news exclusion input is pinned in the output provenance. The held-out sets keep
   their roles: the Tatoeba-based one is the development and regression input, and the Common
   Voice sets are final evaluations. None may be trained or tuned on. Split assignments and
-  normalized collisions across
-  sentences, word-frequency tables, dictionary admissions and bigram training are declared in
-  `data/evaluation/splits-tt.json` and checked by `python3 scripts/evaluation_splits.py
-  data/evaluation/splits-tt.json` (a cross-split normalized-sentence leak is an error; a word
-  table may not hold two rows that normalize to the same word).
+  normalized collisions across sentences, word-frequency tables, dictionary admissions and bigram
+  training are declared in `data/evaluation/splits-tt.json` and `data/evaluation/splits-ru.json`
+  and checked by `python3 scripts/evaluation_splits.py <declaration>` (a cross-split
+  normalized-sentence leak is an error; a word table may not hold two rows that normalize to the
+  same word).
 - Conversational training files `tt_conv_train90-sentences.txt` and
   `rus_conv_thinned60-sentences.txt`. `research/corpus/dl.sh` downloads the Tatoeba and
   OpenSubtitles dumps (Tatar Tatoeba: the weekly tatoeba.org export, which OPUS lags; the
@@ -105,11 +128,28 @@ These inputs are in the repository:
 - `data/provenance.d/`: one JSON shard per generated asset and evaluation file. Each shard pins
   an immutable revision, byte size, SHA-256, license, source role, split rule, generation
   command and repository-relative path; `python3 scripts/provenance.py` fails on a missing,
-  duplicate, malformed or stale shard, and the python suite runs it against the live tree.
+  duplicate, malformed or stale shard, and the python suite runs it against the live tree. The
+  raw-dump shards (`corpus-dump-*.json`) also map each dump to its acquisition pin (the exact
+  bytes `dl.sh` fetches) and to the converted-corpus keys of `data/corpus-manifest.json`; all
+  present dumps are validated before a shard is written or removed.
 - `data/evaluation/splits-tt.json`: the train/development/final split declarations checked by
   `scripts/evaluation_splits.py` (see the held-out evaluation sets above). The python suite runs
   the committed declaration against the live tree, so the shipped development and final sets and
-  the word tables are covered, not only a fixture.
+  the word tables are covered, not only a fixture. The Russian counterpart
+  `data/evaluation/splits-ru.json` declares the Russian sentence, valid-OOV, typo-target,
+  admission and frequency sources plus all six Russian bigram-training inputs; the Tatar
+  declaration names its three bigram-training inputs. `optional: true` is accepted only for
+  external `${CORPUS_DIR}/` sources, so a tracked artifact cannot be marked optional, and
+  required-coverage configuration and leak classification are separate: leak checks always use
+  the constant development/final semantics.
+- `data/evaluation/final-exclusions-tt.json` with `scripts/final_evaluation_exclusions.py`: the
+  shared exclusion inventory both final-set builders apply. It covers the historical
+  `tat_news_2015_1M` tuning input, the other final set, every Common Voice split, every TatSC
+  split, QED, TED2020 and the extra Tatar Tatoeba snapshot. Every ordinary exclusion input is
+  verified against a corpus-provenance or inventory pin (size and SHA-256) before it is parsed,
+  and the full conversational stream is derived from the pinned recipe rows of
+  `make_eval_set.py` rather than read as an unpinned file; a missing, drifted or unpinned input
+  fails the builder before any candidate is selected.
 - `data/corpus-sources/`: the licensed-corpus comparison for Tatar (TatSC under CC BY 4.0 and
   Common Voice under CC0, alongside the current OpenSubtitles/Tatoeba input):
   `ATTRIBUTION.txt` with the license and upstream of each candidate, `source-pins.json` with

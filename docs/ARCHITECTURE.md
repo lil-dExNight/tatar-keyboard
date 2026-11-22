@@ -19,7 +19,7 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `latin/suggestions/` | `SuggestionsController`, `SuggestionStripView`, `SuggestionStripState`, the recent-clip cell (`RecentClipCell`), the inline-autofill host (`InlineAutofillStripView`, `InlineAutofillBinder`, `InlineStripSpecs`), Tatar word utilities and suffix rules |
 | `latin/dictionary/engine/` | `LatestOnlyPrefixEngine`, `MappedDictionaryEngine`, `CompositePrefixComputer`, `TdictPrefixIndex`, `TatBigrPrefixIndex`, typo recovery |
 | `latin/dictionary/storage/` | asset publishing (`AtomicDictionaryStore`, `AtomicBigramStore`), validators, artifact specs and pins |
-| `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`, `TrefFormat`), validators, snapshots |
+| `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`, `TrefFormat`), validators, snapshots, the versioned migration registry (`PersonalFormatMigrations`) |
 | `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, sentence starts, refused corrections, text shortcuts), learning gates, pending counters, quarantine, counts-only inventory and category deletion (`PersonalInventory`), erase-all (`PersonalErasure`, `PersonalEraseAll`) |
 | `latin/glide/` | glide decoder, gesture detector, path and key geometry |
 | `latin/emoji/` | emoji panel, search, skin tones, recents, emoji suggestions |
@@ -39,9 +39,10 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
    (`PointerTrackerQueue.Element.abandonSpaceTrackpad`), and every field start forgets the saved
    selection (`LatinIME.resetSpaceTrackpad`); a cancel inside the same field still restores it.
 3. `LatinIME` implements that interface. `onCodeInput` builds an `Event` for `LatinIME.onEvent`,
-   which first runs its hooks: emoji search (keys grow the search query instead of the text), undo
-   autocorrect, glide whole-word undo, and autocorrect before a separator. Then the event goes to
-   `InputLogic.onCodeInput`.
+   which first runs its hooks: emoji search (keyboard keys and keyboard text output grow the
+   search query instead of the text, while emoji-panel picks take the explicit
+   `LatinIME.onEmojiTextInput` editor-commit path), undo autocorrect, glide whole-word undo, and
+   autocorrect before a separator. Then the event goes to `InputLogic.onCodeInput`.
 4. `InputLogic` edits text only through `RichInputConnection`, which wraps the platform
    `InputConnection` and caches the text around the cursor. Backspace, space-slide and delete-swipe
    share allocation-free emoji-cluster boundaries, including variation selectors, skin tones,
@@ -69,6 +70,11 @@ Protections (in `RichInputConnection` and `InputLogic` unless noted):
   the IME can remain in the local memory cache until the session ends. The background reader reads
   only the connection captured at that check, and clearing the caches also drops a follow-up
   request folded in before it;
+- the reload executor belongs to the connection: `RichInputConnection.shutdown()`, called from
+  `LatinIME.onDestroy()`, discards queued and coalesced reloads, refuses later reads, and makes
+  already-posted results stale so a destroyed service never publishes them. Apply and completion
+  posts go through `EditorHost.postReloadResult` (the production host posts to
+  `LatinIME.mHandler`), and `EditorHost.useSurroundingText` selects the reader branch;
 - the end of an input session drops the cached text and the selection; a hide that keeps the
   session drops only the text, so the next show re-reads it from the editor instead of the
   session's first `EditorInfo`;
@@ -89,6 +95,9 @@ letters and ё/ъ as long-press keys.
 With the number row off, the first ten keys of the `й`–`х` row of both layouts carry the digits
 1–0 on long press (a `<switch>` on `showNumberRow` in `rowkeys_tatar1.xml` and
 `rowkeys_russian1.xml`); a key with a letter partner keeps that letter first.
+`KeyboardId` equality and hashing include the number-row, special-characters/more-keys and
+emoji-key flags, so toggling any of them yields a fresh keyboard identity instead of a stale
+cached layout.
 
 Languages: Tatar (`tt_RU`, layout `tatar`), Russian (`ru`, layout `russian`) and English (`en_US`,
 `qwerty`, with `qwertz` and `abc` as alternatives). The system sees one generic subtype
@@ -151,7 +160,10 @@ the strip to all four (`SuggestionStripState.visibleCellCount`; the engines alwa
 candidates and the controller truncates the band). Cells fill the keyboard's dock content
 rectangle. A right dock mirrors only ranked bands across the visible grid, putting the leading
 candidate nearest the right thumb; undo, recent-clip and emoji-only offers keep their documented
-order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry.
+order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry. Each
+published cell carries an explicit kind (`SuggestionCellKind`), so a non-letter word candidate is
+never mistaken for an emoji cell and triggers no emoji-tail handling, recent-emoji insertion,
+learned-emoji events or spoken emoji labels.
 TalkBack hears a populated strip once per context (`SuggestionAnnouncementPolicy`): the words
 change on every keystroke and the strip is blanked while a lookup runs, so only the first words
 of a field, language, cursor position or committed word are announced, and a strip left with
@@ -160,7 +172,10 @@ word cell offers to forget the word when the personal dictionary holds it and to
 manual-add filter accepts it, and answers with an explanation otherwise
 (`LatinIME.onStripWordLongPress`). The filter rejects manual addition from postal-address fields
 and while Pause learning is on. A cell may show the typed word itself (see Word completion); it
-is a word cell like any other, so both gestures apply unchanged. A punctuation mark that attaches
+is a word cell like any other, so both gestures apply unchanged. Long-press consumption is
+latched for the whole gesture: the tap stays suppressed while the finger leaves and re-enters
+the cell, and the latch resets only on `ACTION_UP`, `ACTION_CANCEL`, a new `ACTION_DOWN`, strip
+content replacement, or view release. A punctuation mark that attaches
 to a word (`. , ; : ! ? ) ] }`) typed right after takes that space's place ("сүз, ", "сүз?! "),
 tracked by the cursor position in `InputLogic`. A space typed there is swallowed and counts as
 the first space of a double-space period. Two quick spaces give a period only in a general text
@@ -262,7 +277,10 @@ answer (`EngineHandle.nextWordWithoutTable`), and when the table attaches later,
 `SuggestionsController.onBigramTableReady` asks again if the strip still shows that NEXT_WORD
 moment and holds no active-language word or only words predicted without the table. With emoji
 suggestions on, the last cell holds an emoji for the context word: a learned emoji first, else the
-static table (`EmojiSuggestIndex`).
+static table (`EmojiSuggestIndex`). A learned emoji is offered only with a cached positive
+system-font verdict: unknown sequences are hidden until one coalesced background `GlyphProbe`
+answers, cached verdict reads allocate nothing on the keystroke path, and a late positive verdict
+repaints a still-current NEXT_WORD strip.
 
 Companion language: the layout the user chose owns the strip; the companion, the first other
 language of `DictionaryArtifactSpec.ALL` whose engine is warm and not pending release, may fill
@@ -373,7 +391,11 @@ read-only (`FileChannel.map`) and reads it in place. The bigram table attaches l
 hands the engine its catalog, and the engine maps and opens the table on its worker at the first
 next-word lookup or at the first glide decode with a committed context word, so a session that
 neither predicts a next word nor glides behind a word never maps it. Pinned sizes and
-SHA-256 values are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. Without a
+SHA-256 values are in `DictionaryStorageContracts.kt` and `BigramStorageContracts.kt`. The
+TATDICT opening walk decodes prefix lengths and frequencies with a bounded canonical u32 varint
+decoder that rejects truncation, non-minimal encodings and overflow; the lookup decoders are
+unchanged. `TatBigrValidator` and `TatBigrPrefixIndex.open` require every schema-4 trigram
+successor count to be 1..8, matching the packer and `docs/ASSET-FORMATS.md`. Without a
 usable dictionary a language has no suggestions; without its bigram table next-word prediction
 has no bundled successors (see next-word prediction above).
 
@@ -418,11 +440,25 @@ from the settings screen, with no counters, no pending hashes and no learning.
   on each strip query; sentence starts at each sentence start; text shortcuts once on the strip's
   first lookup, on their own settings screen and before a backup. A `clearAll` before the first unlock also leaves the store not loaded.
 - Quarantine: only a file that fails validation, or exceeds its size cap, is moved aside, not
-  deleted; the settings screen tells the user once and can restore what is readable. A failed
-  move preserves the original file, and a failed purge rewrite preserves the original quarantined
-  copy. A pending-counter file that does not parse moves to its own slot
+  deleted; the settings screen tells the user once and can restore what is readable. The
+  sentence-start store has the same recovery lifecycle as the other stores
+  (`SentStartOverlayStore`): a checksum-tolerant salvage keeps the largest valid ordered prefix of
+  a damaged `.tsent` file, restore is idempotent and keeps the damaged copy until a separate
+  discard, and per-word forget works like on the words screen; the settings screen delivers the
+  notice once and the restore and discard answers are joined fail-closed. Deleting a saved word
+  purges the sentence overlay and its quarantined copy together with the word, so a later restore
+  cannot resurrect it. A failed move preserves the original file, and a failed purge rewrite
+  preserves the original quarantined copy. A pending-counter file that does not parse moves to its
+  own slot
   (`pending-*.bin.quarantine`) with no notice: it holds only salted hashes that relearn by
   themselves, and it is counted with quarantined copies but never restored.
+- Format migration: `PersonalFormatMigrations` registers the versioned readers for all six
+  personal kinds. Every serializer and filename generator goes through the fail-closed
+  `requireWriter` gate, so the format constants cannot change without a registered complete path,
+  and store loads call `PersonalFormatFileMigration.migrateIfNeeded`. Current `s1-f1` files take a
+  no-allocation fast path; a real migration copies through temp, fsync, target validation, atomic
+  replace and directory fsync and never deletes the original representation, and a store whose
+  file's version has no registered migration fails to open.
 - Personal data inventory (`PersonalInventory`, `PersonalInventoryEngine`): the settings screen
   reads only per-category counts, never the stored words. Saved words, learned pairs, learned
   emoji, sentence starts, refused corrections and text shortcuts are counted from their opened
@@ -473,7 +509,12 @@ from the settings screen, with no counters, no pending hashes and no learning.
   only erase-all discards it, ahead of the stores. Export and import first prime the store of every recognized personal file
   on the store worker (`BackupTarget.openPersonalStore`), so a damaged file is quarantined by its
   own store and left out of the export; a store left not loaded makes export fail and import
-  refuse before the journal is written. The archive holds the settings (minus the restriction
+  refuse before the journal is written. Export reports success only after a checked write and
+  close, a re-read of the completed document, a byte-for-byte comparison and full archive
+  verification; an encrypted export verifies with the task-held password and then wipes both
+  password copies. A failed document write is deleted best effort and reported as a possible
+  partial document; no atomic replacement across document providers is claimed. The archive holds
+  the settings (minus the restriction
   cache), words, pairs, learned emoji, refused corrections and text shortcuts; sentence starts,
   recent emoji, pending counters, salts and quarantined copies stay out. Pending counters and the
   salt survive a restore, and quarantined copies stay in their own flow. Two privacy switches are
@@ -651,7 +692,11 @@ Appearance holds keyboard height, one-handed mode, emoji-panel height and one di
 and landscape bottom-offset sliders. Information combines backup actions and legal links. Language
 rows open their layouts on tap and offer removal of only that language on long press. The root back
 chevron is hidden once the IME is enabled and selected. Preferences are device-protected
-(`PreferenceManagerCompat`). `FLAG_SECURE` keeps saved words out of screenshots and recent apps.
+(`PreferenceManagerCompat`). The stored long-press timeout is clamped at read
+(`Settings.readKeyLongpressTimeout`) to the slider resource bounds
+`config_min_longpress_timeout` and `config_max_longpress_timeout`; a missing preference uses the
+resource default, and the clamped value drives ordinary long presses and the space-bar trackpad
+alike. `FLAG_SECURE` keeps saved words out of screenshots and recent apps.
 Enterprise restrictions
 (`res/xml/app_restrictions.xml`) can disable rows. `SetupActivity` is the onboarding: two system
 steps (enable, select) watched live from the system, then one done block with a single guide card
@@ -688,6 +733,12 @@ Details and the risk register: [THREAT-MODEL.md](THREAT-MODEL.md).
 - `tests/<script>/test_*.py`: `unittest` tests of the Python asset pipeline in `scripts/`.
   `scripts/check_profiles.py` parses both generated profiles, gates the startup subset and
   requires the critical startup, suggestion and glide methods to appear as method rules.
+  `scripts/dl2_acceptance.py` reports measured autocorrect probe counts and budget outcomes on
+  every return path, so its `zero_autocorrect_over_budget_lookups` gate answers measured pass or
+  fail, never `unmeasurable`. Split declarations (`data/evaluation/splits-tt.json` and
+  `splits-ru.json`) are validated by `scripts/evaluation_splits.py`, rebuild-style commands run
+  the strict raw-corpus provenance preflight before any output, and clean-tree validation treats
+  raw corpora as optional inputs (see [ASSET-PIPELINE.md](ASSET-PIPELINE.md)).
 - `app/src/androidTest/`: device tests (glide on a real screen, dictionary I/O, draw allocations,
   emoji index reload, engine timing).
 - `baselineprofile/`: generator of the baseline and startup profiles

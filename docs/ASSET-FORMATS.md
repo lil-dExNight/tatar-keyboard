@@ -346,13 +346,21 @@ Every word row is a u8 byte length followed by the UTF-8 bytes of an NFC lowerca
 are strictly ascending in unsigned UTF-8 byte order, so a membership probe is a binary search.
 
 Validation (`engine/CompanionListReader.kt`) follows the same fail-closed rule as the dictionary
-validator: every header field is checked against the contract, the compressed size and SHA-256
-and the raw size are pinned, the checksum must verify, and any violation throws. A rejected list
-protects nothing — an unlisted word stays correctable, exactly as before the list existed.
-Inflation is bounded by the pinned raw size, so a corrupt stream cannot allocate without limit.
+validator: every header field is checked against the contract, compressed size and SHA-256 and raw
+size and SHA-256 are pinned, the embedded checksum must verify, and row lengths, body bounds and
+strict unsigned-byte ordering are walked. Any violation throws. A rejected list protects nothing —
+an unlisted word stays correctable, exactly as before the list existed. Inflation is bounded by the
+pinned raw size, so a corrupt stream cannot allocate without limit.
+
+The runtime walk deliberately does not decode every stored word. UTF-8, NFC, alphabet and lowercase
+canonicality are established at generation time: `scripts/companion_list_pack.py` selects words
+from a fully validated TATDICT, and the compressed and raw content pins bind the runtime to that
+exact output. Structure and a self-consistent checksum alone do not establish canonicality, and an
+unpinned or pin-mismatched malformed list is not a supported word source.
 
 The list is read whole into memory once per process (it is the top of a frequency list, not the
-dictionary), never copied into device-protected storage.
+dictionary), never copied into device-protected storage. Strings are decoded only if the `words`
+view is read; membership probes compare bytes.
 
 ## Plain-text assets
 
