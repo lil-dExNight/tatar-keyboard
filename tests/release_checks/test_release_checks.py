@@ -609,7 +609,8 @@ class ContinuousIntegrationChecksTest(unittest.TestCase):
 
     def test_reproducible_packing_provisions_and_uses_the_release_pin(self) -> None:
         reproducible = self.workflow.split("  reproducible:\n", 1)[1]
-        self.assertIn('sdkmanager "build-tools;$TT_BUILD_TOOLS_PIN"', reproducible)
+        self.assertIn('SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"', reproducible)
+        self.assertIn('"$SDKMANAGER" "build-tools;$TT_BUILD_TOOLS_PIN"', reproducible)
         self.assertGreaterEqual(
             reproducible.count(": \"${TT_BUILD_TOOLS_PIN:?"), 2, reproducible)
         self.assertNotIn("TT_BUILD_TOOLS_VERSION", reproducible)

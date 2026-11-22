@@ -189,8 +189,10 @@ jobs:
           : "${TT_BUILD_TOOLS_PIN:?scripts/build-tools-pin.sh must set TT_BUILD_TOOLS_PIN}"
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?Android SDK root is not set}}"
           echo "pinned build-tools: $TT_BUILD_TOOLS_PIN"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
           ANDROID_HOME="$SDK_ROOT" ANDROID_SDK_ROOT="$SDK_ROOT" \
-            sdkmanager "build-tools;$TT_BUILD_TOOLS_PIN"
+            "$SDKMANAGER" "build-tools;$TT_BUILD_TOOLS_PIN"
           test -d "$SDK_ROOT/build-tools/$TT_BUILD_TOOLS_PIN"
       - name: Pack twice without signing
         run: |
