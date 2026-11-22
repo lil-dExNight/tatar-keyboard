@@ -112,6 +112,38 @@ class TdictPrefixIndexTest {
     }
 
     @Test
+    fun malformedPrefixAndFrequencyVarintsFailClosed() {
+        val raw = DictionaryTestFixtures.raw(listOf("аб" to 2, "аба" to 1))
+        val prefixOffset = 76 + 1 + "аб".toByteArray(Charsets.UTF_8).size
+        val truncatedPrefix = raw.copyOf(prefixOffset + 1).also {
+            it[prefixOffset] = 0x80.toByte()
+            resizeBlock(it, it.size - raw.size)
+        }
+        val truncatedFrequency = raw.copyOf().also { it[it.lastIndex] = 0x80.toByte() }
+        val cases = listOf(
+            "overlong prefix" to replaceOneByteVarint(
+                raw, prefixOffset, byteArrayOf(0x84.toByte(), 0),
+            ),
+            "overflowing prefix" to replaceOneByteVarint(
+                raw,
+                prefixOffset,
+                byteArrayOf(0x84.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x10),
+            ),
+            "truncated prefix" to truncatedPrefix,
+            "overlong frequency" to replaceOneByteVarint(
+                raw, raw.lastIndex, byteArrayOf(0x81.toByte(), 0),
+            ),
+            "overflowing frequency" to replaceOneByteVarint(
+                raw,
+                raw.lastIndex,
+                byteArrayOf(0x81.toByte(), 0x80.toByte(), 0x80.toByte(), 0x80.toByte(), 0x10),
+            ),
+            "truncated frequency" to truncatedFrequency,
+        )
+        for ((label, malformed) in cases) assertNull(label, open(malformed))
+    }
+
+    @Test
     fun sourcePositionAndByteOrderCannotChangeFrozenReader() {
         val raw = DictionaryTestFixtures.raw(listOf("аб" to 2, "әби" to 1))
         val source = ByteBuffer.wrap(raw).order(ByteOrder.BIG_ENDIAN)
@@ -121,6 +153,21 @@ class TdictPrefixIndexTest {
 
         assertEquals(listOf("аб"), lookup(index, utf8("а")))
         assertTrue(lookup(index, utf8("әби")).isEmpty())
+    }
+
+    private fun replaceOneByteVarint(raw: ByteArray, offset: Int, encoded: ByteArray): ByteArray {
+        val result = ByteArray(raw.size + encoded.size - 1)
+        raw.copyInto(result, 0, 0, offset)
+        encoded.copyInto(result, offset)
+        raw.copyInto(result, offset + encoded.size, offset + 1, raw.size)
+        resizeBlock(result, encoded.size - 1)
+        return result
+    }
+
+    private fun resizeBlock(raw: ByteArray, delta: Int) {
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(32, buffer.getInt(32) + delta)
+        buffer.putInt(36, buffer.getInt(36) + delta)
     }
 
     private fun open(raw: ByteArray, source: ByteBuffer = ByteBuffer.wrap(raw)) =

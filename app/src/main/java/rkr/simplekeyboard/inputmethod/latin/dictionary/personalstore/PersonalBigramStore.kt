@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbValidator
@@ -600,6 +602,17 @@ internal class PersonalBigramStore(
         if (!directory.isDirectory) {
             snapshot = PersonalBigramDictionary.EMPTY
             return
+        }
+        if (!PersonalFormatFileMigration(PersonalFormats.migrations, fileOps, outputOpener, clock)
+                .migrateIfNeeded(
+                    PersonalStoreFormat.BIGRAMS,
+                    TpersbFormat.SCHEMA_ID,
+                    TpersbFormat.FORMAT_VERSION,
+                    subtypeId,
+                    directory,
+                )
+        ) {
+            throw IOException("personal format migration failed")
         }
         cleanupTemps(directory)
         readPending(directory)

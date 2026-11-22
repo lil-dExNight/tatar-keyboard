@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersemFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalEmoji
 import java.nio.ByteBuffer
@@ -151,6 +153,9 @@ internal class PersonalEmojiEntries private constructor(
 
     /** The in-memory bytes to be written whole to disk, in the frozen `.tpersem` layout. */
     fun serialize(subtypeTag: String): ByteArray {
+        PersonalFormats.requireWriter(
+            PersonalStoreFormat.EMOJI, TpersemFormat.SCHEMA_ID, TpersemFormat.FORMAT_VERSION,
+        )
         val encodedWords = words.map { it.toByteArray(StandardCharsets.UTF_8) }
         val encodedEmoji = emojiClusters.map { it.toByteArray(StandardCharsets.UTF_8) }
         val payloadSize = (0 until size).sumOf {

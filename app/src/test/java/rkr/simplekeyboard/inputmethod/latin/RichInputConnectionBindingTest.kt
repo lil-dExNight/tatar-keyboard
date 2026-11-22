@@ -25,11 +25,14 @@ import android.view.inputmethod.ExtractedText
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
+import android.view.inputmethod.SurroundingText
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,6 +47,17 @@ class RichInputConnectionBindingTest {
     /** Records every call that reaches it; reads answer short fixed text. */
     private class RecordingEditor(val name: String) : InputConnection {
         val calls = mutableListOf<String>()
+        var readStarted: CountDownLatch? = null
+        var readRelease: CountDownLatch? = null
+
+        private fun blockRead() {
+            readStarted?.countDown()
+            try {
+                readRelease?.await()
+            } catch (_: InterruptedException) {
+                // shutdownNow releases a blocked read; its late result must still be dropped.
+            }
+        }
 
         override fun beginBatchEdit(): Boolean { calls.add("begin"); return true }
         override fun endBatchEdit(): Boolean { calls.add("end"); return true }
@@ -63,7 +77,18 @@ class RichInputConnectionBindingTest {
             calls.add("menu:$id"); return true
         }
         override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence? {
-            calls.add("readBefore"); return "abc"
+            calls.add("readBefore")
+            blockRead()
+            return "abc"
+        }
+        override fun getSurroundingText(
+            beforeLength: Int,
+            afterLength: Int,
+            flags: Int,
+        ): SurroundingText? {
+            calls.add("readSurrounding")
+            blockRead()
+            return null
         }
         override fun getTextAfterCursor(n: Int, flags: Int): CharSequence? {
             calls.add("readAfter"); return ""
@@ -94,9 +119,18 @@ class RichInputConnectionBindingTest {
     /** The service side: which field is bound now and whether its text may be read. */
     private class FakeHost(var bound: InputConnection?, var mayRead: Boolean) :
         RichInputConnection.EditorHost {
+        val uiPosts = mutableListOf<Runnable>()
+        var surroundingTextReloads = false
+        @Volatile var rejectPosts = false
+
         override fun getCurrentInputConnection() = bound
         override fun mayReadEditorText() = mayRead
         override fun resetSubtypeCycleOrder() {}
+        override fun useSurroundingText() = surroundingTextReloads
+        override fun postReloadResult(result: Runnable) {
+            uiPosts += result
+            if (rejectPosts) throw AssertionError("editor reload posted after shutdown")
+        }
     }
 
     private val normal = RecordingEditor("normal")
@@ -167,6 +201,49 @@ class RichInputConnectionBindingTest {
     }
 
     @Test
+    fun anUnmatchedEndDoesNotPoisonTheNextBatch() {
+        val host = FakeHost(normal, mayRead = true)
+        val connection = RichInputConnection(null, host)
+        connection.onStartInput()
+
+        connection.endBatchEdit()
+        host.bound = password
+        connection.beginBatchEdit()
+        connection.commitText("а", 1)
+        connection.endBatchEdit()
+
+        assertTrue("an unmatched end never reaches the editor", normal.calls.isEmpty())
+        assertEquals(listOf("begin", "commit:а", "end"), password.calls)
+        assertEquals(0, nestLevelOf(connection))
+        connection.shutdown()
+    }
+
+    @Test
+    fun nestedBatchesCloseOnlyTheOutermostEditorBatch() {
+        val host = FakeHost(normal, mayRead = true)
+        val connection = RichInputConnection(null, host)
+
+        connection.beginBatchEdit()
+        connection.beginBatchEdit()
+        host.bound = password
+        connection.commitText("а", 1)
+        connection.endBatchEdit()
+        connection.commitText("б", 1)
+
+        assertEquals("the inner close keeps both the batch and its editor",
+            listOf("begin", "commit:а", "commit:б"), normal.calls)
+        assertTrue(password.calls.isEmpty())
+
+        connection.endBatchEdit()
+        connection.commitText("в", 1)
+
+        assertEquals(listOf("begin", "commit:а", "commit:б", "end"), normal.calls)
+        assertEquals("the next unbatched call refreshes the editor", listOf("commit:в"), password.calls)
+        assertEquals(0, nestLevelOf(connection))
+        connection.shutdown()
+    }
+
+    @Test
     fun aFieldWithoutAConnectionGetsNothing() {
         val host = FakeHost(normal, mayRead = true)
         val connection = RichInputConnection(null, host)
@@ -228,10 +305,13 @@ class RichInputConnectionBindingTest {
         val connection = RichInputConnection(null, host)
         val worker = executorOf(connection)
         val release = CountDownLatch(1)
-        worker.execute { release.await(5, TimeUnit.SECONDS) }
-        val previous = Thread.getDefaultUncaughtExceptionHandler()
-        // Without a service the worker's posts to the UI thread fail; that is not under test.
-        Thread.setDefaultUncaughtExceptionHandler { _, _ -> }
+        worker.execute {
+            try {
+                release.await(5, TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {
+                // The finally block releases this test blocker before closing the worker.
+            }
+        }
         try {
             connection.reloadTextCache() // queued behind the blocker, gate passed for "normal"
 
@@ -242,15 +322,202 @@ class RichInputConnectionBindingTest {
             release.countDown()
             worker.submit {}.get(5, TimeUnit.SECONDS)
         } finally {
-            Thread.setDefaultUncaughtExceptionHandler(previous)
+            release.countDown()
+            connection.shutdown()
         }
 
         assertTrue("the password field is never read, was ${password.calls}",
             password.calls.none { it.startsWith("read") })
         assertTrue("the captured field is the one read", normal.calls.any { it.startsWith("read") })
+        assertEquals("the captured result posts through the host, not a null service",
+            1, host.uiPosts.size)
+    }
+
+    // --- Shutdown discards reload work -----------------------------------------------------------
+
+    @Test
+    fun shutdownDiscardsQueuedAndCoalescedReloads() {
+        val host = FakeHost(normal, mayRead = true)
+        val connection = RichInputConnection(null, host)
+        val worker = executorOf(connection)
+        val blockerStarted = CountDownLatch(1)
+        val releaseBlocker = CountDownLatch(1)
+        worker.execute {
+            blockerStarted.countDown()
+            try {
+                releaseBlocker.await()
+            } catch (_: InterruptedException) {
+                // shutdownNow releases the blocker; the queued reload must not run after it.
+            }
+        }
+        assertTrue(blockerStarted.await(5, TimeUnit.SECONDS))
+
+        try {
+            connection.reloadTextCache()
+            assertTrue(flag(connection, "mReloadInFlight"))
+            connection.reloadTextCache()
+            assertTrue(flag(connection, "mReloadRequestedWhileInFlight"))
+
+            connection.shutdown()
+            connection.shutdown()
+
+            assertTrue(worker.isShutdown)
+            assertFalse(flag(connection, "mReloadInFlight"))
+            assertFalse(flag(connection, "mReloadRequestedWhileInFlight"))
+            connection.finishReloadTextCache()
+            connection.reloadTextCache() // a late request cannot revive the closed executor
+            releaseBlocker.countDown()
+            assertTrue(worker.awaitTermination(5, TimeUnit.SECONDS))
+            assertTrue("the discarded reload never reads the editor", normal.calls.isEmpty())
+        } finally {
+            releaseBlocker.countDown()
+            connection.shutdown()
+            worker.awaitTermination(5, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test
+    fun shutdownRejectsALateBeforeAfterUiPost() {
+        assertLateReadCannotPostAfterShutdown(useSurroundingText = false)
+    }
+
+    @Test
+    fun shutdownRejectsALateSurroundingTextUiPost() {
+        assertLateReadCannotPostAfterShutdown(useSurroundingText = true)
+    }
+
+    @Test
+    fun aPostedBeforeAfterApplyCannotPublishAfterShutdown() {
+        assertPostedApplyCannotPublishAfterShutdown(useSurroundingText = false)
+    }
+
+    @Test
+    fun aPostedSurroundingTextApplyCannotPublishAfterShutdown() {
+        assertPostedApplyCannotPublishAfterShutdown(useSurroundingText = true)
+    }
+
+    @Test
+    fun repeatedConstructionAndShutdownLeavesNoPriorWorkerAlive() {
+        val workers = mutableListOf<ExecutorService>()
+        repeat(4) { index ->
+            val connection = RichInputConnection(null)
+            val worker = executorOf(connection)
+            workers += worker
+            try {
+                worker.submit {}.get(5, TimeUnit.SECONDS) // start this lifecycle's thread
+            } finally {
+                connection.shutdown()
+            }
+            connection.shutdown()
+            assertTrue("worker $index terminates", worker.awaitTermination(5, TimeUnit.SECONDS))
+        }
+
+        assertTrue(workers.all { it.isTerminated })
+    }
+
+    private fun assertLateReadCannotPostAfterShutdown(useSurroundingText: Boolean) {
+        val branch = if (useSurroundingText) "SurroundingText" else "before/after"
+        val editor = RecordingEditor(branch)
+        val host = FakeHost(editor, mayRead = true)
+        host.surroundingTextReloads = useSurroundingText
+        val connection = RichInputConnection(null, host)
+        val worker = executorOf(connection)
+        val readStarted = CountDownLatch(1)
+        val releaseRead = CountDownLatch(1)
+        editor.readStarted = readStarted
+        editor.readRelease = releaseRead
+        connection.onBeforeCursorCacheReloaded("sentinel")
+        connection.updateSelection(3, 3)
+        val generation = cacheGenerationOf(connection)
+        val workerFailure = AtomicReference<Throwable?>()
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, throwable -> workerFailure.set(throwable) }
+
+        try {
+            connection.reloadTextCache()
+            assertTrue("$branch read starts", readStarted.await(5, TimeUnit.SECONDS))
+            connection.reloadTextCache()
+            assertTrue(flag(connection, "mReloadRequestedWhileInFlight"))
+            host.rejectPosts = true
+
+            connection.shutdown()
+            releaseRead.countDown()
+
+            assertTrue(worker.awaitTermination(5, TimeUnit.SECONDS))
+            assertTrue("$branch late read attempted a UI post: ${host.uiPosts.size}",
+                host.uiPosts.isEmpty())
+            assertNull("$branch post failure was not swallowed", workerFailure.get())
+            assertTrue(connection.reloadCaptureIsStale(generation, 3, 3))
+            assertEquals("$branch late result is not published", "sentinel",
+                connection.cachedTextBeforeCursor.toString())
+            assertFalse(flag(connection, "mReloadInFlight"))
+            assertFalse(flag(connection, "mReloadRequestedWhileInFlight"))
+            connection.finishReloadTextCache()
+            assertTrue("$branch completion cannot post a follow-up", host.uiPosts.isEmpty())
+        } finally {
+            releaseRead.countDown()
+            connection.shutdown()
+            worker.awaitTermination(5, TimeUnit.SECONDS)
+            Thread.setDefaultUncaughtExceptionHandler(previousHandler)
+        }
+    }
+
+    private fun assertPostedApplyCannotPublishAfterShutdown(useSurroundingText: Boolean) {
+        val branch = if (useSurroundingText) "SurroundingText" else "before/after"
+        val editor = RecordingEditor(branch)
+        val host = FakeHost(editor, mayRead = true)
+        host.surroundingTextReloads = useSurroundingText
+        val connection = RichInputConnection(null, host)
+        val worker = executorOf(connection)
+        connection.onBeforeCursorCacheReloaded("sentinel")
+        connection.updateSelection(3, 3)
+
+        try {
+            connection.reloadTextCache()
+            worker.submit {}.get(5, TimeUnit.SECONDS)
+
+            val expectedReads = if (useSurroundingText) {
+                listOf("readSurrounding")
+            } else {
+                listOf("readBefore", "readAfter")
+            }
+            assertEquals("$branch worker completed its read", expectedReads, editor.calls)
+            assertEquals("$branch apply was enqueued before shutdown", 1, host.uiPosts.size)
+            val apply = host.uiPosts.single()
+            connection.reloadTextCache()
+            assertTrue(flag(connection, "mReloadRequestedWhileInFlight"))
+
+            connection.shutdown()
+            host.rejectPosts = true
+            apply.run()
+
+            assertEquals("$branch queued apply did not publish", "sentinel",
+                connection.cachedTextBeforeCursor.toString())
+            assertFalse(flag(connection, "mReloadInFlight"))
+            assertFalse(flag(connection, "mReloadRequestedWhileInFlight"))
+            assertEquals("$branch completion neither posts nor reads a follow-up",
+                expectedReads, editor.calls)
+            assertEquals("$branch completion adds no UI post", 1, host.uiPosts.size)
+            assertTrue(worker.awaitTermination(5, TimeUnit.SECONDS))
+        } finally {
+            connection.shutdown()
+            worker.awaitTermination(5, TimeUnit.SECONDS)
+        }
     }
 
     // --- helpers ---------------------------------------------------------------------------------
+
+    private fun nestLevelOf(connection: RichInputConnection): Int {
+        val field = RichInputConnection::class.java.getDeclaredField("mNestLevel")
+        field.isAccessible = true
+        return field.getInt(connection)
+    }
+
+    private fun cacheGenerationOf(connection: RichInputConnection): Int {
+        val field = RichInputConnection::class.java.getDeclaredField("mCacheGeneration")
+        field.isAccessible = true
+        return field.getInt(connection)
+    }
 
     private fun flag(connection: RichInputConnection, name: String): Boolean {
         val field = RichInputConnection::class.java.getDeclaredField(name)

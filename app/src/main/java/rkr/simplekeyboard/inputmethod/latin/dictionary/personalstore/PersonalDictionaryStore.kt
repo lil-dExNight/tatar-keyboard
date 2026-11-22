@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersValidator
@@ -720,6 +722,17 @@ internal class PersonalDictionaryStore(
         if (!directory.isDirectory) {
             publishLoaded(PersonalDictionary.EMPTY)
             return
+        }
+        if (!PersonalFormatFileMigration(PersonalFormats.migrations, fileOps, outputOpener, clock)
+                .migrateIfNeeded(
+                    PersonalStoreFormat.WORDS,
+                    TpersFormat.SCHEMA_ID,
+                    TpersFormat.FORMAT_VERSION,
+                    subtypeId,
+                    directory,
+                )
+        ) {
+            throw IOException("personal format migration failed")
         }
         cleanupTemps(directory)
         readPending(directory)

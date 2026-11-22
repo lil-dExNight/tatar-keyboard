@@ -90,6 +90,8 @@ internal object TsentFormat {
      * format version are part of the name, so a reader never opens a file from an incompatible
      * build.
      */
-    fun sentStartFileName(subtypeTag: String): String =
-        "sentstart-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tsent"
+    fun sentStartFileName(subtypeTag: String): String {
+        PersonalFormats.requireWriter(PersonalStoreFormat.SENTENCE_STARTS, SCHEMA_ID, FORMAT_VERSION)
+        return "sentstart-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tsent"
+    }
 }

@@ -118,7 +118,7 @@ class PersonalBigramScreenSourceContractTest {
         assertTrue("reported as one honest answer, the recent emoji included",
             erase.contains("val erasedAll = erased && recentsCleared")
                 && erase.contains("afterPersonalMutation(erasedAll,"))
-        assertTrue("with all three quarantine cards re-read",
+        assertTrue("with the word, pair and emoji cards re-read",
             erase.contains("personalQuarantines = null")
                 && erase.contains("personalPairQuarantines = null")
                 && erase.contains("personalEmojiQuarantines = null"))

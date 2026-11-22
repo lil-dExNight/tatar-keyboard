@@ -27,8 +27,9 @@ import java.security.MessageDigest
 import java.util.zip.Inflater
 
 /**
- * A validated cold-companion list in unsigned UTF-8 byte order. One byte array and one offset
- * array back both membership and [words]; decoded strings are created only when [words] is read.
+ * A structurally validated cold-companion list in unsigned byte order. One byte array and one
+ * offset array back both membership and [words]; decoded strings are created only when [words]
+ * is read. Canonical UTF-8 words come from the generator and the shipped pins, not this view.
  */
 class ValidatedCompanionList internal constructor(
     private val wordBytes: ByteArray,
@@ -108,6 +109,12 @@ class ValidatedCompanionList internal constructor(
  * is verified, and any violation throws [CompanionListValidationException] — nothing repairs
  * data, and the caller's fail-closed rule turns a rejected list into no protection, never into
  * a suppressed correction.
+ *
+ * Validation is byte-oriented: structure, lengths, ordering, the embedded checksum and the
+ * compressed/raw pins are checked without decoding every word. UTF-8, NFC, alphabet and lowercase
+ * canonicality are established by the generator's fully validated TATDICT input and preserved by
+ * those content pins. A structurally plausible list that does not match the pins is not a
+ * supported source of canonical words.
  */
 class CompanionListReader {
     /**
@@ -127,9 +134,6 @@ class CompanionListReader {
             throw CompanionListValidationException("unexpected compressed SHA-256")
         }
         val raw = inflate(compressed, spec)
-        if (raw.size.toLong() != spec.expectedRawSize) {
-            throw CompanionListValidationException("unexpected raw size")
-        }
         return validateRaw(raw, spec)
     }
 
@@ -159,8 +163,18 @@ class CompanionListReader {
     }
 
     /** The in-memory counterpart of [read]: the same checks over bytes already inflated. */
-    fun validateRaw(raw: ByteArray, spec: CompanionListArtifactSpec): ValidatedCompanionList =
-        parseHeader(raw, spec)
+    fun validateRaw(raw: ByteArray, spec: CompanionListArtifactSpec): ValidatedCompanionList {
+        val validated = parseHeader(raw, spec)
+        if (raw.size.toLong() != spec.expectedRawSize) {
+            throw CompanionListValidationException("unexpected raw size")
+        }
+        val rawSha = MessageDigest.getInstance("SHA-256").digest(raw)
+            .joinToString("") { "%02x".format(it) }
+        if (!rawSha.equals(spec.expectedRawSha256, ignoreCase = true)) {
+            throw CompanionListValidationException("unexpected raw SHA-256")
+        }
+        return validated
+    }
 
     private fun parseHeader(
         raw: ByteArray,

@@ -114,6 +114,7 @@ object Dl2ClassMeasurement {
         "baseline_over_budget", "candidate_over_budget",
         "baseline_fuzzy_probes", "candidate_fuzzy_probes",
         "baseline_autocorrect_probes", "candidate_autocorrect_probes",
+        "baseline_autocorrect_over_budget", "candidate_autocorrect_over_budget",
         "baseline_ns", "candidate_ns",
         "baseline_candidates", "candidate_candidates",
         "baseline_fires", "candidate_fires",
@@ -407,11 +408,14 @@ object Dl2ClassMeasurement {
             var baselineOverBudget = index.lastFuzzyOverBudget
             var baselineFuzzyProbes = index.lastFuzzyProbeCount
             var baselineAutocorrectProbes = index.lastAutocorrectProbeCount
+            var baselineAutocorrectOverBudget = index.lastAutocorrectOverBudget
             val armedBaselineAdvice = if (armed) {
                 lookup(index, row.word, true)
                 baselineOverBudget = baselineOverBudget || index.lastFuzzyOverBudget
                 baselineFuzzyProbes += index.lastFuzzyProbeCount
                 baselineAutocorrectProbes += index.lastAutocorrectProbeCount
+                baselineAutocorrectOverBudget =
+                    baselineAutocorrectOverBudget || index.lastAutocorrectOverBudget
                 productionAdviceFor(row.language, index, row.word)
             } else {
                 null
@@ -436,6 +440,7 @@ object Dl2ClassMeasurement {
             var candidateOverBudget = index.lastFuzzyOverBudget
             var candidateFuzzyProbes = index.lastFuzzyProbeCount
             var candidateAutocorrectProbes = index.lastAutocorrectProbeCount
+            var candidateAutocorrectOverBudget = index.lastAutocorrectOverBudget
             val armedClassAdvice: String?
             val armedCandidateAdvice: String?
             if (armed) {
@@ -443,6 +448,8 @@ object Dl2ClassMeasurement {
                 candidateOverBudget = candidateOverBudget || index.lastFuzzyOverBudget
                 candidateFuzzyProbes += index.lastFuzzyProbeCount
                 candidateAutocorrectProbes += index.lastAutocorrectProbeCount
+                candidateAutocorrectOverBudget =
+                    candidateAutocorrectOverBudget || index.lastAutocorrectOverBudget
                 val armedProduction = productionAdviceFor(row.language, index, row.word)
                 armedClassAdvice = Dl2ClassSemantics.classAdvice(
                     row.word, variantHits, companionContains, typedWordInDictionary,
@@ -485,6 +492,8 @@ object Dl2ClassMeasurement {
                 candidateFuzzyProbes = candidateFuzzyProbes,
                 baselineAutocorrectProbes = baselineAutocorrectProbes,
                 candidateAutocorrectProbes = candidateAutocorrectProbes,
+                baselineAutocorrectOverBudget = baselineAutocorrectOverBudget,
+                candidateAutocorrectOverBudget = candidateAutocorrectOverBudget,
                 baselineNs = baselineNs,
                 candidateNs = candidateNs,
                 baselineCandidates = baselineCandidates,
@@ -564,6 +573,8 @@ object Dl2ClassMeasurement {
         val candidateFuzzyProbes: Int,
         val baselineAutocorrectProbes: Int,
         val candidateAutocorrectProbes: Int,
+        val baselineAutocorrectOverBudget: Boolean,
+        val candidateAutocorrectOverBudget: Boolean,
         val baselineNs: Long,
         val candidateNs: Long,
         val baselineCandidates: List<String>,
@@ -580,6 +591,7 @@ object Dl2ClassMeasurement {
             int(baselineOverBudget), int(candidateOverBudget),
             baselineFuzzyProbes, candidateFuzzyProbes,
             baselineAutocorrectProbes, candidateAutocorrectProbes,
+            int(baselineAutocorrectOverBudget), int(candidateAutocorrectOverBudget),
             baselineNs, candidateNs,
             baselineCandidates.joinToString("|"), candidateCandidates.joinToString("|"),
             int(baselineFires), int(candidateFires),

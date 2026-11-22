@@ -16,6 +16,8 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.RefusedCorrections
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TrefFormat
@@ -247,6 +249,17 @@ internal class RefusedCorrectionStore(
         if (!directory.isDirectory) {
             snapshot = RefusedCorrections.EMPTY
             return
+        }
+        if (!PersonalFormatFileMigration(PersonalFormats.migrations, fileOps, outputOpener, clock)
+                .migrateIfNeeded(
+                    PersonalStoreFormat.REFUSALS,
+                    TrefFormat.SCHEMA_ID,
+                    TrefFormat.FORMAT_VERSION,
+                    subtypeId,
+                    directory,
+                )
+        ) {
+            throw IOException("personal format migration failed")
         }
         cleanupTemps(directory)
         val file = File(directory, TrefFormat.refusedCorrectionsFileName(subtypeId))

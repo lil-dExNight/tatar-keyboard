@@ -147,7 +147,8 @@ class PersonalDictionaryFeedbackSourceContractTest {
         // The store answers on its own worker; a Toast and a repaint may not happen there.
         assertTrue(screenController.contains("private val uiPoster: (Runnable) -> Unit"))
         // Six entry points, seven exits: quarantines answers on both of its branches (nothing to
-        // do, and the counted fan-out). Every one of them ends on the UI thread.
+        // do, and the counted fan-out), and removeWord combines both stores into one UI answer.
+        // Every one of those exits ends on the UI thread.
         assertEquals("no answer may be left on the store's worker", 7,
             Regex("uiPoster \\{").findAll(screenController).count())
     }
@@ -163,14 +164,25 @@ class PersonalDictionaryFeedbackSourceContractTest {
             eraser.contains("answer(onFinished, everyStoreCleared.get() && swept)"))
     }
 
+    @Test
+    fun aForgottenWordCannotComeBackThroughSentenceStartRecovery() {
+        assertTrue("word deletion must purge the sentence overlay too",
+            Regex("SentStartOverlays\\.storeFor\\(context, subtypeId\\)\\s*\\.forget\\(word\\)")
+                .containsMatchIn(screenController))
+        val remove = bodyOf(host, "private fun showForgetPersonalWordDialog(",
+            "private fun showForgetPersonalPairDialog(")
+        assertTrue("a changed quarantine copy must be re-read",
+            remove.contains("sentenceStartQuarantines = null"))
+    }
+
     // --- the IME's own "Forget word" ------------------------------------------------------------
 
     @Test
     fun forgettingFromTheBandAlsoHasSomewhereToReportFailure() {
         assertTrue("the seam exists and carries nothing but the fact",
             forget.contains("onFailed: Runnable? = null"))
-        assertTrue("and it fires only when the word is still saved",
-            forget.contains("if (!removed) onFailed?.run()"))
+        assertTrue("and it fires only when the word is still saved in either store",
+            forget.contains("if (!removed || !sentenceRemoved[0]) onFailed?.run()"))
 
         assertTrue("the IME passes one in",
             ime.contains("PersonalForget.confirmForget(this, subtypeId, shownWord,"))

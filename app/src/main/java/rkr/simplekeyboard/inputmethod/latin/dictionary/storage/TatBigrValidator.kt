@@ -366,7 +366,7 @@ class TatBigrValidator {
                 }
                 previousKey = key
                 val count = raw[(header.countsOffset + first + position).toInt()].toInt() and 0xff
-                if (count < 1 || pairTotal + count > header.pairCount) {
+                if (count !in 1..MAX_TRIGRAM_SUCCESSORS || pairTotal + count > header.pairCount) {
                     throw BigramValidationException("invalid trigram successor count")
                 }
                 repeat(count) {
@@ -680,6 +680,7 @@ class TatBigrValidator {
             ((raw[offset.toInt() + 3].toLong() and 0xff) shl 24)
 
     companion object {
+        private const val MAX_TRIGRAM_SUCCESSORS = 8
         private const val BUFFER_SIZE = 8 * 1024
         private const val VERIFY_BUFFER_SIZE = 64 * 1024
     }

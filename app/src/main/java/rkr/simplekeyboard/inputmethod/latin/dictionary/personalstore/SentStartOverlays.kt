@@ -40,10 +40,19 @@ object SentStartOverlays {
     private val lock = Any()
     private val stores = HashMap<String, SentStartOverlayStore>()
 
+    /** Notified when a store quarantines an unreadable file. See `PersonalDictionaries`. */
+    @Volatile
+    private var quarantineListener: Runnable? = null
+
+    /** Guarded by [lock]; one entry per language that lost something. */
+    private val pendingQuarantineNotices = LinkedHashSet<String>()
+
     /** The store for [subtypeId], created on first use. Safe to call from any thread. */
     internal fun storeFor(context: Context, subtypeId: String): SentStartOverlayStore =
         synchronized(lock) {
-            stores.getOrPut(subtypeId) { createStore(context, subtypeId) }
+            stores.getOrPut(subtypeId) {
+                createStore(context, subtypeId) { notifyQuarantined(subtypeId) }
+            }
         }
 
     /**
@@ -59,11 +68,37 @@ object SentStartOverlays {
         return store.snapshot.topWords()
     }
 
+    @JvmStatic
+    fun setQuarantineListener(listener: Runnable?) {
+        quarantineListener = listener
+    }
+
+    /** Whether a sentence-start loss notice is waiting to be shown. */
+    @JvmStatic
+    fun hasPendingQuarantineNotice(): Boolean =
+        synchronized(lock) { pendingQuarantineNotices.isNotEmpty() }
+
+    /** Takes one waiting notice and clears that language's durable mark on the store worker. */
+    @JvmStatic
+    fun consumeQuarantineNotice(): Boolean {
+        val subtypeId = synchronized(lock) {
+            val next = pendingQuarantineNotices.firstOrNull() ?: return false
+            pendingQuarantineNotices.remove(next)
+            next
+        }
+        synchronized(lock) { stores[subtypeId] }?.noticeDelivered()
+        return true
+    }
+
     /**
      * The factory wiring: what [AndroidPersonalDictionaryStorage.create] assembles for the words
      * store — the same credential-protected `noBackupFilesDir`, durable ops and unlock gate.
      */
-    private fun createStore(context: Context, subtypeId: String): SentStartOverlayStore {
+    private fun createStore(
+        context: Context,
+        subtypeId: String,
+        quarantineNotice: PersonalQuarantineNotice,
+    ): SentStartOverlayStore {
         val appContext = context.applicationContext
         val userManager = appContext.getSystemService(UserManager::class.java)
         return SentStartOverlayStore(
@@ -77,17 +112,31 @@ object SentStartOverlays {
             clock = { System.currentTimeMillis() },
             executor = PersonalDictionaries.sharedStoreExecutor(),
             unlockGate = { userManager?.isUserUnlocked ?: false },
+            quarantineNotice = quarantineNotice,
         )
     }
 
-    /** Clears the in-memory notice of every open store after its copy is deleted. */
+    /** Called on the store's worker when it quarantined an unreadable file. */
+    private fun notifyQuarantined(subtypeId: String) {
+        synchronized(lock) { pendingQuarantineNotices.add(subtypeId) }
+        quarantineListener?.run()
+    }
+
+    /** Drops waiting notices and clears the in-memory notice of every open store. */
     internal fun clearQuarantineNotices() {
-        val openStores = synchronized(lock) { stores.values.toList() }
+        val openStores = synchronized(lock) {
+            pendingQuarantineNotices.clear()
+            stores.values.toList()
+        }
         openStores.forEach { it.noticeDelivered() }
     }
 
     /** Test hook: drops every cached store so an isolated test starts from nothing. */
     internal fun resetForTest() {
-        synchronized(lock) { stores.clear() }
+        synchronized(lock) {
+            stores.clear()
+            pendingQuarantineNotices.clear()
+        }
+        quarantineListener = null
     }
 }

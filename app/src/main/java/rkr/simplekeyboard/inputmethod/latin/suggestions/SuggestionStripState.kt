@@ -16,6 +16,13 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
+/** Semantic identity of a published strip cell; never inferred from its spelling. */
+internal enum class SuggestionCellKind {
+    WORD,
+    EMOJI,
+    RECENT_CLIP,
+}
+
 /**
  * Pure, fixed-size state and hit geometry for the Canvas strip. The strip holds up to
  * [CELL_COUNT] cells; [visibleCellCount] of them are drawn and tappable (the user's fourth-cell

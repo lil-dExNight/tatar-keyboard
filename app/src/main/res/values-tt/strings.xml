@@ -205,6 +205,7 @@
     <string name="personal_dictionary_unreadable">Сакланган сүзләрне укып булмады. Исән калганын кайтару өчен «Сакланган сүзләр»не ачыгыз.</string>
     <string name="personal_bigrams_unreadable">Сүз парларын укып булмады. Исән калганын кайтару өчен «Сакланган сүзләр»не ачыгыз.</string>
     <string name="personal_emoji_unreadable">Өйрәнелгән эмодзиларны укып булмады. Исән калганын кайтару өчен «Сакланган сүзләр»не ачыгыз.</string>
+    <string name="personal_sentence_starts_unreadable">Җөмлә башы сүзләрен укып булмады. Исән калганын кайтару өчен «Сакланган сүзләр»не ачыгыз.</string>
     <string name="personal_dictionary_quarantine_title">Укып булмаган сүзләр</string>
     <plurals name="personal_dictionary_quarantine_partial">
         <item quantity="other">%1$d сүзне кире кайтарып була. Калганы югалды.</item>
@@ -231,6 +232,19 @@
     <string name="personal_bigrams_quarantine_discard_confirm">Укып булмаган сүз парларын бетерергәме? Моны кире кайтарып булмый.</string>
     <string name="personal_bigrams_quarantine_restore_failed">Сүз парларын кире кайтарып булмады. Кабатлап карагыз.</string>
     <string name="personal_bigrams_quarantine_discard_failed">Бетереп булмады. Кабатлап карагыз.</string>
+    <string name="personal_sentence_starts_quarantine_title">Укып булмаган җөмлә башы сүзләре</string>
+    <plurals name="personal_sentence_starts_quarantine_partial">
+        <item quantity="other">%1$d сүзне кире кайтарып була. Калганы югалды.</item>
+    </plurals>
+    <plurals name="personal_sentence_starts_quarantine_whole">
+        <item quantity="other">%1$d сүзне кире кайтарып була.</item>
+    </plurals>
+    <string name="personal_sentence_starts_quarantine_none">Җөмлә башы сүзләренең берәрсен дә кире кайтарып булмый.</string>
+    <string name="personal_sentence_starts_quarantine_restore">Җөмлә башы сүзләрен кире кайтару</string>
+    <string name="personal_sentence_starts_quarantine_discard">Аларны бетерү</string>
+    <string name="personal_sentence_starts_quarantine_discard_confirm">Укып булмаган җөмлә башы сүзләрен бетерергәме? Моны кире кайтарып булмый.</string>
+    <string name="personal_sentence_starts_quarantine_restore_failed">Җөмлә башы сүзләрен кире кайтарып булмады. Кабатлап карагыз.</string>
+    <string name="personal_sentence_starts_quarantine_discard_failed">Бетереп булмады. Кабатлап карагыз.</string>
     <plurals name="personal_emoji_count">
         <item quantity="other">%1$d өйрәнелгән эмодзи</item>
     </plurals>
@@ -298,6 +312,7 @@
     <string name="backup_import_confirm_action">Алыштыру</string>
     <string name="backup_export_done">Күчермә сакланды.</string>
     <string name="backup_export_failed">Күчермәне саклап булмады.</string>
+    <string name="backup_export_failed_partial">Күчермәне саклап булмады. Тулы булмаган документ калган булырга мөмкин.</string>
     <string name="backup_import_done">Күчермә кире кайтарылды.</string>
     <string name="backup_import_privacy_changed">Күчермә кире кайтарылды. «Шәхси сүзлек» һәм «Өйрәнүне туктатып тору» көйләүләрен тикшерегез.</string>
     <string name="backup_import_failed_invalid">Бу файл бу клавиатураның күчермәсе түгел. Бернәрсә дә үзгәрмәде.</string>

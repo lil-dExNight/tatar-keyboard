@@ -669,13 +669,13 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         }
     }
 
-    // Implements {@link EmojiPanelView.Listener}. Insertion goes solely through the ordinary
-    // text-input path; the panel never commits text itself. The use is then recorded in the
+    // Implements {@link EmojiPanelView.Listener}. Insertion goes solely through the IME's explicit
+    // emoji text path; the panel never commits text itself. The use is then recorded in the
     // recent-emoji list through the gated, serialized controller path.
     @Override
     public void onEmojiPanelPick(final String sequence) {
         if (mLatinIME != null) {
-            mLatinIME.onTextInput(sequence);
+            mLatinIME.onEmojiTextInput(sequence);
             mLatinIME.onEmojiInserted(sequence);
         }
     }
@@ -715,12 +715,12 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions,
         }
     }
 
-    // Implements {@link EmojiSearchView.Listener}. A picked result travels the very same path as a
-    // panel cell: the ordinary text-input route, then the gated recent-emoji recording.
+    // Implements {@link EmojiSearchView.Listener}. A picked result travels the very same explicit
+    // emoji text path as a panel cell, then the gated recent-emoji recording.
     @Override
     public void onEmojiSearchPick(final String sequence) {
         if (mLatinIME != null) {
-            mLatinIME.onTextInput(sequence);
+            mLatinIME.onEmojiTextInput(sequence);
             mLatinIME.onEmojiInserted(sequence);
         }
     }

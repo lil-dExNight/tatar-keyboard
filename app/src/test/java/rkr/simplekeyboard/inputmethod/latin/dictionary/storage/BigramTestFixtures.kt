@@ -118,6 +118,87 @@ internal object BigramTestFixtures {
         return refreshEmbeddedChecksum(bytes.array())
     }
 
+    /** Builds a combined schema-4 table with small numeric trigram contexts for reader tests. */
+    fun rawV4(
+        headsToSuccesses: List<Pair<String, List<String>>>,
+        contextsToSuccesses: List<Pair<Pair<String, String>, List<String>>>,
+        dictionaryWords: List<String> = (
+            defaultDictionaryWords(headsToSuccesses) + contextsToSuccesses.flatMap { context ->
+                listOf(context.first.first, context.first.second) + context.second
+            }
+            ).toSortedSet().toList(),
+        dictionaryRawSha256: String = DEFAULT_DICTIONARY_SHA,
+    ): ByteArray {
+        require(contextsToSuccesses.isNotEmpty())
+        val bigram = raw(headsToSuccesses, dictionaryWords, dictionaryRawSha256)
+        val wordIndex = dictionaryWords.withIndex().associate { (index, word) -> word to index }
+        val width = dictionaryWords.size
+        fun keyOf(context: Pair<String, String>): Long =
+            wordIndex.getValue(context.first).toLong() * width + wordIndex.getValue(context.second)
+        val contexts = contextsToSuccesses.sortedBy { (context, _) -> keyOf(context) }
+        val contextCount = contexts.size
+        val blockCount = (contextCount + 63) / 64
+        val deltas = ByteArrayOutputStream()
+        val successIds = ByteArrayOutputStream()
+        val counts = ByteArray(contextCount)
+        val blockRecords = ArrayList<IntArray>(blockCount)
+        for (block in 0 until blockCount) {
+            val first = block * 64
+            val last = minOf(first + 64, contextCount)
+            val firstContext = contexts[first].first
+            blockRecords += intArrayOf(
+                wordIndex.getValue(firstContext.first), wordIndex.getValue(firstContext.second),
+                deltas.size(), successIds.size(),
+            )
+            for (position in first + 1 until last) {
+                deltas.write(varint64(keyOf(contexts[position].first) - keyOf(contexts[position - 1].first)))
+            }
+            for (position in first until last) {
+                val successes = contexts[position].second
+                require(successes.size <= 255)
+                counts[position] = successes.size.toByte()
+                for (word in successes) successIds.write(varint(wordIndex.getValue(word)))
+            }
+        }
+        val deltaBytes = deltas.toByteArray()
+        val successIdBytes = successIds.toByteArray()
+        val pairCount = contexts.sumOf { it.second.size }
+        val bigramEnd = bigram.size + 96
+        val trigramBlocks = bigramEnd
+        val trigramDeltas = trigramBlocks + 16 * blockCount
+        val trigramCounts = trigramDeltas + deltaBytes.size
+        val trigramSuccesses = trigramCounts + contextCount
+        val fileSize = trigramSuccesses + successIdBytes.size
+        val result = ByteArray(fileSize)
+        bigram.copyInto(result, 0, 0, 128)
+        bigram.copyInto(result, 224, 128, bigram.size)
+        val bytes = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN)
+        bytes.putShort(8, 4)
+        bytes.putShort(12, 224)
+        for (offset in intArrayOf(28, 32, 40, 44)) {
+            bytes.putInt(offset, bytes.getInt(offset) + 96)
+        }
+        bytes.putInt(52, fileSize)
+        val extension = intArrayOf(
+            contextCount, pairCount, blockCount, trigramBlocks, trigramDeltas, deltaBytes.size,
+            trigramCounts, trigramSuccesses, successIdBytes.size, width, 20_000_000, 1,
+        )
+        for (index in extension.indices) bytes.putInt(128 + 4 * index, extension[index])
+        var cursor = bigramEnd
+        for (record in blockRecords) {
+            for (value in record) {
+                bytes.putInt(cursor, value)
+                cursor += 4
+            }
+        }
+        deltaBytes.copyInto(result, cursor)
+        cursor += deltaBytes.size
+        counts.copyInto(result, cursor)
+        cursor += counts.size
+        successIdBytes.copyInto(result, cursor)
+        return refreshEmbeddedChecksum(result)
+    }
+
     fun defaultDictionaryWords(headsToSuccesses: List<Pair<String, List<String>>>): List<String> =
         (headsToSuccesses.map { it.first } + headsToSuccesses.flatMap { it.second })
             .toSortedSet().toList()
@@ -176,6 +257,21 @@ internal object BigramTestFixtures {
 
     fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
+
+    private fun varint64(value: Long): ByteArray {
+        var rest = value
+        val output = ByteArrayOutputStream()
+        while (true) {
+            val byte = (rest and 0x7f).toInt()
+            rest = rest ushr 7
+            if (rest != 0L) {
+                output.write(byte or 0x80)
+            } else {
+                output.write(byte)
+                return output.toByteArray()
+            }
+        }
+    }
 
     /** Canonical minimal-form u32 varint, the same encoding dictionary_pack writes. */
     fun varint(value: Int): ByteArray {

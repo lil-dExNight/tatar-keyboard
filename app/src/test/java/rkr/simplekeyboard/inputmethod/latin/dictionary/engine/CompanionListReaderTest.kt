@@ -333,6 +333,25 @@ class CompanionListReaderTest {
         }
     }
 
+    @Test
+    fun aNonUtf8BodyCannotSubstituteForThePinnedCanonicalList() {
+        // Structure, row lengths and ordering still hold after this mutation, and the embedded
+        // checksum is refreshed; only the generator's raw content pin says this is not the list
+        // the shipped engine may serve.
+        val malformed = buildRaw(words).also { raw ->
+            raw[raw.lastIndex] = 0xff.toByte()
+            raw.fill(0, TatCompFormat.CHECKSUM_OFFSET, TatCompFormat.HEADER_SIZE)
+            MessageDigest.getInstance("SHA-256").digest(raw).copyInto(raw, TatCompFormat.CHECKSUM_OFFSET)
+        }
+        val canonical = buildRaw(words)
+        val compressed = compress(malformed)
+        val spec = specFor(malformed, words).copy(expectedRawSha256 = sha256(canonical))
+
+        assertThrows(CompanionListValidationException::class.java) {
+            CompanionListReader().read(ByteArrayInputStream(compressed), spec)
+        }
+    }
+
     // --- the committed assets against the pins ---------------------------------------------------
 
     private fun locateAsset(spec: CompanionListArtifactSpec): File =

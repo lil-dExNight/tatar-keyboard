@@ -69,6 +69,24 @@ class TrefValidatorTest {
     }
 
     @Test
+    fun theCanonicalRefusalCountBoundariesAreEnforced() {
+        assertEquals(2, RefusedCorrections.REFUSAL_THRESHOLD)
+        assertEquals(2, TrefFormat.MAX_REFUSAL_COUNT)
+        for (count in intArrayOf(0, 1, 2, 3)) {
+            val bytes = RefusedCorrectionsTestFixtures.build(
+                RefusedCorrectionsTestFixtures.record("китәп", "китап", count),
+                entryCount = 1,
+            )
+            if (count in TrefFormat.MIN_REFUSAL_COUNT..TrefFormat.MAX_REFUSAL_COUNT) {
+                val validated = TrefValidator().validate(bytes, TAG)
+                assertEquals(listOf(count), validated.refusalCounts)
+            } else {
+                assertRejected(bytes)
+            }
+        }
+    }
+
+    @Test
     fun aDuplicatePairIsRejected() {
         val payload = RefusedCorrectionsTestFixtures.record("китәп", "китап", 1) +
             RefusedCorrectionsTestFixtures.record("китәп", "китап", 2)

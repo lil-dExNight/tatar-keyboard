@@ -162,23 +162,23 @@ class EmojiKeySurfaceContractTest {
         val host = java("rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt")
         val listener = host.substringAfter("private val prefChangeListener =")
             .substringBefore("override fun onCreate")
-        // Without this, KeyboardId.equals()/computeHashCode() ignore the flag and the static
-        // sKeyboardCache returns the previous layout, so the toggle would appear dead.
+        // The explicit settings-screen reload remains; KeyboardId identity also prevents stale
+        // cache hits for every other preference writer.
         assertTrue(listener.contains("Settings.PREF_SHOW_EMOJI_KEY == key"))
         assertTrue(listener.contains("KeyboardLayoutSet.onKeyboardThemeChanged()"))
     }
 
     @Test
-    fun theEmojiFlagIsDeliberatelyAbsentFromKeyboardIdEqualityLikeTheNumberRow() {
+    fun layoutFlagsParticipateInKeyboardIdEqualityAndHash() {
         val keyboardId = java("rkr/simplekeyboard/inputmethod/keyboard/KeyboardId.java")
         val hashBody = keyboardId.substringAfter("private static int computeHashCode(")
             .substringBefore("private boolean equalsId(")
         val equalsBody = keyboardId.substringAfter("private boolean equalsId(final KeyboardId other)")
             .substringBefore("private static boolean isAlphabetKeyboard(")
-        // Same reason mShowNumberRow is absent: the prefChangeListener clears the cache instead.
-        assertFalse(hashBody.contains("mShowEmojiKey"))
-        assertFalse(equalsBody.contains("mShowEmojiKey"))
-        assertFalse(hashBody.contains("mShowNumberRow"))
+        for (flag in listOf("mShowEmojiKey", "mShowNumberRow", "mShowMoreKeys")) {
+            assertTrue(hashBody.contains(flag))
+            assertTrue(equalsBody.contains(flag))
+        }
     }
 
     // --- Accessibility description for the key -------------------------------------------------

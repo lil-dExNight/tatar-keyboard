@@ -77,11 +77,15 @@ class EmojiPanelSourceContractTest {
     }
 
     @Test
-    fun insertionRoutesThroughOnTextInputAndDeletionThroughOnCodeInput() {
+    fun panelAndSearchInsertThroughEmojiTextAndDeletionThroughOnCodeInput() {
         // The panel only signals its listener; the wiring is in KeyboardSwitcher.
         assertTrue(panel.contains("onEmojiPanelPick"))
         assertTrue(panel.contains("onEmojiPanelDelete"))
-        assertTrue(keyboardSwitcher.contains("mLatinIME.onTextInput(sequence)"))
+        val panelPick = keyboardSwitcher.substringAfter("void onEmojiPanelPick(")
+            .substringBefore("void onEmojiPanelSearch(")
+        val searchPick = keyboardSwitcher.substringAfter("void onEmojiSearchPick(")
+        assertTrue(panelPick.contains("mLatinIME.onEmojiTextInput(sequence)"))
+        assertTrue(searchPick.contains("mLatinIME.onEmojiTextInput(sequence)"))
         assertTrue(keyboardSwitcher.contains("mLatinIME.onCodeInput(Constants.CODE_DELETE"))
     }
 

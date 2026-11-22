@@ -1051,6 +1051,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // The same notice for the learned-emoji file, with its own message.
         PersonalEmojiDictionaries.setQuarantineListener(
                 () -> mHandler.post(this::showPersonalEmojiUnreadableDialog));
+        // Sentence-start overlays use the same worker-to-UI notice lifecycle.
+        SentStartOverlays.setQuarantineListener(
+                () -> mHandler.post(this::showPersonalSentenceStartsUnreadableDialog));
     }
 
     /**
@@ -1065,7 +1068,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             public void showPanel(final EmojiSetSnapshot snapshot) {
                 // Empty the suggestion strip through the idempotent path when the panel appears;
                 // its reserved height and visibility stay unchanged, and the panel inserts only
-                // through onTextInput.
+                // through onEmojiTextInput.
                 if (mSuggestionsController != null) {
                     mSuggestionsController.onSelectionChanged();
                 }
@@ -1901,6 +1904,34 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     /**
+     * The sentence-start overlay version of {@link #showPersonalDictionaryUnreadableDialog()},
+     * with the same window checks and one-shot consumption rules.
+     */
+    private void showPersonalSentenceStartsUnreadableDialog() {
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView == null) {
+            return;
+        }
+        final IBinder windowToken = mainKeyboardView.getWindowToken();
+        if (windowToken == null) {
+            return;
+        }
+        if (!SentStartOverlays.consumeQuarantineNotice()) {
+            return;
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(
+                DialogUtils.getPlatformDialogThemeContext(this))
+                .setMessage(R.string.personal_sentence_starts_unreadable)
+                .setPositiveButton(android.R.string.ok, null)
+                .create();
+        dialog.setCancelable(true);
+        dialog.setCanceledOnTouchOutside(true);
+        attachDialogToInputWindow(dialog, windowToken);
+        mOptionsDialog = dialog;
+        dialog.show();
+    }
+
+    /**
      * Attaches a dialog to the IME window exactly the way the subtype picker does. Without the
      * window token and the attached-dialog type the window manager refuses a dialog owned by an
      * input method; without FLAG_ALT_FOCUSABLE_IM the keyboard and the dialog fight over input.
@@ -2260,8 +2291,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         PersonalBigramDictionaries.setContextMembershipProbe(null);
         PersonalEmojiDictionaries.setErasureListener(null);
         PersonalEmojiDictionaries.setQuarantineListener(null);
+        SentStartOverlays.setQuarantineListener(null);
         TextShortcutStores.setErasureListener(null);
         // The clipboard listener goes too: the clipboard is never listened to without a window.
+        mInputLogic.mConnection.shutdown();
         mEditorCacheReloadScheduler.cancel();
         mHandler.removeCallbacks(mRegisterRecentClipListener);
         unregisterRecentClipListener();
@@ -2627,6 +2660,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (PersonalEmojiDictionaries.hasPendingQuarantineNotice()) {
             // The learned-emoji file has its own pending notice and message.
             mHandler.post(this::showPersonalEmojiUnreadableDialog);
+        }
+        if (SentStartOverlays.hasPendingQuarantineNotice()) {
+            // Deliver a sentence-start notice raised while no keyboard window was available.
+            mHandler.post(this::showPersonalSentenceStartsUnreadableDialog);
         }
 
         if (TRACE) Debug.startMethodTracing("/data/trace/latinime");
@@ -3322,8 +3359,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 return;
             }
             LatinImeAutocorrect.maybeAutocorrectTatarWord(this, event);
-            final InputTransaction completeInputTransaction =
-                    mInputLogic.onCodeInput(mSettings.getCurrent(), event);
+            final InputTransaction completeInputTransaction;
+            if (event.mKeyCode == Constants.CODE_OUTPUT_TEXT) {
+                completeInputTransaction = mInputLogic.onTextInput(mSettings.getCurrent(), event);
+            } else {
+                completeInputTransaction = mInputLogic.onCodeInput(mSettings.getCurrent(), event);
+            }
             updateStateAfterInputTransaction(completeInputTransaction);
             maybeOfferTatarSuggestions(event);
             mKeyboardSwitcher.onEvent(
@@ -3368,10 +3409,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // Called from PointerTracker through the KeyboardActionListener interface
     @Override
     public void onTextInput(final String rawText) {
+        // Keyboard-originated output text is an ordinary event: emoji search and the undo and
+        // autocorrect hooks see multi-character input exactly as they see a code-point event.
+        onEvent(Event.createSoftwareTextEvent(rawText, Constants.CODE_OUTPUT_TEXT));
+    }
+
+    /**
+     * Commits an emoji chosen in the panel or search. This is deliberately not a keyboard event:
+     * while search is open the pick must reach the editor rather than grow the query.
+     */
+    public void onEmojiTextInput(final String rawText) {
         mLearningKeyguardScope.open();
         try {
             noteLiveLock();
-            // TODO: have the keyboard pass the correct key code when we need it.
             final Event event = Event.createSoftwareTextEvent(rawText, Constants.CODE_OUTPUT_TEXT);
             final InputTransaction completeInputTransaction =
                     mInputLogic.onTextInput(mSettings.getCurrent(), event);

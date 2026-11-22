@@ -285,6 +285,8 @@ class SuggestionStripView @JvmOverloads constructor(
 
     fun setSuggestions(first: String?, second: String?, third: String?, fourth: String?) {
         clearSpokenLabels()
+        // Replacing the publication ends the touch sequence that belonged to the old cells.
+        cancelLongPress()
         if (!state.setSuggestions(first, second, third, fourth)) return
         // No rebuild here: the paired setEmphasis() of the same publication runs it once, with
         // the final emphasis state already in place (see displayRebuildPending).
@@ -305,6 +307,7 @@ class SuggestionStripView @JvmOverloads constructor(
     fun clearSuggestions() {
         clearSpokenLabels()
         announcementPending = false
+        cancelLongPress()
         if (!state.clear()) return
         clearDisplaySuggestions()
         accessibilityHelper.invalidateRoot()
@@ -396,7 +399,7 @@ class SuggestionStripView @JvmOverloads constructor(
         announcementPending = false
         // A posted long-press must not fire into a released view (the state it reads is cleared
         // below, and the listener is gone).
-        removeCallbacks(longPressRunnable)
+        cancelLongPress()
         val changed = state.clear()
         touchSequenceAccepted = false
         listener = null
@@ -574,8 +577,10 @@ class SuggestionStripView @JvmOverloads constructor(
                 }
                 if (oldPressed != state.pressedCell()) {
                     invalidate()
-                    // The finger left the cell it started on: that is no longer a long press.
-                    cancelLongPress()
+                    // Leaving the original cell cancels only the timer. Once a long press fired,
+                    // its consumption latch survives leaving and re-entering until UP/CANCEL,
+                    // a new DOWN, or replacement of the strip content.
+                    cancelLongPress(resetFired = false)
                 }
                 return true
             }

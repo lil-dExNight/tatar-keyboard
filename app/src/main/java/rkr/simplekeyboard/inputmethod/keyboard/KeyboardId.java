@@ -24,6 +24,7 @@ import android.view.inputmethod.EditorInfo;
 
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Objects;
 
 import rkr.simplekeyboard.inputmethod.compat.EditorInfoCompatUtils;
 import rkr.simplekeyboard.inputmethod.latin.Subtype;
@@ -88,13 +89,10 @@ public final class KeyboardId {
                 ? mEditorInfo.actionLabel.toString() : null;
         mShowMoreKeys = params.mShowMoreKeys;
         mShowNumberRow = params.mShowNumberRow;
-        // Like mShowNumberRow and mShowMoreKeys, mShowEmojiKey is intentionally left out of
-        // equals()/computeHashCode(): the static keyboard cache would otherwise return the
-        // previous layout when only this toggle changed. Live toggling works because
-        // SettingsHostActivity clears that cache from its prefChangeListener.
+        // Every layout-affecting flag participates in equality and hashing, so a preference toggle
+        // can never reuse a cached keyboard built for the previous layout.
         mShowEmojiKey = params.mShowEmojiKey;
-        // Unlike mShowEmojiKey: the side moves and resizes every key, so it must participate in
-        // equals()/computeHashCode() — the cache entry of one dock must never serve another.
+        // The side moves and resizes every key, so it is part of the same cache identity.
         mOneHandedSide = params.mOneHandedSide;
 
         mHashCode = computeHashCode(this);
@@ -108,6 +106,9 @@ public final class KeyboardId {
                 id.mHeight,
                 id.mBottomOffset,
                 id.mOneHandedSide,
+                id.mShowMoreKeys,
+                id.mShowNumberRow,
+                id.mShowEmojiKey,
                 id.passwordInput(),
                 id.mClobberSettingsKey,
                 id.mLanguageSwitchKeyEnabled,
@@ -132,12 +133,15 @@ public final class KeyboardId {
                 && other.mHeight == mHeight
                 && other.mBottomOffset == mBottomOffset
                 && other.mOneHandedSide == mOneHandedSide
+                && other.mShowMoreKeys == mShowMoreKeys
+                && other.mShowNumberRow == mShowNumberRow
+                && other.mShowEmojiKey == mShowEmojiKey
                 && other.passwordInput() == passwordInput()
                 && other.mClobberSettingsKey == mClobberSettingsKey
                 && other.mLanguageSwitchKeyEnabled == mLanguageSwitchKeyEnabled
                 && other.isMultiLine() == isMultiLine()
                 && other.imeAction() == imeAction()
-                && TextUtils.equals(other.mCustomActionLabel, mCustomActionLabel)
+                && Objects.equals(other.mCustomActionLabel, mCustomActionLabel)
                 && other.navigateNext() == navigateNext()
                 && other.navigatePrevious() == navigatePrevious()
                 && other.mSubtype.equals(mSubtype)

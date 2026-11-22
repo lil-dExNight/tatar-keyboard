@@ -29,7 +29,10 @@ import org.junit.Test
  *   references it, and the main manifest declares none of its components;
  * - the recorder never reads field text, never touches the network, never logs;
  * - its storage is confined to the base (credential-protected) `noBackupFilesDir`;
- * - its debug components are non-exported and request no permissions.
+ * - its debug components are non-exported and request no permissions, with the single
+ *   documented exception of BackupExportTestDocumentsProvider: DocumentsProvider mandates an
+ *   exported, grantUriPermissions provider guarded by the signature-level MANAGE_DOCUMENTS
+ *   permission, which only the debug app's own UID can use;
  */
 class GestureRecorderReleaseContractTest {
 
@@ -119,7 +122,37 @@ class GestureRecorderReleaseContractTest {
             2,
             Regex("""android:exported="false"""").findAll(manifest).count(),
         )
-        assertFalse(manifest.contains("android:exported=\"true\""))
+        // The single sanctioned exception: BackupExportTestDocumentsProvider. DocumentsProvider
+        // mandates all three flags in attachInfo (exported, grantUriPermissions, and
+        // MANAGE_DOCUMENTS as the read/write permission), and the backup device test needs the
+        // provider exported because it runs in the debug app's own UID. Every other component
+        // must stay non-exported.
+        val providerBlock = Regex("""<provider\b[\s\S]*?/>""").findAll(manifest)
+            .firstOrNull { it.value.contains("BackupExportTestDocumentsProvider") }
+            ?: error("the backup export test provider must stay declared in the debug manifest")
+        assertTrue(
+            "the backup export test provider stays exported",
+            providerBlock.value.contains("""android:exported="true""""),
+        )
+        assertTrue(
+            "the backup export test provider grants uri permissions",
+            providerBlock.value.contains("""android:grantUriPermissions="true""""),
+        )
+        assertTrue(
+            "the backup export test provider is protected by MANAGE_DOCUMENTS",
+            providerBlock.value.contains(
+                """android:permission="android.permission.MANAGE_DOCUMENTS"""",
+            ),
+        )
+        assertEquals(
+            "the backup export test provider is the only exported component",
+            listOf(providerBlock.value),
+            Regex("""<(?:activity|service|receiver|provider)\b[\s\S]*?/>""")
+                .findAll(manifest)
+                .filter { it.value.contains("""android:exported="true"""") }
+                .map { it.value }
+                .toList(),
+        )
     }
 
     /** Main, release (if present) and androidTest sources: everything the release sees. */

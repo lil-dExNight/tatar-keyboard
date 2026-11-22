@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.emoji
 
 import java.io.InputStream
+import java.text.Normalizer
+import java.util.Locale
 
 /**
  * The emoji-search index: an immutable, Android-free table of "sequence -> names + keywords"
@@ -28,9 +30,11 @@ import java.io.InputStream
  * fields — the sequence exactly as it appears in `emoji_set_v1.txt`, the Russian short name, the
  * space-separated union of the Russian and English keywords and the Tatar synonyms, all
  * lowercased by the generator, and the Tatar short name for TalkBack (empty only where the
- * curated file has none). A line missing the fourth field parses as "no Tatar name". Because
- * field 1 comes from the panel asset, the index can only ever name emoji the panel is able to
- * draw; entries the running device has no glyph for are dropped on top of that by [filterTo].
+ * curated file has none). A line missing the fourth field parses as "no Tatar name". Names and
+ * keywords pass through the same NFC/root-lowercase normalization as queries when the generated
+ * data is read, so composed and decomposed spellings have one lookup form. Because field 1 comes
+ * from the panel asset, the index can only ever name emoji the panel is able to draw; entries the
+ * running device has no glyph for are dropped on top of that by [filterTo].
  *
  * Matching is word-prefix: a query matches an entry when some word of its Russian or Tatar name or
  * of its keywords (including Tatar aliases) starts with the query. Results are ordered by how
@@ -189,8 +193,11 @@ class EmojiSearchIndex private constructor(
 
         val EMPTY = EmojiSearchIndex(emptyArray(), emptyArray(), emptyArray(), emptyArray())
 
-        /** Lowercases and collapses a query the same way the generator normalized the asset. */
-        fun normalize(query: String): String = query.trim().lowercase()
+        /** NFC and root-locale lowercase, matching the normalization applied to asset fields. */
+        fun normalize(query: String): String = Normalizer.normalize(
+            query.trim().lowercase(Locale.ROOT),
+            Normalizer.Form.NFC,
+        )
 
         /**
          * True when some word of [haystack] starts with [prefix]. Words are separated by single
@@ -254,9 +261,11 @@ class EmojiSearchIndex private constructor(
                 val sequence = line.substring(0, firstTab)
                 if (!seen.add(sequence)) continue
                 sequences.add(sequence)
-                names.add(line.substring(firstTab + 1, secondTab))
-                keywords.add(line.substring(secondTab + 1, keywordsEnd))
-                tatarNames.add(if (thirdTab < 0) "" else line.substring(thirdTab + 1))
+                names.add(normalize(line.substring(firstTab + 1, secondTab)))
+                keywords.add(normalize(line.substring(secondTab + 1, keywordsEnd)))
+                tatarNames.add(
+                    if (thirdTab < 0) "" else normalize(line.substring(thirdTab + 1)),
+                )
             }
             if (sequences.isEmpty()) return EMPTY
             return EmojiSearchIndex(

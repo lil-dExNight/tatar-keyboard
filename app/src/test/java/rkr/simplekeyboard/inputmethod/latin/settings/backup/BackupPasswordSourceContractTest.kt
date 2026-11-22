@@ -65,9 +65,10 @@ class BackupPasswordSourceContractTest {
         val export = coordinator.substringAfter("fun exportTo(")
             .substringBefore("fun importFrom(")
         assertTrue(export.contains("submitBackupTask(executor, password)"))
-        assertTrue(export.contains("BackupTransfer.export(target, password)"))
+        assertTrue(export.contains("BackupTransfer.export(target, archivePassword)"))
         assertTrue(export.contains("password?.fill('\\u0000')"))
-        assertTrue(export.contains("if (!accepted) uiPoster { onFinished(false) }"))
+        assertTrue(export.contains(
+            "if (!accepted) uiPoster { onFinished(BackupExportResult.FAILED) }"))
         val import = coordinator.substringAfter("fun importFrom(")
             .substringBefore("private fun readBounded(")
         assertTrue(import.contains("submitBackupTask(executor, password)"))

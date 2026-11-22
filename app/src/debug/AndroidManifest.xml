@@ -18,9 +18,11 @@
 */
 -->
 
-<!-- Debug-only components of the gesture recorder: the control screen (the opt-in dialog lives
-     here) and the read-only export provider for the share sheet. Both are non-exported and
-     absent from the release APK. No permissions are requested. -->
+<!-- Debug-only components: the gesture recorder control screen (the opt-in dialog lives here),
+     its read-only export provider for the share sheet, and the backup export test documents
+     provider. All are absent from the release APK. No permissions are requested; the documents
+     provider is exported only because DocumentsProvider requires it, and stays guarded by the
+     signature-level MANAGE_DOCUMENTS permission. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
@@ -35,6 +37,19 @@
             android:name=".latin.glide.recorder.GestureRecorderExportProvider"
             android:authorities="${applicationId}.gesture_recorder_export"
             android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- Test-only documents provider for BackupExportDocumentDeviceTest. DocumentsProvider
+             requires all three flags in attachInfo: exported, grantUriPermissions, and
+             MANAGE_DOCUMENTS as the read/write permission (android:permission sets both). The
+             instrumentation runs in this app's UID, and same-UID callers bypass the permission
+             check, so the real resolver round trip works. No other app can hold that
+             signature-level permission, so the provider stays unreachable for everything else. -->
+        <provider
+            android:name=".latin.settings.backup.BackupExportTestDocumentsProvider"
+            android:authorities="rkr.simplekeyboard.inputmethod.test.backup-export"
+            android:permission="android.permission.MANAGE_DOCUMENTS"
+            android:exported="true"
             android:grantUriPermissions="true" />
     </application>
 

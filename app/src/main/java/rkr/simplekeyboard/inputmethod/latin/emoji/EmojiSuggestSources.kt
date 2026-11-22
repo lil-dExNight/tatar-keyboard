@@ -20,13 +20,19 @@ import android.content.Context
 import android.graphics.Paint
 import java.io.InputStream
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
+
+/** Receives a background font verdict for one learned emoji sequence. */
+fun interface LearnedEmojiDrawabilityObserver {
+    fun onResolved(emoji: String, drawable: Boolean)
+}
 
 /**
  * What the suggestion strip needs from emoji suggestions: the emoji mapped to a finished word,
  * and a spoken name for the emoji cell so TalkBack reads the name instead of the glyph.
- * Implementations must be immutable and safe to call on the UI thread; both methods are
- * allocation-free lookups.
+ * Implementations must be immutable and safe to call on the UI thread; lookup and known-verdict
+ * reads allocate nothing.
  */
 interface EmojiSuggestSource {
     /** The emoji for ([language], [normalizedWord]), or null — a miss is silent by design. */
@@ -40,10 +46,14 @@ interface EmojiSuggestSource {
     fun spokenNameOf(language: String, emoji: String): String?
 
     /**
-     * False when the font is known not to draw [emoji] (a skin tone it lacks for that emoji); the
-     * strip then skips a learned emoji. Allocation-free. Default true.
+     * A cached system-font verdict for a learned sequence: true or false when known, null while
+     * its one background probe is pending. The observer is coalesced per sequence and receives
+     * the completed verdict. No font probe runs on this UI-thread lookup path.
      */
-    fun canDraw(emoji: String): Boolean = true
+    fun learnedEmojiDrawability(
+        emoji: String,
+        observer: LearnedEmojiDrawabilityObserver,
+    ): Boolean? = true
 }
 
 /**
@@ -97,7 +107,12 @@ class AssetEmojiSuggestPreparation(
         // the process-wide [SharedEmojiSearchIndex]: the panel search reads the same asset.
         val names = SharedEmojiSearchIndex.of(appContext).get()
         probeToneGlyphs()
-        return LoadedEmojiSuggestSource(filtered, names, EmojiToneVerdicts.PROCESS)
+        return LoadedEmojiSuggestSource(
+            filtered,
+            names,
+            EmojiToneVerdicts.PROCESS,
+            LearnedEmojiGlyphVerdicts(executor, PaintGlyphProbe(Paint())),
+        )
     }
 
     /**
@@ -120,6 +135,7 @@ class AssetEmojiSuggestPreparation(
         private val table: EmojiSuggestIndex,
         private val names: EmojiSearchIndex,
         private val toneVerdicts: EmojiToneVerdicts,
+        private val learnedVerdicts: LearnedEmojiGlyphVerdicts,
     ) : EmojiSuggestSource {
         override fun emojiFor(language: String, normalizedWord: String): String? =
             table.lookup(language, normalizedWord)
@@ -127,11 +143,73 @@ class AssetEmojiSuggestPreparation(
         override fun spokenNameOf(language: String, emoji: String): String? =
             names.nameOf(emoji, language)
 
-        override fun canDraw(emoji: String): Boolean = !toneVerdicts.isUndrawableToned(emoji)
+        override fun learnedEmojiDrawability(
+            emoji: String,
+            observer: LearnedEmojiDrawabilityObserver,
+        ): Boolean? {
+            if (toneVerdicts.isUndrawableToned(emoji)) return false
+            return learnedVerdicts.verdict(emoji, observer)
+        }
     }
 
     private companion object {
         const val SUGGEST_ASSET_PATH = "emoji/emoji_suggest_v1.txt"
+    }
+}
+
+/**
+ * One cached system-font verdict per learned emoji sequence. Unknown sequences are hidden while a
+ * single background probe runs; repeated UI-thread reads only query [verdicts]. This covers every
+ * cluster shape, including restored ZWJ, regional-indicator and tag sequences.
+ */
+internal class LearnedEmojiGlyphVerdicts(
+    private val executor: ExecutorService,
+    private val probe: GlyphProbe,
+) {
+    private val verdicts = ConcurrentHashMap<String, Boolean>()
+    private val lock = Any()
+    private val pending = HashMap<String, ArrayList<LearnedEmojiDrawabilityObserver>>()
+
+    /** See [EmojiSuggestSource.learnedEmojiDrawability]. */
+    fun verdict(emoji: String, observer: LearnedEmojiDrawabilityObserver): Boolean? {
+        verdicts[emoji]?.let { return it }
+        synchronized(lock) {
+            verdicts[emoji]?.let { return it }
+            val observers = pending[emoji]
+            if (observers != null) {
+                if (!observers.contains(observer)) observers.add(observer)
+                return null
+            }
+            pending[emoji] = arrayListOf(observer)
+        }
+        try {
+            executor.execute {
+                val drawable = try {
+                    probe.hasGlyph(emoji)
+                } catch (_: Throwable) {
+                    false
+                }
+                complete(emoji, drawable)
+            }
+        } catch (_: Throwable) {
+            // Rejection is an unsupported verdict, not permission to display an unchecked sequence.
+            complete(emoji, false)
+        }
+        return null
+    }
+
+    private fun complete(emoji: String, drawable: Boolean) {
+        val observers = synchronized(lock) {
+            verdicts[emoji] = drawable
+            pending.remove(emoji).orEmpty()
+        }
+        for (observer in observers) {
+            try {
+                observer.onResolved(emoji, drawable)
+            } catch (_: Throwable) {
+                // One stale consumer must not prevent the others from receiving the cached verdict.
+            }
+        }
     }
 }
 

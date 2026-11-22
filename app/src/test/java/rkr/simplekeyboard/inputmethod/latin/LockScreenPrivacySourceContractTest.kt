@@ -94,21 +94,24 @@ class LockScreenPrivacySourceContractTest {
         // so a kept answer never outlives the event that read it.
         for (signature in listOf(
             "public void onEvent(final Event event)",
-            "public void onTextInput(final String rawText)",
+            "public void onEmojiTextInput(final String rawText)",
         )) {
             val dispatch = body(signature)
             val open = dispatch.indexOf("mLearningKeyguardScope.open();\n        try {")
             val close = dispatch.indexOf("} finally {\n            mLearningKeyguardScope.close();")
             assertTrue(signature, open >= 0 && close > open)
         }
+        // Keyboard output text delegates to the scoped event path; it must not add a nested scope.
+        assertTrue(body("public void onTextInput(final String rawText)")
+            .contains("onEvent(Event.createSoftwareTextEvent(rawText, Constants.CODE_OUTPUT_TEXT));"))
         val tap = ime.substringAfter("strip.setOnSuggestionClickListener((cellId, suggestion) -> {")
             .substringBefore("});")
         val tapOpen = tap.indexOf("mLearningKeyguardScope.open();")
         val tapCall = tap.indexOf("listener.onTap(suggestion);")
         val tapClose = tap.indexOf("mLearningKeyguardScope.close();")
         assertTrue(tapOpen in 0 until tapCall && tapCall < tapClose && tap.contains("finally"))
-        // Nothing else opens a scope: engine callbacks, the session-end flush and emoji panel
-        // picks read live.
+        // Nothing else opens a scope: engine callbacks and the session-end flush read live; the
+        // two explicit input dispatches above own the only other scopes.
         assertEquals(3, ime.split("mLearningKeyguardScope.open();").size - 1)
     }
 

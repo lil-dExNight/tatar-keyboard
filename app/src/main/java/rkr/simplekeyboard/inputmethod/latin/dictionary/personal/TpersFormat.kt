@@ -92,6 +92,8 @@ internal object TpersFormat {
      * The on-disk file name for a subtype, e.g. `personal-tt_RU-s1-f1.tpers`. The schema and format
      * version are part of the name, so a reader never opens a file from an incompatible build.
      */
-    fun personalFileName(subtypeTag: String): String =
-        "personal-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpers"
+    fun personalFileName(subtypeTag: String): String {
+        PersonalFormats.requireWriter(PersonalStoreFormat.WORDS, SCHEMA_ID, FORMAT_VERSION)
+        return "personal-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpers"
+    }
 }

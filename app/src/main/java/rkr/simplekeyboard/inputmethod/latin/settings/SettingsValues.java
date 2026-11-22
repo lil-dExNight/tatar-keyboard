@@ -36,7 +36,7 @@ public class SettingsValues {
     // From configuration:
     public final boolean mHasHardwareKeyboard;
     public final int mDisplayOrientation;
-    // From preferences, in the same order as xml/prefs.xml:
+    // From preferences, in the same order as the key constants in Settings:
     public final boolean mAutoCap;
     public final boolean mVibrateOn;
     public final boolean mSoundOn;

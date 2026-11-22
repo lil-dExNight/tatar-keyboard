@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -390,6 +391,44 @@ class TdictPrefixIndexAutocorrectTest {
         val index = policyIndex(listOf("алта" to 5_000L), widenedPolicy)
         advise(index, "әлтә")
         assertEquals(65, index.lastAutocorrectProbeCount)
+        assertFalse(index.lastAutocorrectOverBudget)
+    }
+
+    @Test
+    fun earlyVariantGenerationFailurePublishesItsBudgetOutcome() {
+        val partners = IntArray(257) { 0x4e00 + it }
+        val table = KeyNeighborTable.build(
+            "tt", true, listOf(KeyNeighborTable.RawKey('а'.code, partners)),
+        )
+        val index = index(listOf("бала" to 5_000L), withTable = false)
+        index.updateKeyNeighbors(table)
+
+        assertNull(advise(index, "аааа"))
+        assertEquals(0, index.lastAutocorrectProbeCount)
+        assertTrue(index.lastAutocorrectOverBudget)
+
+        index.updateKeyNeighbors(this.table)
+        assertEquals("бала", advise(index, "балә")?.replacement)
+        assertFalse(index.lastAutocorrectOverBudget)
+    }
+
+    @Test
+    fun earlyProbeFailurePublishesPartialCountAndBudgetOutcome() {
+        val policy = FuzzyEditPolicy(
+            intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS), false,
+            intArrayOf(TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+        )
+        val keys = ArrayList<KeyNeighborTable.RawKey>(8_194)
+        keys += KeyNeighborTable.RawKey('а'.code, intArrayOf())
+        for (codePoint in 0x4e00..0x6e00) {
+            keys += KeyNeighborTable.RawKey(codePoint, intArrayOf())
+        }
+        val index = EngineTestFixtures.index(listOf("бала" to 5_000L), fuzzyEditPolicy = policy)
+        index.updateKeyNeighbors(KeyNeighborTable.build("tt", true, keys))
+
+        assertNull(advise(index, "аааа"))
+        assertEquals(8_192, index.lastAutocorrectProbeCount)
+        assertTrue(index.lastAutocorrectOverBudget)
     }
 
     // --- the context-successor guard on DL-1 tier matches -----------------------------------------

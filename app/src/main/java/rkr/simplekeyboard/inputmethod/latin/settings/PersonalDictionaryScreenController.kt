@@ -27,6 +27,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalDictionaries
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQuarantineReport
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalWordFilter
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.SentStartOverlays
 
 /**
  * Everything the "Personal dictionary" screen does to the saved words, away from the view code:
@@ -75,12 +76,17 @@ internal class PersonalDictionaryScreenController(
 
     /**
      * Removes one word. The suggestion strip unbinds whatever it shows immediately, without waiting
-     * for the disk. [onRemoved] arrives on the UI thread once the store knows whether the word is
-     * really gone.
+     * for the disk. [onRemoved] arrives on the UI thread once both the dictionary and the sentence
+     * overlay (including its quarantined copy) know whether the word is really gone.
      */
     fun removeWord(subtypeId: String, word: String, onRemoved: (Boolean) -> Unit) {
+        val removal = PersonalWordRemovalJoin { removed -> uiPoster { onRemoved(removed) } }
         PersonalDictionaries.storeFor(context, subtypeId)
-            .forget(word) { removed -> uiPoster { onRemoved(removed) } }
+            .forget(word) { removed -> removal.dictionaryFinished(removed) }
+        // The sentence overlay owns its own file and quarantined copy. Purge both before answering
+        // so the recovery card can never bring a deliberately forgotten word back.
+        SentStartOverlays.storeFor(context, subtypeId)
+            .forget(word) { removed -> removal.sentenceFinished(removed) }
         PersonalDictionaries.notifyErased()
     }
 
@@ -136,5 +142,45 @@ internal class PersonalDictionaryScreenController(
         PersonalDictionaries.storeFor(context, subtypeId)
             .clearAll { cleared -> uiPoster { onCleared(cleared) } }
         PersonalDictionaries.notifyErased()
+    }
+}
+
+/**
+ * Joins the dictionary and sentence-overlay answers without assuming worker order. A missing answer
+ * cannot turn into success; a duplicate answer fails the operation and is reported only once.
+ */
+internal class PersonalWordRemovalJoin(private val onRemoved: (Boolean) -> Unit) {
+    private var completedMask = 0
+    private var removedMask = 0
+    private var reported = false
+
+    fun dictionaryFinished(removed: Boolean) = finished(DICTIONARY, removed)
+
+    fun sentenceFinished(removed: Boolean) = finished(SENTENCE_OVERLAY, removed)
+
+    private fun finished(store: Int, removed: Boolean) {
+        val result = synchronized(this) {
+            if (reported) return
+            if (completedMask and store != 0) {
+                reported = true
+                false
+            } else {
+                completedMask = completedMask or store
+                if (removed) removedMask = removedMask or store
+                if (completedMask == BOTH_STORES) {
+                    reported = true
+                    removedMask == BOTH_STORES
+                } else {
+                    null
+                }
+            }
+        }
+        result?.let(onRemoved)
+    }
+
+    private companion object {
+        const val DICTIONARY = 1
+        const val SENTENCE_OVERLAY = 1 shl 1
+        const val BOTH_STORES = DICTIONARY or SENTENCE_OVERLAY
     }
 }

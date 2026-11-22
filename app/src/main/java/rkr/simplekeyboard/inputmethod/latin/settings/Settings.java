@@ -46,7 +46,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String ACTIVE_RESTRICTIONS = "active_restrictions";
     // Settings screens
     public static final String SCREEN_THEME = "screen_theme";
-    // In the same order as xml/prefs.xml
+    // The user-facing settings, in display order
     public static final String PREF_AUTO_CAP = "auto_cap";
     public static final String PREF_VIBRATE_ON = "vibrate_on";
     public static final String PREF_SOUND_ON = "sound_on";
@@ -140,7 +140,6 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
             "pref_tatar_suggestions_offer_spent";
 
     private static final float UNDEFINED_PREFERENCE_VALUE_FLOAT = -1.0f;
-    private static final int UNDEFINED_PREFERENCE_VALUE_INT = -1;
 
     private Context mContext;
     private Resources mRes;
@@ -545,10 +544,16 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
 
     public static int readKeyLongpressTimeout(final SharedPreferences prefs,
             final Resources res) {
+        if (!prefs.contains(PREF_KEY_LONGPRESS_TIMEOUT)) {
+            return readDefaultKeyLongpressTimeout(res);
+        }
         final int milliseconds = readIntTolerant(prefs,
-                PREF_KEY_LONGPRESS_TIMEOUT, UNDEFINED_PREFERENCE_VALUE_INT);
-        return (milliseconds != UNDEFINED_PREFERENCE_VALUE_INT) ? milliseconds
-                : readDefaultKeyLongpressTimeout(res);
+                PREF_KEY_LONGPRESS_TIMEOUT, readDefaultKeyLongpressTimeout(res));
+        // Hand-edited and imported values share the slider's bounds: anything else would reach
+        // PointerTracker directly (including the space trackpad's multiplier) or overflow it.
+        return clampStoredInt(milliseconds,
+                res.getInteger(R.integer.config_min_longpress_timeout),
+                res.getInteger(R.integer.config_max_longpress_timeout));
     }
 
     public static int readDefaultKeyLongpressTimeout(final Resources res) {

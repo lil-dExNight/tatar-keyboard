@@ -15,6 +15,8 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.SentStartOverlay
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalWordShapes
@@ -123,6 +125,102 @@ internal class SentStartOverlayStore(
             pending = noted
         }
         pendingDirty = true
+    }
+
+    /**
+     * Removes one word from the active overlay and from any quarantined copy. The active removal
+     * is rolled back when the quarantine half cannot be cleaned, so a successful deletion can
+     * never be undone by a later restore.
+     */
+    fun forget(word: String, outcome: PersonalMutationOutcome? = null) = onWorker {
+        val removed = try {
+            removeOnWorker(word)
+        } catch (_: Exception) {
+            false
+        }
+        report(outcome, removed)
+    }
+
+    private fun removeOnWorker(word: String): Boolean {
+        // A device with no sentence-start directory has nothing to forget; reporting false would
+        // turn a normal dictionary-only deletion into a failure.
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+        if (directory?.isDirectory != true) return true
+        if (!open()) return false
+        if (alphabet == null) return false
+        val normalized = PersonalWordFilter.normalize(word)
+        val candidate = entries.remove(normalized)
+        if (candidate === entries) {
+            if (!purgeFromQuarantine(normalized)) return false
+            dropPending(normalized)
+            return true
+        }
+
+        val previousEntries = entries
+        val previousSnapshot = snapshot
+        val activeFile = File(
+            runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false,
+            TsentFormat.sentStartFileName(subtypeId),
+        )
+        val previousActiveBytes = try {
+            if (activeFile.isFile) activeFile.readBytes() else null
+        } catch (_: Exception) {
+            return false
+        }
+
+        snapshot = SentStartOverlay.of(candidate.wordsByUsage())
+        lastWriteInstalled = false
+        val removed = try {
+            if (candidate.isEmpty) {
+                deleteFile(trackInstalled = true)
+                true
+            } else {
+                writeWhole(candidate)
+            }
+        } catch (_: Exception) {
+            false
+        }
+        if (!removed) {
+            if (lastWriteInstalled) {
+                entries = candidate
+            } else {
+                snapshot = previousSnapshot
+            }
+            return false
+        }
+
+        entries = candidate
+        if (!purgeFromQuarantine(normalized)) {
+            if (restoreActiveFile(activeFile, previousActiveBytes)) {
+                entries = previousEntries
+                snapshot = previousSnapshot
+            }
+            return false
+        }
+        dropPending(normalized)
+        return true
+    }
+
+    private fun dropPending(normalizedWord: String) {
+        salt?.let { existing ->
+            val key = PendingCounters.keyOf(existing, normalizedWord)
+            if (pending.countOf(key) > 0) {
+                pending = pending.without(key)
+                pendingDirty = true
+            }
+        }
+    }
+
+    private fun restoreActiveFile(activeFile: File, bytes: ByteArray?): Boolean = try {
+        val directory = directoryProvider.personalDirectory()
+        if (bytes == null) {
+            deleteFile(directory, activeFile)
+        } else {
+            writeBytesDurably(directory, activeFile, bytes)
+        }
+        true
+    } catch (_: Exception) {
+        false
     }
 
     /**
@@ -242,6 +340,117 @@ internal class SentStartOverlayStore(
         deleted { deleteFile(directory, File(directory, pendingQuarantineNoticeFileName())) }
     }
 
+    /** Reports what is readable in the quarantined copy. See [PersonalDictionaryStore.inspectQuarantine]. */
+    fun inspectQuarantine(sink: PersonalQuarantineReportSink) = onWorker {
+        val salvage = try {
+            readQuarantine()
+        } catch (_: Exception) {
+            null
+        }
+        val report = salvage?.let { PersonalQuarantineReport(it.wordCount, it.readToEnd) }
+        try {
+            sink.onInspected(report)
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Restores readable words without deleting the damaged copy. See [PersonalDictionaryStore]. */
+    fun restoreQuarantine(outcome: PersonalMutationOutcome? = null) = onWorker {
+        val restored = try {
+            restoreOnWorker()
+        } catch (_: Exception) {
+            false
+        }
+        report(outcome, restored)
+    }
+
+    /** Removes the quarantined copy and nothing else. */
+    fun discardQuarantine(outcome: PersonalMutationOutcome? = null) = onWorker {
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull()
+        val gone = directory != null &&
+            deleted { deleteFile(directory, File(directory, quarantineFileName())) }
+        report(outcome, gone)
+    }
+
+    private fun restoreOnWorker(): Boolean {
+        if (!open()) return false
+        if (alphabet == null) return false
+        val salvage = readQuarantine() ?: return false
+        if (salvage.wordCount == 0) return false
+        var candidate = entries
+        var added = 0
+        for (index in 0 until salvage.wordCount) {
+            val normalized = salvage.normalizedForms[index]
+            if (candidate.containsNormalized(normalized)) continue
+            candidate = candidate.noted(salvage.rawForms[index], normalized)
+            added++
+        }
+        if (added == 0) return true
+        if (!writeWhole(candidate)) return false
+        entries = candidate
+        publish()
+        return true
+    }
+
+    private fun readQuarantine(): SentStartQuarantineSalvage? {
+        if (!unlockGate()) return null
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return null
+        if (!directory.isDirectory) return null
+        return SentStartQuarantineSalvage.read(File(directory, quarantineFileName()), subtypeId)
+    }
+
+    /** The quarantine half of [forget]. See `PersonalDictionaryStore.purgeFromQuarantine`. */
+    private fun purgeFromQuarantine(normalizedWord: String): Boolean {
+        val directory = runCatching { directoryProvider.personalDirectory() }.getOrNull() ?: return false
+        val copy = File(directory, quarantineFileName())
+        if (!copy.isFile) return true
+        cleanupTemps(directory)
+        val salvage = try {
+            SentStartQuarantineSalvage.read(copy, subtypeId)
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        val salvageWhole = salvage.readToEnd
+        val kept = (0 until salvage.wordCount).filter { index ->
+            salvage.normalizedForms[index] != normalizedWord
+        }
+        if (kept.size == salvage.wordCount && salvageWhole) return true
+        if (!salvageWhole) return false
+
+        var candidate = SentStartOverlayEntries.empty(maxEntries)
+        for (index in kept) {
+            candidate = candidate.noted(salvage.rawForms[index], salvage.normalizedForms[index])
+        }
+        if (candidate.isEmpty) {
+            return try {
+                if (!fileOps.delete(copy) || copy.exists()) return false
+                fileOps.syncDirectory(directory)
+                true
+            } catch (_: Exception) {
+                quarantineSlotIsEmpty(copy)
+            }
+        }
+        val expected = candidate.serialize(subtypeId)
+        return try {
+            writeBytesDurably(directory, copy, expected)
+            true
+        } catch (_: Exception) {
+            quarantineSlotHas(copy, expected)
+        }
+    }
+
+    private fun quarantineSlotHas(copy: File, expected: ByteArray): Boolean = try {
+        copy.isFile && copy.length() == expected.size.toLong() && copy.readBytes().contentEquals(expected)
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun quarantineSlotIsEmpty(copy: File): Boolean = try {
+        !copy.isFile || SentStartQuarantineSalvage.read(copy, subtypeId) == null
+    } catch (_: Exception) {
+        false
+    }
+
     /**
      * Opens the store on its worker if it is not open yet, publishing the snapshot the strip will
      * read. Safe to call from any thread: the file read runs on the executor.
@@ -319,6 +528,17 @@ internal class SentStartOverlayStore(
         if (!directory.isDirectory) {
             snapshot = SentStartOverlay.EMPTY
             return
+        }
+        if (!PersonalFormatFileMigration(PersonalFormats.migrations, fileOps, outputOpener, clock)
+                .migrateIfNeeded(
+                    PersonalStoreFormat.SENTENCE_STARTS,
+                    TsentFormat.SCHEMA_ID,
+                    TsentFormat.FORMAT_VERSION,
+                    subtypeId,
+                    directory,
+                )
+        ) {
+            throw IOException("personal format migration failed")
         }
         cleanupTemps(directory)
         readPending(directory)
@@ -483,7 +703,8 @@ internal class SentStartOverlayStore(
     /**
      * Moves an unreadable file into this subtype's single quarantine slot instead of deleting it.
      * One slot per language, replaced by the next failure; a failed move leaves the original file
-     * untouched. There is no restore path: no screen lists the overlay, and the overlay relearns.
+     * untouched. [inspectQuarantine], [restoreQuarantine] and [discardQuarantine] expose its
+     * recovery lifecycle.
      */
     private fun quarantine(directory: File, file: File): Boolean {
         val moved = try {
@@ -542,15 +763,16 @@ internal class SentStartOverlayStore(
      * Removes this subtype's `.tsent` file. Fails only by throwing; callers handle it with `try`
      * or [deleted].
      */
-    private fun deleteFile() {
+    private fun deleteFile(trackInstalled: Boolean = false) {
         val directory = directoryProvider.personalDirectory()
         val file = File(directory, TsentFormat.sentStartFileName(subtypeId))
-        deleteFile(directory, file)
+        deleteFile(directory, file, trackInstalled)
     }
 
-    private fun deleteFile(directory: File, file: File) {
+    private fun deleteFile(directory: File, file: File, trackInstalled: Boolean = false) {
         if (!file.exists()) return
         if (!fileOps.delete(file) && file.exists()) throw IOException("cannot remove personal file")
+        if (trackInstalled) lastWriteInstalled = true
         fileOps.syncDirectory(directory)
     }
 

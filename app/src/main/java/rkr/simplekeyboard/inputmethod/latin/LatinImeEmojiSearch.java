@@ -32,10 +32,10 @@ final class LatinImeEmojiSearch {
     }
 
     /**
-     * Routes one key press into the emoji-search query instead of into the editor, and returns true
-     * when it did. While the search is open {@link InputLogic} is never called, so nothing typed in
-     * the search reaches the application's text field. A backspace on an empty query closes the
-     * search.
+     * Routes one keyboard event into the emoji-search query instead of into the editor, and returns
+     * true when it did. While the search is open keyboard-originated {@link InputLogic} calls are
+     * diverted, so nothing typed in the search reaches the application's text field. A backspace on
+     * an empty query closes the search. Emoji picks use the separate explicit commit path.
      *
      * <p>The keyboard state machine still sees the event, so shift and the symbols/letters switch
      * work as usual. Auto-caps is reported as off ({@code 0}, no {@code TextUtils.CAP_MODE_*} bit):
@@ -55,6 +55,8 @@ final class LatinImeEmojiSearch {
                 return true;
             }
             changed = true;
+        } else if (event.mKeyCode == Constants.CODE_OUTPUT_TEXT) {
+            changed = query.appendText(event.getTextToCommit());
         } else if (event.mCodePoint != Event.NOT_A_CODE_POINT) {
             changed = query.appendCodePoint(event.mCodePoint);
         } else {

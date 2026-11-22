@@ -87,6 +87,9 @@ class TextShortcuts private constructor(
 
     /** The in-memory bytes to be written whole to disk, in the frozen `.tcut` layout. */
     fun serialize(): ByteArray {
+        PersonalFormats.requireWriter(
+            PersonalStoreFormat.SHORTCUTS, TcutFormat.SCHEMA_ID, TcutFormat.FORMAT_VERSION,
+        )
         val encodedShortcuts = shortcuts.map { it.toByteArray(StandardCharsets.UTF_8) }
         val encodedExpansions = expansions.map { it.toByteArray(StandardCharsets.UTF_8) }
         val payloadSize = (0 until size)

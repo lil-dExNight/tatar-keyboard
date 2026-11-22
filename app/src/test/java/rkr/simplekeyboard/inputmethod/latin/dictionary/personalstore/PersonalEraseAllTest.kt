@@ -22,6 +22,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.Executor
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -84,6 +85,26 @@ class PersonalEraseAllTest {
         assertEquals(listOf(true), answers)
         assertEquals("nothing is left", emptyList<String>(), directory.list()!!.toList())
         assertTrue("and nothing is still shown", stores.all { it.isEmpty() })
+    }
+
+    @Test
+    fun eraseAllRemovesBothLegacyAndMigratedRepresentations() {
+        val directory = newPersonalDir()
+        val subtype = PersonalSubtypes.TATAR_RU
+        val legacy = File(directory, TpersFormat.personalFileName(subtype)).also {
+            it.writeBytes(byteArrayOf(1))
+        }
+        val migrated = File(directory, "personal-$subtype-s1-f2.tpers").also {
+            it.writeBytes(byteArrayOf(2))
+        }
+
+        var answer: Boolean? = null
+        eraser(directory, emptyList()).run { answer = it }
+
+        assertEquals(true, answer)
+        assertFalse(legacy.exists())
+        assertFalse(migrated.exists())
+        assertEquals(emptyList<String>(), directory.list()!!.toList())
     }
 
     @Test

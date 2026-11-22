@@ -29,6 +29,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictiona
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestSource
+import rkr.simplekeyboard.inputmethod.latin.emoji.LearnedEmojiDrawabilityObserver
 import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 import java.io.File
 import java.util.concurrent.AbstractExecutorService
@@ -185,7 +186,38 @@ class SuggestionsControllerEmojiSuggestTest {
             return names[emoji]
         }
 
-        override fun canDraw(emoji: String): Boolean = emoji !in undrawable
+        override fun learnedEmojiDrawability(
+            emoji: String,
+            observer: LearnedEmojiDrawabilityObserver,
+        ): Boolean? = emoji !in undrawable
+    }
+
+    private class DeferredDrawabilityEmojiSource(
+        private val staticEmoji: String,
+    ) : EmojiSuggestSource {
+        private var observer: LearnedEmojiDrawabilityObserver? = null
+        private var learnedEmoji: String? = null
+        private var verdict: Boolean? = null
+        var requests = 0
+
+        override fun emojiFor(language: String, normalizedWord: String): String? = staticEmoji
+        override fun spokenNameOf(language: String, emoji: String): String? = null
+
+        override fun learnedEmojiDrawability(
+            emoji: String,
+            observer: LearnedEmojiDrawabilityObserver,
+        ): Boolean? {
+            requests++
+            verdict?.let { return it }
+            learnedEmoji = emoji
+            this.observer = observer
+            return null
+        }
+
+        fun resolve(drawable: Boolean) {
+            verdict = drawable
+            requireNotNull(observer).onResolved(requireNotNull(learnedEmoji), drawable)
+        }
     }
 
     /** Records every learned-emoji event. */
@@ -591,6 +623,37 @@ class SuggestionsControllerEmojiSuggestTest {
     }
 
     @Test
+    fun aNonLetterActiveWordKeepsItsRankDuringCompanionFill() {
+        val h = Harness(FakeEmojiSource(emptyMap()))
+        h.start(russian, companion = tatar)
+        h.typeWordAndSpace("самолет")
+        h.deliver(russian, listOf("123"))
+
+        h.deliver(tatar, listOf("очты"))
+
+        assertEquals(listOf("123", "очты"), h.strip.lastCells())
+    }
+
+    @Test
+    fun tappingANonLetterWordCellReportsNoEmojiLearningOrRecents() {
+        val h = Harness(FakeEmojiSource(emptyMap()))
+        val recentInsertions = mutableListOf<String>()
+        val personalSink = RecordingPersonalEmojiSink()
+        h.controller.setEmojiInsertionSink { recentInsertions.add(it) }
+        h.controller.setPersonalEmojiSink(personalSink)
+        h.start(russian)
+        h.typeWordAndSpace("самолет")
+        h.deliver(russian, listOf("123"))
+
+        requireNotNull(h.strip.tap).onTap("123")
+
+        assertEquals(listOf("самолет" to "123"), h.editor.predictedCommits)
+        assertTrue(recentInsertions.isEmpty())
+        assertTrue(personalSink.observations.isEmpty())
+        assertTrue(personalSink.uses.isEmpty())
+    }
+
+    @Test
     fun anUnmappedWordKeepsTheThirdBigramCell() {
         val h = harnessWithMapping("tt", "йөрәк", "❤️")
         h.start(tatar)
@@ -716,6 +779,43 @@ class SuggestionsControllerEmojiSuggestTest {
     }
 
     @Test
+    fun aRestoredZwjEmojiAppearsOnlyAfterItsPositiveCachedVerdict() {
+        val source = DeferredDrawabilityEmojiSource("❤️")
+        val family = "👩‍👩‍👧‍👧"
+        val h = Harness(source)
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "йөрәк") family else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+
+        assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
+        source.resolve(true)
+        assertEquals(listOf("минем", family), h.strip.lastCells())
+    }
+
+    @Test
+    fun aRestoredFlagStaysHiddenAfterItsNegativeCachedVerdict() {
+        val source = DeferredDrawabilityEmojiSource("❤️")
+        val flag = "🇹🇹"
+        val h = Harness(source)
+        h.controller.setPersonalEmojiSource(
+            PersonalEmojiSource { word -> if (word == "йөрәк") flag else null },
+        )
+        h.start(tatar)
+        h.typeWordAndSpace("йөрәк")
+        h.deliver(tatar, listOf("минем"))
+        assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
+        val requestsBeforeResolution = source.requests
+
+        source.resolve(false)
+
+        assertEquals(listOf("минем", "❤️"), h.strip.lastCells())
+        assertEquals(requestsBeforeResolution, source.requests)
+    }
+
+    @Test
     fun aLearnedTonedEmojiTheFontDrawsIsOffered() {
         val h = Harness(FakeEmojiSource(mapOf(("tt" to "йөрәк") to "❤️")))
         h.controller.setPersonalEmojiSource(
@@ -729,7 +829,7 @@ class SuggestionsControllerEmojiSuggestTest {
     }
 
     @Test
-    fun aLearnedTonedEmojiWaitsForTheTableButAnUntonedOneDoesNot() {
+    fun everyLearnedEmojiWaitsForTheDrawabilityCache() {
         val h = Harness(FakeEmojiSource(emptyMap()))
         h.emojiPreparation.deferred = true
         h.controller.setPersonalEmojiSource(
@@ -748,6 +848,9 @@ class SuggestionsControllerEmojiSuggestTest {
 
         h.typeWordAndSpace("кит")
         h.deliver(tatar, listOf("минем"))
+        assertEquals(listOf("минем"), h.strip.lastCells())
+
+        h.emojiPreparation.fire()
         assertEquals(listOf("минем", "🌙"), h.strip.lastCells())
     }
 

@@ -46,14 +46,12 @@ public interface KeyboardActionListener {
      * Send a key code to the listener.
      *
      * @param primaryCode this is the code of the key that was pressed
-     * @param x x-coordinate pixel of touched event. If {@link #onCodeInput} is not called by
-     *            {@link PointerTracker} or so, the value should be
-     *            {@link Constants#NOT_A_COORDINATE}. If it's called on insertion from the
-     *            suggestion strip, it should be {@link Constants#SUGGESTION_STRIP_COORDINATE}.
-     * @param y y-coordinate pixel of touched event. If {@link #onCodeInput} is not called by
-     *            {@link PointerTracker} or so, the value should be
-     *            {@link Constants#NOT_A_COORDINATE}.If it's called on insertion from the
-     *            suggestion strip, it should be {@link Constants#SUGGESTION_STRIP_COORDINATE}.
+     * @param x x-coordinate pixel of touched event. {@link PointerTracker} always delivers
+     *            {@link Constants#NOT_A_COORDINATE}; other callers may use
+     *            {@link Constants#SUGGESTION_STRIP_COORDINATE} for a strip insertion.
+     * @param y y-coordinate pixel of touched event. {@link PointerTracker} always delivers
+     *            {@link Constants#NOT_A_COORDINATE}; other callers may use
+     *            {@link Constants#SUGGESTION_STRIP_COORDINATE} for a strip insertion.
      * @param isKeyRepeat true if this is a key repeat, false otherwise
      */
     // TODO: change this to send an Event object instead

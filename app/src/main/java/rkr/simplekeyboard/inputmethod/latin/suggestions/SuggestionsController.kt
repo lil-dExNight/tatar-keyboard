@@ -45,7 +45,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.AssetEmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestIndex
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestPreparation
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiSuggestSource
-import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiTextUtils
+import rkr.simplekeyboard.inputmethod.latin.emoji.LearnedEmojiDrawabilityObserver
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureSink
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
@@ -461,6 +461,8 @@ class SuggestionsController internal constructor(
             field = value
             if (value.isEmpty()) displayedRecentClipOffer = null
         }
+    /** Parallel semantic identities for [bandBaseCells], written by the same publication. */
+    private val bandCellKinds = arrayOfNulls<SuggestionCellKind>(SuggestionStripState.CELL_COUNT)
     private var bandEmphasizedCell = SuggestionStripState.NO_CELL
     private var bandRanked = true
 
@@ -571,6 +573,13 @@ class SuggestionsController internal constructor(
 
     /** The loaded table, or null while it has never finished loading. Load failure is terminal. */
     private var emojiSource: EmojiSuggestSource? = null
+
+    /** Shared by every cache lookup, so a known verdict allocates nothing on the strip fill path. */
+    private val learnedEmojiDrawabilityObserver = LearnedEmojiDrawabilityObserver { _, drawable ->
+        if (drawable) {
+            uiPoster.post { onLearnedEmojiDrawabilityResolved() }
+        }
+    }
 
     /** Lazily built loading seam; null means no emoji cell, ever. */
     private var emojiPreparation: EmojiSuggestPreparation? = null
@@ -1633,7 +1642,7 @@ class SuggestionsController internal constructor(
         // The room rule of [applyCompanionResult]: word cells stay put, and the companion may not
         // take the emoji cell at the end.
         val base = bandBaseCells
-        val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.last())) base.last() else null
+        val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.lastIndex)) base.last() else null
         val room = bandCapacity - (if (emojiTail != null) 1 else 0)
         val wordBase = if (emojiTail != null) base.dropLast(1) else base
         if (wordBase.size >= room) return
@@ -1951,8 +1960,8 @@ class SuggestionsController internal constructor(
         if (suggestions.isEmpty()) return
         val base = bandBaseCells
         // The emoji cell, when present, is always the last one: companion words go before it and
-        // never push it out. A word cell is always a letter sequence; only the emoji cell is not.
-        val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.last())) base.last() else null
+        // never push it out. Its model identity, not its spelling, reserves that tail position.
+        val emojiTail = if (base.isNotEmpty() && isEmojiCell(base.lastIndex)) base.last() else null
         val wordBase = if (emojiTail != null) base.dropLast(1) else base
         val room = bandCapacity - (if (emojiTail != null) 1 else 0)
         // PREFIX re-applies the typed capitalization to every cell it shows, so the companion's
@@ -1984,7 +1993,14 @@ class SuggestionsController internal constructor(
                 if (band != wordBase) {
                     displayedPrefix = query
                     displayedSessionId = sessionId
-                    showBand(if (emojiTail == null) band else band + emojiTail)
+                    showBand(
+                        if (emojiTail == null) band else band + emojiTail,
+                        emojiCell = if (emojiTail == null) {
+                            SuggestionStripState.NO_CELL
+                        } else {
+                            band.size
+                        },
+                    )
                 }
                 return
             }
@@ -2012,7 +2028,10 @@ class SuggestionsController internal constructor(
             LookupKind.GLIDE -> return
         }
         displayedSessionId = sessionId
-        showBand(cells)
+        showBand(
+            cells,
+            emojiCell = if (emojiTail == null) SuggestionStripState.NO_CELL else cells.lastIndex,
+        )
     }
 
     /**
@@ -2032,11 +2051,12 @@ class SuggestionsController internal constructor(
         return band
     }
 
-    /** The single call into the strip that paints words, and the only writer of [bandBaseCells]. */
+    /** The single call into the strip that paints cells and writes their semantic identities. */
     private fun showBand(
         cells: List<String>,
         emphasizedCell: Int = SuggestionStripState.NO_CELL,
         ranked: Boolean = true,
+        emojiCell: Int = SuggestionStripState.NO_CELL,
         clipCell: Int = SuggestionStripState.NO_CELL,
         clipSpokenLabel: String? = null,
     ) {
@@ -2045,6 +2065,16 @@ class SuggestionsController internal constructor(
         val shown = if (cells.size <= bandCapacity) cells else cells.subList(0, bandCapacity)
         displayedRecentClipOffer = null
         bandBaseCells = shown
+        var cellIndex = 0
+        while (cellIndex < SuggestionStripState.CELL_COUNT) {
+            bandCellKinds[cellIndex] = when {
+                cellIndex >= shown.size -> null
+                cellIndex == clipCell -> SuggestionCellKind.RECENT_CLIP
+                cellIndex == emojiCell -> SuggestionCellKind.EMOJI
+                else -> SuggestionCellKind.WORD
+            }
+            cellIndex++
+        }
         bandEmphasizedCell = emphasizedCell
         bandRanked = ranked
         // The logical ranking never changes. Only its physical cells mirror, across the whole
@@ -2087,22 +2117,21 @@ class SuggestionsController internal constructor(
 
     internal fun onOneHandedSideChanged() {
         if (destroyed || !bandRanked || bandBaseCells.isEmpty()) return
-        showBand(bandBaseCells, bandEmphasizedCell)
+        showBand(bandBaseCells, bandEmphasizedCell, emojiCell = emojiCellIndex())
     }
 
-    /**
-     * True when [cell] holds the emoji candidate rather than a word: every word the strip can show
-     * is a letter sequence (all candidate sources are alphabet-checked), so a letter-free cell is
-     * the emoji cell. Char-level on purpose: words here are BMP, and a supplementary letter would
-     * read as two non-letters, i.e. "emoji", the safe answer.
-     */
-    private fun isEmojiCell(cell: String): Boolean {
-        var index = 0
-        while (index < cell.length) {
-            if (Character.isLetter(cell[index])) return false
-            index++
+    /** True only when the published model marks this logical cell as the emoji candidate. */
+    private fun isEmojiCell(cellIndex: Int): Boolean =
+        cellIndex in bandBaseCells.indices && bandCellKinds[cellIndex] == SuggestionCellKind.EMOJI
+
+    /** Resolves a tap against the published cells, then uses that cell's explicit identity. */
+    private fun isEmojiCell(cell: String): Boolean = isEmojiCell(bandBaseCells.indexOf(cell))
+
+    private fun emojiCellIndex(): Int {
+        for (cellIndex in bandBaseCells.indices) {
+            if (isEmojiCell(cellIndex)) return cellIndex
         }
-        return true
+        return SuggestionStripState.NO_CELL
     }
 
     /**
@@ -2148,17 +2177,19 @@ class SuggestionsController internal constructor(
     }
 
     /**
-     * A learned emoji with a skin tone is offered only once the loaded table confirms the font
-     * draws that tone (a backup from another device may carry one it does not); any other passes.
+     * Every learned sequence is offered only with a cached positive system-font verdict. An unknown
+     * sequence is hidden while the source coalesces one background probe; restored neutral, toned,
+     * ZWJ, flag, keycap and tag forms all follow this same path.
      */
     private fun learnedEmojiDrawable(emoji: String): Boolean =
-        !EmojiTextUtils.hasSkinTone(emoji) || emojiSource?.canDraw(emoji) == true
+        emojiSource?.learnedEmojiDrawability(emoji, learnedEmojiDrawabilityObserver) == true
 
     /**
-     * Appends the emoji cell to the end of the current NEXT_WORD strip, like [applyNextWordResult]
-     * does: front cells keep their order, the emoji takes the last cell, and only the lowest-ranked
-     * word cell may yield. Runs from [onEmojiSuggestReady] only, for a strip painted before the
-     * table loaded; it also binds the strip, so the tap path treats the emoji like a predicted word.
+     * Appends or replaces the emoji cell at the end of the current NEXT_WORD strip, like
+     * [applyNextWordResult] does: front cells keep their order, the emoji takes the last cell, and
+     * only the lowest-ranked word cell may yield. Runs when the table or a learned drawability
+     * verdict arrives after the initial paint; it also binds the strip, so the tap path treats the
+     * emoji like a predicted word.
      */
     private fun maybeAppendEmojiTail(contextWord: String) {
         if (contextWord.isEmpty()) return
@@ -2166,8 +2197,9 @@ class SuggestionsController internal constructor(
         if (bandBaseCells.contains(emoji)) return
         val cells = ArrayList<String>(bandCapacity)
         val wordCap = bandCapacity - 1
-        for (cell in bandBaseCells) {
-            cells.add(cell)
+        for (cellIndex in bandBaseCells.indices) {
+            if (isEmojiCell(cellIndex)) continue
+            cells.add(bandBaseCells[cellIndex])
             if (cells.size >= wordCap) break
         }
         cells.add(emoji)
@@ -2175,7 +2207,7 @@ class SuggestionsController internal constructor(
         displayedPreviousContextWord = pendingPreviousContextWord
         displayedContextWord = contextWord
         displayedSessionId = sessionId
-        showBand(cells)
+        showBand(cells, emojiCell = cells.lastIndex)
     }
 
     /**
@@ -2227,6 +2259,12 @@ class SuggestionsController internal constructor(
             previousContext != pendingPreviousContextWord
         ) return
         maybeAppendEmojiTail(context)
+    }
+
+    /** Reuses the load-ready guards: only the live NEXT_WORD context may gain the learned cell. */
+    private fun onLearnedEmojiDrawabilityResolved() {
+        if (destroyed) return
+        onEmojiSuggestReady(emojiSource ?: return)
     }
 
     /**
@@ -3094,9 +3132,9 @@ class SuggestionsController internal constructor(
 
     /**
      * Offers the recent-clip cell at an idle strip: an empty prefix AND an empty next-word context
-     * (a field start, or after a sentence end), where no prediction is pending. The sentence-start
-     * table was tried first by the caller; this fires only when the strip would otherwise stay
-     * empty. Returns true when the cell was painted.
+     * (a field start, or after a sentence end), where no prediction is pending. A fresh clip takes
+     * precedence over sentence-start suggestions; the caller tries this first and asks the
+     * sentence-start table only when no clip is offered. Returns true when the cell was painted.
      *
      * The strip is bound to nothing and [requestSessionId] is invalidated, so no late result can
      * land on the cell; the tap path re-derives validity from [RecentClipCell] itself (freshness
@@ -3346,7 +3384,7 @@ class SuggestionsController internal constructor(
                 displayedPreviousContextWord = pendingPreviousContextWord
                 displayedContextWord = pendingContextWord
                 displayedSessionId = sessionId
-                showBand(listOf(emoji), ranked = false)
+                showBand(listOf(emoji), ranked = false, emojiCell = 0)
             }
             requestCompanionFill(LookupKind.NEXT_WORD, pendingContextWord)
             return
@@ -3369,8 +3407,12 @@ class SuggestionsController internal constructor(
             cells.add(properNameNextWordDisplay(candidate, properNames))
             if (cells.size >= wordCap) break
         }
-        if (emoji != null && !cells.contains(emoji)) cells.add(emoji)
-        showBand(cells)
+        var emojiCell = SuggestionStripState.NO_CELL
+        if (emoji != null && !cells.contains(emoji)) {
+            cells.add(emoji)
+            emojiCell = cells.lastIndex
+        }
+        showBand(cells, emojiCell = emojiCell)
         if (cells.size < bandCapacity) {
             requestCompanionFill(LookupKind.NEXT_WORD, pendingContextWord)
         }
@@ -3755,6 +3797,8 @@ class SuggestionsController internal constructor(
             // candidates were invalidated): a tap must be a no-op and must never commit.
             return
         }
+        // Keep the tapped cell's semantic identity before a successful commit clears the model.
+        val tappedEmojiCell = isEmojiCell(suggestion)
         // At most one of the three bindings is non-null, and the kind is read off what is bound,
         // not off the tapped string. The branches below are exclusive: even if the invariant
         // broke, a tap would still commit at most once.
@@ -3815,7 +3859,7 @@ class SuggestionsController internal constructor(
                 // An accepted emoji cell is an emoji insertion like a panel or search pick, so
                 // the recent-emoji list learns it. Word cells never reach the sink, and a refused
                 // commit never gets here.
-                if (isEmojiCell(suggestion)) {
+                if (tappedEmojiCell) {
                     emojiInsertionSink?.onEmojiInserted(suggestion)
                     // The same pick teaches learned emoji: always as an observation, and also as a
                     // use when the tapped cell is what the learned source itself offered for this

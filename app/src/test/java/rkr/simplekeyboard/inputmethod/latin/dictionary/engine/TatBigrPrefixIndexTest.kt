@@ -187,6 +187,31 @@ class TatBigrPrefixIndexTest {
     }
 
     @Test
+    fun trigramSuccessorCountsAcceptOneThroughEightAndRejectZeroAndNine() {
+        val heads = listOf("аб" to listOf("аба"))
+        for ((count, accepted) in listOf(0 to false, 1 to true, 8 to true, 9 to false)) {
+            val successes = (0 until count).map { "с$it" }
+            val contexts = listOf(("аб" to "аба") to successes)
+            val dictionaryWords = (
+                BigramTestFixtures.defaultDictionaryWords(heads) + listOf("аб", "аба") + successes
+                ).toSortedSet().toList()
+            val raw = BigramTestFixtures.rawV4(heads, contexts, dictionaryWords)
+            val index = TatBigrPrefixIndex.open(
+                ByteBuffer.wrap(raw), EngineTestFixtures.bigramIdentity.copy(schemaId = 4),
+                fixtureDictionaryFromWords(dictionaryWords), heads.size.toLong(), raw.size.toLong(),
+            )
+            if (accepted) {
+                val previous = ImmutableUtf8Prefix.copyOf("аб".toByteArray(Charsets.UTF_8))
+                val current = ImmutableUtf8Prefix.copyOf("аба".toByteArray(Charsets.UTF_8))
+                assertEquals(successes.take(TatBigrPrefixIndex.MAX_PREDICT_RESULTS),
+                    requireNotNull(index).predict(previous, current))
+            } else {
+                assertNull(index)
+            }
+        }
+    }
+
+    @Test
     fun openRejectsSuccessIdAtOrBeyondDictionarySize() {
         val heads = listOf("аб" to listOf("аба"))
         val raw = BigramTestFixtures.raw(heads)
@@ -261,8 +286,9 @@ class TatBigrPrefixIndexTest {
     /** A real [TdictPrefixIndex] over the fixture dictionary, with the identity the table names. */
     private fun fixtureDictionary(
         heads: List<Pair<String, List<String>>>,
-    ): TdictPrefixIndex {
-        val words = BigramTestFixtures.defaultDictionaryWords(heads)
+    ): TdictPrefixIndex = fixtureDictionaryFromWords(BigramTestFixtures.defaultDictionaryWords(heads))
+
+    private fun fixtureDictionaryFromWords(words: List<String>): TdictPrefixIndex {
         val rawDict = DictionaryTestFixtures.raw(words.map { it to 1L })
         return requireNotNull(
             TdictPrefixIndex.open(

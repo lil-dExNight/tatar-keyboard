@@ -24,5 +24,8 @@
         <uses-library
             android:name="android.test.runner"
             android:required="false" />
+        <!-- BackupExportTestDocumentsProvider is declared in the debug app manifest instead:
+             an exported DocumentsProvider in this separate test UID would need the
+             signature-level MANAGE_DOCUMENTS permission, which the test APK cannot hold. -->
     </application>
 </manifest>

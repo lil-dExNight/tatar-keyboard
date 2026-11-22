@@ -437,7 +437,8 @@
             <enum name="number" value="9"  />
         </attr>
         <attr name="elementKeyboard" format="reference"/>
-        <!-- Indicates if the keyboard layout supports being split or not. false by default -->
+        <!-- Whether more-keys entries that duplicate base-layout letters are retained.
+             True by default. -->
         <attr name="allowRedundantMoreKeys" format="boolean" />
     </declare-styleable>
 </resources>

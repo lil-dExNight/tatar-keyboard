@@ -44,6 +44,10 @@ object PersonalForget {
      * Removes the confirmed word and clears the strip at once, without waiting for the disk write.
      * The rewrite can fail; then [onFailed] runs on the store's worker thread, because the word is
      * still saved. It is a bare [Runnable]: no word, path or reason leaves this package.
+     *
+     * The sentence-start overlay and its quarantine copy are part of the same deletion. Both
+     * stores answer on the shared worker, in queue order; a failure in either turns the combined
+     * answer into a failure.
      */
     @JvmStatic
     @JvmOverloads
@@ -54,8 +58,12 @@ object PersonalForget {
         onFailed: Runnable? = null,
     ) {
         val normalized = PersonalWordFilter.normalize(shownWord)
+        val sentenceRemoved = BooleanArray(1)
+        SentStartOverlays.storeFor(context, subtypeId).forget(normalized) { removed ->
+            sentenceRemoved[0] = removed
+        }
         PersonalDictionaries.storeFor(context, subtypeId).forget(normalized) { removed ->
-            if (!removed) onFailed?.run()
+            if (!removed || !sentenceRemoved[0]) onFailed?.run()
         }
         PersonalDictionaries.notifyErased()
     }

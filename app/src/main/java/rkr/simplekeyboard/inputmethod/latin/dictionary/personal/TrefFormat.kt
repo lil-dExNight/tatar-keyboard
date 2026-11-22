@@ -47,7 +47,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.personal
  * |-----:|-------------------------------------------------------------|
  * |    1 | typedWordByteLength u8                                      |
  * |    1 | replacementByteLength u8                                    |
- * |    1 | refusalCount u8 (>= 1, capped at [RefusedCorrections.REFUSAL_THRESHOLD]) |
+ * |    1 | refusalCount u8 (1..[RefusedCorrections.REFUSAL_THRESHOLD]) |
  * |    N | typed word bytes, UTF-8, NFC lowercase                       |
  * |    M | replacement bytes, UTF-8, NFC lowercase                      |
  */
@@ -80,6 +80,10 @@ internal object TrefFormat {
     /** Cap on the whole file; the reader rejects a larger file. */
     const val MAX_FILE_SIZE = 131_072L
 
+    /** The only refusal counts the writer emits. */
+    const val MIN_REFUSAL_COUNT = 1
+    const val MAX_REFUSAL_COUNT = RefusedCorrections.REFUSAL_THRESHOLD
+
     /** Inclusive code-point length bounds for both words of a record. */
     const val MIN_WORD_CODE_POINTS = 1
     const val MAX_WORD_CODE_POINTS = 24
@@ -90,6 +94,8 @@ internal object TrefFormat {
      * The on-disk file name for a subtype, e.g. `personal-refused-tt_RU-s1-f1.tref`. The schema and
      * format version are part of the name, so a reader never opens a file from an incompatible build.
      */
-    fun refusedCorrectionsFileName(subtypeTag: String): String =
-        "personal-refused-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tref"
+    fun refusedCorrectionsFileName(subtypeTag: String): String {
+        PersonalFormats.requireWriter(PersonalStoreFormat.REFUSALS, SCHEMA_ID, FORMAT_VERSION)
+        return "personal-refused-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tref"
+    }
 }

@@ -23,7 +23,7 @@ package rkr.simplekeyboard.inputmethod.latin.emoji
  * while searching is committed to the application's text field, no marked region is ever started
  * there, and nothing already in that field is read. What the keyboard normally routes into
  * `InputLogic` is diverted into this object for as long as the search is open, and the editor sees
- * only the emoji finally picked, through the ordinary `onTextInput` path.
+ * only the emoji finally picked, through LatinIME's explicit `onEmojiTextInput` path.
  *
  * Pure and Android-free, so every rule below is verifiable on the plain JVM: the length bound, the
  * rejection of control characters, code-point-aware backspace (a surrogate pair is one press), and
@@ -61,6 +61,21 @@ class EmojiSearchQuery {
         builder.appendCodePoint(codePoint)
         cacheValid = false
         return true
+    }
+
+    /**
+     * Appends a keyboard output-text event code point by code point, with the same control and
+     * length rules as [appendCodePoint]. Returns true when any code point was appended.
+     */
+    fun appendText(text: CharSequence): Boolean {
+        var changed = false
+        var index = 0
+        while (index < text.length) {
+            val codePoint = Character.codePointAt(text, index)
+            changed = appendCodePoint(codePoint) || changed
+            index += Character.charCount(codePoint)
+        }
+        return changed
     }
 
     /**

@@ -105,6 +105,22 @@ public final class RichInputConnection {
 
         /** Called by every edit: typing settles the language-cycle order. */
         void resetSubtypeCycleOrder();
+
+        /** Whether editor reads use SurroundingText; JVM hosts can select either branch. */
+        default boolean useSurroundingText() {
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
+        }
+
+        /** Posts a reload apply or completion to the UI thread. */
+        default void postReloadResult(final Runnable result) {
+            throw new IllegalStateException("No UI handler for editor reloads");
+        }
+
+        default void onNestedBatchBegin(final int nestLevel) {
+        }
+
+        default void onUnmatchedBatchEnd() {
+        }
     }
 
     /** The host of a wrapper without a service: no connection, no reads. */
@@ -129,6 +145,7 @@ public final class RichInputConnection {
     private InputConnection mIC;
     private int mNestLevel;
     private final ExecutorService mBackgroundThread;
+    private volatile boolean mShutdown;
 
     public RichInputConnection(final LatinIME latinIME) {
         this(latinIME, latinIME == null ? NO_EDITOR : new EditorHost() {
@@ -146,6 +163,21 @@ public final class RichInputConnection {
             public void resetSubtypeCycleOrder() {
                 RichInputMethodManager.getInstance().resetSubtypeCycleOrder();
             }
+
+            @Override
+            public void postReloadResult(final Runnable result) {
+                latinIME.mHandler.post(result);
+            }
+
+            @Override
+            public void onNestedBatchBegin(final int nestLevel) {
+                Log.e(TAG, "Nest level too deep : " + nestLevel);
+            }
+
+            @Override
+            public void onUnmatchedBatchEnd() {
+                Log.e(TAG, "Batch edit not in progress!");
+            }
         });
     }
 
@@ -155,6 +187,21 @@ public final class RichInputConnection {
         mIC = null;
         mNestLevel = 0;
         mBackgroundThread = Executors.newSingleThreadExecutor();
+    }
+
+    /**
+     * Discards pending cache reloads and closes this connection's worker. Late reads may finish,
+     * but their results are never published. Called on the UI thread from
+     * {@link LatinIME#onDestroy()}; repeated calls are safe.
+     */
+    public void shutdown() {
+        if (mShutdown) {
+            return;
+        }
+        mShutdown = true;
+        mReloadInFlight = false;
+        mReloadRequestedWhileInFlight = false;
+        mBackgroundThread.shutdownNow();
     }
 
     public boolean isConnected() {
@@ -191,12 +238,15 @@ public final class RichInputConnection {
                 }
             }
         } else {
-            Log.e(TAG, "Nest level too deep : " + mNestLevel);
+            mHost.onNestedBatchBegin(mNestLevel);
         }
     }
 
     public void endBatchEdit() {
-        if (mNestLevel <= 0) Log.e(TAG, "Batch edit not in progress!"); // TODO: exception instead
+        if (mNestLevel <= 0) {
+            mHost.onUnmatchedBatchEnd();
+            return;
+        }
         if (--mNestLevel == 0 && isConnected()) {
             try {
                 mIC.endBatchEdit();
@@ -297,6 +347,9 @@ public final class RichInputConnection {
      * Reload the cached text from the EditorInfo.
      */
     public void reloadTextCache(final EditorInfo editorInfo, final boolean restarting) {
+        if (mShutdown) {
+            return;
+        }
         refreshConnection();
         // The same gate as every reload: the field-start parcel is the field's text too.
         if (!mHost.mayReadEditorText()) {
@@ -346,6 +399,9 @@ public final class RichInputConnection {
      * Reload the cached text from the InputConnection.
      */
     public void reloadTextCache() {
+        if (mShutdown) {
+            return;
+        }
         refreshConnection();
         final InputConnection ic = mIC;
         // Every reload, a coalesced follow-up included, asks the gate: a password field's text is
@@ -371,17 +427,24 @@ public final class RichInputConnection {
                 // Check for staleness before the IPC: a reload the selection has already moved
                 // past never touches the editor.
                 if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
-                    Log.w(TAG, "Selection range modified before the reload reached the editor.");
+                    if (!mShutdown) {
+                        Log.w(TAG, "Selection range modified before the reload reached the editor.");
+                    }
                     return;
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (mHost.useSurroundingText()) {
                     final SurroundingText textAroundCursor =
                             ic.getSurroundingText(Constants.EDITOR_CONTENTS_CACHE_SIZE, Constants.EDITOR_CONTENTS_CACHE_SIZE, 0);
+                    if (mShutdown) {
+                        return;
+                    }
                     // Apply on the UI thread, where the expected selection is mutated, so the
                     // re-check there cannot race with those mutations.
-                    mLatinIME.mHandler.post(() -> {
+                    mHost.postReloadResult(() -> {
                         if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
-                            Log.w(TAG, "Selection range modified before thread completion.");
+                            if (!mShutdown) {
+                                Log.w(TAG, "Selection range modified before thread completion.");
+                            }
                         } else {
                             setTextAroundCursor(textAroundCursor);
 
@@ -400,9 +463,14 @@ public final class RichInputConnection {
                     }
                     if (null == textBeforeCursor) {
                         Log.e(TAG, "Unable to read before the cursor.");
-                        mLatinIME.mHandler.post(() -> {
+                        if (mShutdown) {
+                            return;
+                        }
+                        mHost.postReloadResult(() -> {
                             if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
-                                Log.w(TAG, "Selection range modified before thread completion.");
+                                if (!mShutdown) {
+                                    Log.w(TAG, "Selection range modified before thread completion.");
+                                }
                             } else {
                                 onBeforeCursorCacheReloaded("");
                             }
@@ -439,13 +507,18 @@ public final class RichInputConnection {
                         selection = "";
                     }
 
+                    if (mShutdown) {
+                        return;
+                    }
                     // One atomic apply on the UI thread, so a stale read never leaves a
                     // half-applied cache. The suggestion strip is refreshed only here because it
                     // depends on the text on both sides of the cursor; a dropped apply above
                     // leaves the cache and the strip untouched.
-                    mLatinIME.mHandler.post(() -> {
+                    mHost.postReloadResult(() -> {
                         if (reloadCaptureIsStale(expectedCacheGeneration, expectedSelStart, expectedSelEnd)) {
-                            Log.w(TAG, "Selection range modified before thread completion.");
+                            if (!mShutdown) {
+                                Log.w(TAG, "Selection range modified before thread completion.");
+                            }
                         } else {
                             onBeforeCursorCacheReloaded(beforeCursor);
                             mTextAfterCursor = keepWindowHead(afterCursor);
@@ -460,13 +533,13 @@ public final class RichInputConnection {
                     applyPosted = true;
                 }
             } catch (final RuntimeException e) {
-                // See the class javadoc. The finally below still completes the reload.
+                // See the class javadoc. Unless shutdown already cleared the state, finally completes.
             } finally {
-                if (!applyPosted) {
+                if (!applyPosted && !mShutdown) {
                     // The reload ends without applying (stale, disconnected, or a dying editor's
                     // RuntimeException): the in-flight flag must still clear, and a request that
                     // arrived meanwhile must still produce its one follow-up.
-                    mLatinIME.mHandler.post(this::finishReloadTextCache);
+                    mHost.postReloadResult(this::finishReloadTextCache);
                 }
             }
         });
@@ -474,11 +547,15 @@ public final class RichInputConnection {
 
     /**
      * UI-thread completion of every background reload, applied or not: clears the in-flight flag
-     * and runs the single follow-up reload that coalesced requests folded into. Package-private
-     * for the JVM tests.
+     * and, unless shut down, runs the single follow-up reload that coalesced requests folded into.
+     * Package-private for the JVM tests.
      */
     /* package */ void finishReloadTextCache() {
         mReloadInFlight = false;
+        if (mShutdown) {
+            mReloadRequestedWhileInFlight = false;
+            return;
+        }
         if (mReloadRequestedWhileInFlight) {
             mReloadRequestedWhileInFlight = false;
             reloadTextCache();
@@ -562,12 +639,13 @@ public final class RichInputConnection {
     }
 
     /**
-     * The staleness verdict of a reload's captured state: the clear generation and the expected
-     * selection must both still be current. Android-free and package-private for the JVM tests.
+     * The staleness verdict of a reload's captured state: shutdown always wins; otherwise the
+     * clear generation and the expected selection must both still be current. Android-free and
+     * package-private for the JVM tests.
      */
     /* package */ boolean reloadCaptureIsStale(final int expectedCacheGeneration,
             final int expectedSelStart, final int expectedSelEnd) {
-        return expectedCacheGeneration != mCacheGeneration
+        return mShutdown || expectedCacheGeneration != mCacheGeneration
                 || expectedSelStart != mExpectedSelStart || expectedSelEnd != mExpectedSelEnd;
     }
 

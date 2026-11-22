@@ -221,6 +221,7 @@
     <string name="personal_dictionary_unreadable">Не удалось прочитать сохранённые слова. Откройте «Сохранённые слова», чтобы вернуть то, что уцелело.</string>
     <string name="personal_bigrams_unreadable">Не удалось прочитать пары слов. Откройте «Сохранённые слова», чтобы вернуть то, что уцелело.</string>
     <string name="personal_emoji_unreadable">Не удалось прочитать изученные эмодзи. Откройте «Сохранённые слова», чтобы вернуть то, что уцелело.</string>
+    <string name="personal_sentence_starts_unreadable">Не удалось прочитать начальные слова. Откройте «Сохранённые слова», чтобы вернуть то, что уцелело.</string>
     <string name="personal_dictionary_quarantine_title">Слова, которые не удалось прочитать</string>
     <plurals name="personal_dictionary_quarantine_partial">
         <item quantity="one">Можно вернуть %1$d слово. Остальное потеряно.</item>
@@ -259,6 +260,25 @@
     <string name="personal_bigrams_quarantine_discard_confirm">Удалить пары слов, которые не удалось прочитать? Это нельзя отменить.</string>
     <string name="personal_bigrams_quarantine_restore_failed">Не удалось вернуть пары. Попробуйте ещё раз.</string>
     <string name="personal_bigrams_quarantine_discard_failed">Не удалось удалить. Попробуйте ещё раз.</string>
+    <string name="personal_sentence_starts_quarantine_title">Начальные слова, которые не удалось прочитать</string>
+    <plurals name="personal_sentence_starts_quarantine_partial">
+        <item quantity="one">Можно вернуть %1$d слово. Остальное потеряно.</item>
+        <item quantity="few">Можно вернуть %1$d слова. Остальное потеряно.</item>
+        <item quantity="many">Можно вернуть %1$d слов. Остальное потеряно.</item>
+        <item quantity="other">Можно вернуть %1$d слова. Остальное потеряно.</item>
+    </plurals>
+    <plurals name="personal_sentence_starts_quarantine_whole">
+        <item quantity="one">Можно вернуть %1$d слово.</item>
+        <item quantity="few">Можно вернуть %1$d слова.</item>
+        <item quantity="many">Можно вернуть %1$d слов.</item>
+        <item quantity="other">Можно вернуть %1$d слова.</item>
+    </plurals>
+    <string name="personal_sentence_starts_quarantine_none">Вернуть начальные слова не получится.</string>
+    <string name="personal_sentence_starts_quarantine_restore">Вернуть начальные слова</string>
+    <string name="personal_sentence_starts_quarantine_discard">Удалить их</string>
+    <string name="personal_sentence_starts_quarantine_discard_confirm">Удалить начальные слова, которые не удалось прочитать? Это нельзя отменить.</string>
+    <string name="personal_sentence_starts_quarantine_restore_failed">Не удалось вернуть начальные слова. Попробуйте ещё раз.</string>
+    <string name="personal_sentence_starts_quarantine_discard_failed">Не удалось удалить. Попробуйте ещё раз.</string>
     <plurals name="personal_emoji_count">
         <item quantity="one">%1$d изученный эмодзи</item>
         <item quantity="few">%1$d изученных эмодзи</item>
@@ -335,6 +355,7 @@
     <string name="backup_import_confirm_action">Заменить</string>
     <string name="backup_export_done">Резервная копия сохранена.</string>
     <string name="backup_export_failed">Не удалось сохранить резервную копию.</string>
+    <string name="backup_export_failed_partial">Не удалось сохранить резервную копию. Частично записанный документ мог остаться.</string>
     <string name="backup_import_done">Резервная копия восстановлена.</string>
     <string name="backup_import_privacy_changed">Резервная копия восстановлена. Проверьте настройки «Личный словарь» и «Пауза обучения».</string>
     <string name="backup_import_failed_invalid">Это не резервная копия этой клавиатуры. Ничего не изменено.</string>

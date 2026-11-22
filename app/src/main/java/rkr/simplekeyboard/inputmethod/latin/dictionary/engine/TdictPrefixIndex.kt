@@ -348,6 +348,7 @@ internal class TdictPrefixIndex private constructor(
         autocorrectAdviceEnabled = enabled
         lastAutocorrectAdvice = null
         lastAutocorrectProbeCount = 0
+        lastAutocorrectOverBudget = false
     }
 
     // Test-only counters of the last lookup's typo-recovery work: plain ints assigned on the hot
@@ -362,8 +363,11 @@ internal class TdictPrefixIndex private constructor(
     internal var lastFuzzyProbeCount = 0
         private set
 
-    // Same for the autocorrect pass: class #4 probes issued by the last advice computation.
+    // Same for the autocorrect pass: class #4 probes issued by the last advice computation and
+    // whether either variant-generation budget tripped. Both are defined on every return path.
     internal var lastAutocorrectProbeCount = 0
+        private set
+    internal var lastAutocorrectOverBudget = false
         private set
 
     // Typo-recovery accumulator, private to one lookup() call and reset on each entry.
@@ -484,6 +488,7 @@ internal class TdictPrefixIndex private constructor(
         lastTopExactFrequency = 0L
         lastAutocorrectAdvice = null
         lastAutocorrectProbeCount = 0
+        lastAutocorrectOverBudget = false
         if (prefixLength == 0 ||
             prefixLength > MAX_PREFIX_BYTES ||
             !isValidUtf8Scalar(normalizedPrefixUtf8)
@@ -589,7 +594,11 @@ internal class TdictPrefixIndex private constructor(
             )
             // On a budget overrun or malformed input give no advice: a partial variant set could
             // hide the second candidate that makes the typo ambiguous.
-            if (emitted < 0) return
+            if (emitted < 0) {
+                lastAutocorrectProbeCount = autocorrectProbesUsed
+                lastAutocorrectOverBudget = true
+                return
+            }
         }
 
         // The DL-1 tier, probe-first. Skipped once the word is already ambiguous: further probes
@@ -625,7 +634,11 @@ internal class TdictPrefixIndex private constructor(
                     autocorrectProbeConsumer,
                 ) < 0
             }
-            if (failed) return
+            if (failed) {
+                lastAutocorrectProbeCount = autocorrectProbesUsed
+                lastAutocorrectOverBudget = true
+                return
+            }
         }
         lastAutocorrectProbeCount = autocorrectProbesUsed
 
@@ -1811,6 +1824,30 @@ internal class TdictPrefixIndex private constructor(
     }
 
     /**
+     * Canonical, bounded u32 decoding for [open]'s structural walk only. The lookup decoders above
+     * stay unchanged because a published block has already passed this check or the full validator.
+     */
+    private fun decodeOpeningVarint(offset: Int, limit: Int) {
+        var value = 0
+        var shift = 0
+        var cursor = offset
+        var lastGroup = 0
+        while (true) {
+            if (cursor >= limit) throw IllegalArgumentException("truncated varint")
+            val byte = unsigned(bytes.get(cursor))
+            cursor++
+            if (shift == 28 && byte > 0x0f) throw IllegalArgumentException("varint exceeds u32")
+            value = value or ((byte and 0x7f) shl shift)
+            lastGroup = byte and 0x7f
+            if (byte and 0x80 == 0) break
+            shift += 7
+        }
+        if (shift > 0 && lastGroup == 0) throw IllegalArgumentException("overlong varint")
+        varintValue = value
+        varintNext = cursor
+    }
+
+    /**
      * Bulk-fetches block [block]'s raw bytes into [scratch] with one relative get off
      * [blockFetchView]. The extent comes from the block index, the last block ending at the buffer
      * limit ([open] validated both). A corrupt extent throws, and lookup()'s catch returns an
@@ -2022,7 +2059,7 @@ internal class TdictPrefixIndex private constructor(
                             for (offset in 0 until firstLength) current[offset] = buffer.get(firstStart + offset)
                             length = firstLength
                         } else {
-                            index.decodeVarint(cursor)
+                            index.decodeOpeningVarint(cursor, blockEnd)
                             val prefixLength = index.varintValue
                             cursor = index.varintNext
                             require(prefixLength <= firstLength)
@@ -2051,7 +2088,7 @@ internal class TdictPrefixIndex private constructor(
                         previousLength = length
                     }
                     for (entry in 0 until inBlock) {
-                        index.decodeVarint(cursor)
+                        index.decodeOpeningVarint(cursor, blockEnd)
                         require(index.varintValue != 0)
                         cursor = index.varintNext
                     }

@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.emoji
 
 import java.io.File
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -122,6 +123,34 @@ class EmojiSearchTest {
         // A prefix cannot begin inside a word of a Tatar name or alias.
         assertTrue(results(index, "маю б").isEmpty())
         assertTrue(results(index, "орты").isEmpty())
+    }
+
+    @Test
+    fun composedAndDecomposedQueriesAndDataShareResultsAndPrefixRanking() {
+        val composed = "caf\u00e9"
+        val decomposed = "cafe\u0301"
+        val index = indexOf(
+            "☕\t$decomposed\t$decomposed boisson",
+            "🐱\tchat\tchat $composed animal",
+        )
+
+        val expected = listOf("☕", "🐱")
+        assertEquals(expected, results(index, composed))
+        assertEquals(expected, results(index, decomposed))
+        assertEquals(composed, index.resultNameAt(0, "ru"))
+    }
+
+    @Test
+    fun queryLowercasingDoesNotDependOnTheDefaultLocale() {
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"))
+            assertEquals("iyi", EmojiSearchIndex.normalize("IYI"))
+            val index = indexOf("😀\tiyi\tiyi good")
+            assertEquals(listOf("😀"), results(index, "IYI"))
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 
     @Test
@@ -367,6 +396,17 @@ class EmojiSearchTest {
         assertTrue(query.clear())
         assertTrue(query.isEmpty())
         assertFalse(query.clear())
+    }
+
+    @Test
+    fun oneOutputTextEventAppendsEveryCodePoint() {
+        val query = EmojiSearchQuery()
+
+        assertTrue(query.appendText("ко🐱т"))
+        assertEquals("ко🐱т", query.text())
+        assertFalse(query.appendText(""))
+        assertTrue(query.backspace())
+        assertEquals("ко🐱", query.text())
     }
 
     /** One backspace removes one character even when it is a surrogate pair. */

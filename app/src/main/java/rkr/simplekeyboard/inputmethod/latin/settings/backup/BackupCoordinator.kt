@@ -108,8 +108,8 @@ internal fun submitBackupTask(
  *
  * Both directions run on one dedicated worker. Personal files and settings are written through
  * their live owners (see the target's `replacePersonalFile` and `replacePreferences`). Nothing
- * here logs, and no callback carries content: the answers are a boolean for export and a
- * [BackupImportResult] for import.
+ * here logs, and no callback carries content: the answers are a [BackupExportResult] for export
+ * and a [BackupImportResult] for import.
  */
 internal class BackupCoordinator(
     context: Context,
@@ -129,36 +129,59 @@ internal class BackupCoordinator(
     private val userUnlocked: Boolean
         get() = appContext.getSystemService(UserManager::class.java)?.isUserUnlocked ?: false
 
-    /** Writes the archive to [uri], encrypted when [password] is supplied; answers on the UI thread. */
-    fun exportTo(uri: Uri, password: CharArray? = null, onFinished: (Boolean) -> Unit) {
+    /**
+     * Writes the archive to [uri], encrypted when [password] is supplied, then re-reads and fully
+     * verifies it before answering. Success is not an atomic-replacement claim: a provider can
+     * leave a document after a failed write, so [BackupDocumentWrite] reports that possibility.
+     */
+    fun exportTo(
+        uri: Uri,
+        password: CharArray? = null,
+        onFinished: (BackupExportResult) -> Unit,
+    ) {
         val accepted = submitBackupTask(executor, password) {
-            var documentTouched = false
-            val written = try {
+            val result = try {
                 if (!userUnlocked) {
-                    false
+                    BackupExportResult.FAILED
                 } else {
-                    val bytes = BackupTransfer.export(target, password)
-                    if (bytes == null) {
-                        false
-                    } else {
-                        documentTouched = true
-                        appContext.contentResolver.openOutputStream(uri, "w")?.use { output ->
-                            output.write(bytes)
-                        } != null
-                    }
+                    exportDocumentTo(uri, password)
                 }
             } catch (_: Exception) {
-                false
+                BackupExportResult.FAILED
+            } finally {
+                password?.fill('\u0000')
             }
-            password?.fill('\u0000')
-            if (!written && documentTouched) {
-                // A failed write may have left a partial document behind; remove it when the
-                // provider allows, so no truncated archive masquerades as a backup.
-                runCatching { DocumentsContract.deleteDocument(appContext.contentResolver, uri) }
-            }
-            uiPoster { onFinished(written) }
+            uiPoster { onFinished(result) }
         }
-        if (!accepted) uiPoster { onFinished(false) }
+        if (!accepted) uiPoster { onFinished(BackupExportResult.FAILED) }
+    }
+
+    /** One export attempt. [password] still holds its bytes for the encrypted verification. */
+    private fun exportDocumentTo(uri: Uri, password: CharArray?): BackupExportResult {
+        val archive = try {
+            // `BackupTransfer.export` consumes the password it is given; verification needs the
+            // original one after the write, so the task submits a throwaway copy to it.
+            val archivePassword = password?.copyOf()
+            try {
+                if (archivePassword == null) {
+                    BackupTransfer.export(target)
+                } else {
+                    BackupTransfer.export(target, archivePassword)
+                }
+            } finally {
+                archivePassword?.fill('\u0000')
+            }
+        } catch (_: Exception) {
+            return BackupExportResult.FAILED
+        } ?: return BackupExportResult.FAILED
+
+        return BackupDocumentWrite.writeDocument(
+            archive,
+            openOutputStream = { appContext.contentResolver.openOutputStream(uri, "w") },
+            readBack = { readBounded(uri) },
+            verifyArchive = { bytes -> BackupDocumentWrite.verifyExportedArchive(bytes, password) },
+            delete = { DocumentsContract.deleteDocument(appContext.contentResolver, uri) },
+        )
     }
 
     /** Restores [uri], asking for a password through PASSWORD_REQUIRED when encrypted. */

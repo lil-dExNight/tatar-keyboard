@@ -91,5 +91,8 @@ internal object TcutFormat {
      * The on-disk file name. The schema and format version are part of the name, so a reader never
      * opens a file from an incompatible build. No subtype tag: the list is shared by all layouts.
      */
-    fun shortcutsFileName(): String = "shortcuts-s$SCHEMA_ID-f$FORMAT_VERSION.tcut"
+    fun shortcutsFileName(): String {
+        PersonalFormats.requireWriter(PersonalStoreFormat.SHORTCUTS, SCHEMA_ID, FORMAT_VERSION)
+        return "shortcuts-s$SCHEMA_ID-f$FORMAT_VERSION.tcut"
+    }
 }

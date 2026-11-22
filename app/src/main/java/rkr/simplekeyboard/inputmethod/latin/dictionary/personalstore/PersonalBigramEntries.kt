@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersbFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalBigrams
 import java.nio.ByteBuffer
@@ -164,6 +166,9 @@ internal class PersonalBigramEntries private constructor(
 
     /** The in-memory bytes to be written whole to disk, in the frozen `.tpersb` layout. */
     fun serialize(subtypeTag: String): ByteArray {
+        PersonalFormats.requireWriter(
+            PersonalStoreFormat.BIGRAMS, TpersbFormat.SCHEMA_ID, TpersbFormat.FORMAT_VERSION,
+        )
         val encodedContexts = contexts.map { it.toByteArray(StandardCharsets.UTF_8) }
         val encodedSuccessors = successorRawForms.map { it.toByteArray(StandardCharsets.UTF_8) }
         val payloadSize = (0 until size).sumOf {

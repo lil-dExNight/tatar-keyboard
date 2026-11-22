@@ -210,7 +210,7 @@ class RichInputConnectionRobustnessContractTest {
         )
         // Region one: from the background task's start to the first posted apply (the S+ branch).
         val background = reloadBody.substringAfter("mBackgroundThread.execute(() -> {")
-        val firstPost = background.indexOf("mLatinIME.mHandler.post")
+        val firstPost = background.indexOf("mHost.postReloadResult")
         val sPlusSection = background.substring(0, firstPost)
         for (write in writes) {
             assertFalse("the S+ background section must not write the cache: $write",
@@ -218,7 +218,7 @@ class RichInputConnectionRobustnessContractTest {
         }
         // Region two: the pre-S reader, from the S+ apply's close to the next posted apply.
         val sPlusClose = background.indexOf("});", firstPost)
-        val preSApply = background.indexOf("mLatinIME.mHandler.post(() -> {", sPlusClose)
+        val preSApply = background.indexOf("mHost.postReloadResult(() -> {", sPlusClose)
         val preSSection = background.substring(sPlusClose, preSApply)
         for (write in writes) {
             assertFalse("the pre-S reader must not write the cache: $write",
@@ -231,7 +231,7 @@ class RichInputConnectionRobustnessContractTest {
         // Every apply block: a posted runnable whose FIRST act is the staleness re-check (the
         // captured clear generation and the captured selection), with the cache writes behind it
         // and the completion at the end.
-        val applies = Regex("mLatinIME\\.mHandler\\.post\\(\\(\\) -> \\{")
+        val applies = Regex("mHost\\.postReloadResult\\(\\(\\) -> \\{")
             .findAll(reloadBody).toList()
         assertEquals("the reload posts applies (S+, pre-S null, pre-S full)", 3, applies.size)
         val recheckCall =
@@ -269,7 +269,7 @@ class RichInputConnectionRobustnessContractTest {
     fun aReloadThatAppliesNothingStillClearsTheInFlightFlag() {
         assertTrue(
             "the finally posts the bare completion (stale/disconnected/dying-editor paths)",
-            reloadBody.contains("mLatinIME.mHandler.post(this::finishReloadTextCache);"),
+            reloadBody.contains("mHost.postReloadResult(this::finishReloadTextCache);"),
         )
         // A throwing editor also ends in the same bare completion, never in a stuck in-flight
         // flag. The catch is

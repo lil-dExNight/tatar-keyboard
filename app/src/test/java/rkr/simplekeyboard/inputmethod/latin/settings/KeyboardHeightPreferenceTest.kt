@@ -156,8 +156,7 @@ class KeyboardHeightPreferenceTest {
         assertTrue(layoutSet.contains("public Builder setKeyboardGeometry(final int keyboardWidth,"
             + " final int keyboardHeight,"))
         // 3. mHeight participates in equals()/hashCode(): a changed height can never hit a
-        // stale sKeyboardCache entry, which is why no cache clear is needed for this pref
-        // (unlike mShowEmojiKey, which KeyboardId deliberately ignores).
+        // stale sKeyboardCache entry, just like the other layout-affecting preferences.
         val keyboardId = java("rkr/simplekeyboard/inputmethod/keyboard/KeyboardId.java")
         val hashBody = keyboardId.substringAfter("private static int computeHashCode(")
             .substringBefore("private boolean equalsId(")

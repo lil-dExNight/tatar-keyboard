@@ -16,6 +16,8 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TcutValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TextShortcuts
@@ -328,6 +330,17 @@ internal class TextShortcutStore(
         if (!directory.isDirectory) {
             snapshot = TextShortcuts.EMPTY
             return
+        }
+        if (!PersonalFormatFileMigration(PersonalFormats.migrations, fileOps, outputOpener, clock)
+                .migrateIfNeeded(
+                    PersonalStoreFormat.SHORTCUTS,
+                    TcutFormat.SCHEMA_ID,
+                    TcutFormat.FORMAT_VERSION,
+                    null,
+                    directory,
+                )
+        ) {
+            throw IOException("personal format migration failed")
         }
         cleanupTemps(directory)
         val file = File(directory, TcutFormat.shortcutsFileName())

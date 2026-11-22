@@ -285,7 +285,7 @@ internal class TatBigrPrefixIndex private constructor(
                 require(context > previousKey)
                 previousKey = context
                 val count = trigramCountAt(first + position)
-                require(count >= 1)
+                require(count in 1..MAX_TRIGRAM_SUCCESSORS)
                 pairTotal += count
                 require(pairTotal <= layout.pairCount)
                 repeat(count) {
@@ -426,6 +426,7 @@ internal class TatBigrPrefixIndex private constructor(
         private const val HEAD_BLOCK_SIZE = 64
         private const val TRIGRAM_BLOCK_SIZE = 64
         private const val TRIGRAM_BLOCK_RECORD_BYTES = 16
+        private const val MAX_TRIGRAM_SUCCESSORS = 8
         private const val TRIGRAM_EXTENSION_OFFSET = 128
         private const val TRIGRAM_RESERVED_OFFSET = 176
         // One per strip cell (SuggestionStripState.CELL_COUNT): the NEXT_WORD display serves at

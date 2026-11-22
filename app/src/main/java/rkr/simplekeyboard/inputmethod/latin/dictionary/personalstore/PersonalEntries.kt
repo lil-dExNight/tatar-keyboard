@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedPersonalDictionary
 import java.nio.ByteBuffer
@@ -128,6 +130,9 @@ internal class PersonalEntries private constructor(
 
     /** The in-memory bytes to be written whole to disk, in the frozen `.tpers` layout. */
     fun serialize(subtypeTag: String): ByteArray {
+        PersonalFormats.requireWriter(
+            PersonalStoreFormat.WORDS, TpersFormat.SCHEMA_ID, TpersFormat.FORMAT_VERSION,
+        )
         val encoded = rawForms.map { it.toByteArray(StandardCharsets.UTF_8) }
         val payloadSize = encoded.sumOf { TpersFormat.RECORD_HEADER_SIZE + it.size }
         val fileSize = TpersFormat.HEADER_SIZE + payloadSize

@@ -139,6 +139,21 @@ class PersonalForgetTest {
     }
 
     @Test
+    fun stripForgetPurgesTheSentenceOverlayAndCombinesBothFailureAnswers() {
+        // The facade needs a Context, so the store behavior is exercised in
+        // SentStartQuarantineRecoveryTest and this Android wiring is checked here.
+        val source = File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/dictionary/personalstore/PersonalForget.kt")
+            .readText()
+        val confirm = source.substringAfter("fun confirmForget(")
+        assertTrue(confirm.contains("SentStartOverlays.storeFor(context, subtypeId).forget(normalized)"))
+        assertTrue("the sentence answer is queued before the dictionary answer",
+            confirm.indexOf("SentStartOverlays.storeFor") <
+                confirm.indexOf("PersonalDictionaries.storeFor"))
+        assertTrue(confirm.contains("if (!removed || !sentenceRemoved[0]) onFailed?.run()"))
+    }
+
+    @Test
     fun theDialogNeverCommitsTextAndIsGatedBySetting() {
         val router = ime.substringAfter("private void onStripWordLongPress(")
             .substringBefore("private void showForgetPersonalWordDialog(")

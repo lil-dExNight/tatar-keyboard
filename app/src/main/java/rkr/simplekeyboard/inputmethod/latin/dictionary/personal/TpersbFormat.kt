@@ -107,6 +107,8 @@ internal object TpersbFormat {
      * The on-disk file name for a subtype, e.g. `personal-bigrams-tt_RU-s1-f1.tpersb`, next to the
      * word file. See [TpersFormat.personalFileName].
      */
-    fun personalBigramsFileName(subtypeTag: String): String =
-        "personal-bigrams-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpersb"
+    fun personalBigramsFileName(subtypeTag: String): String {
+        PersonalFormats.requireWriter(PersonalStoreFormat.BIGRAMS, SCHEMA_ID, FORMAT_VERSION)
+        return "personal-bigrams-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpersb"
+    }
 }

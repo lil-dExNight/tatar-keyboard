@@ -27,12 +27,12 @@ class BackupOutcomeSourceContractTest {
     fun anIncompleteLocalSnapshotDoesNotTouchThePickedDocument() {
         val coordinator = source(
             "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
-        val export = coordinator.substringAfter("fun exportTo(").substringBefore("fun importFrom(")
-        val incomplete = export.substringAfter("val bytes = BackupTransfer.export(target, password)")
-            .substringBefore("} catch (_: Exception)")
-        assertTrue(incomplete.contains("if (bytes == null)"))
-        assertTrue(incomplete.substringBefore("documentTouched = true").contains("false"))
-        assertTrue(export.contains("if (!written && documentTouched)"))
+        val export = coordinator.substringAfter("private fun exportDocumentTo(")
+            .substringBefore("fun importFrom(")
+        val failedSnapshot = export.indexOf("?: return BackupExportResult.FAILED")
+        val documentWrite = export.indexOf("BackupDocumentWrite.writeDocument(")
+        assertTrue("a null snapshot must return before opening the document",
+            failedSnapshot >= 0 && documentWrite > failedSnapshot)
     }
 
     /** Each kind is opened through its owning store, and the answer is awaited, not assumed. */
@@ -59,6 +59,21 @@ class BackupOutcomeSourceContractTest {
     }
 
     @Test
+    fun exportFailureCanNameAPossiblePartialDocument() {
+        val host = source("java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt")
+        val outcome = host.substringAfter("private fun showBackupExportOutcome(")
+            .substringBefore("private fun handleBackupImportResult(")
+        assertTrue(outcome.contains(
+            "BackupExportResult.FAILED_WITH_POSSIBLE_PARTIAL_DOCUMENT ->"))
+        assertTrue(outcome.contains("R.string.backup_export_failed_partial"))
+        for (folder in listOf("values", "values-ru", "values-tt")) {
+            assertTrue("$folder is missing the partial-document warning",
+                source("res/$folder/strings.xml").contains(
+                    "name=\"backup_export_failed_partial\""))
+        }
+    }
+
+    @Test
     fun privacyChangesHaveALocalizedImportOutcome() {
         val host = source("java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt")
         assertTrue(host.contains("BackupImportResult.IMPORTED_PRIVACY_CHANGED ->"))
@@ -73,7 +88,8 @@ class BackupOutcomeSourceContractTest {
     @Test
     fun onlyValidationFailureSaysNothingChanged() {
         val host = source("java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt")
-        val outcomes = host.substringAfter("val messageRes = when (result)").substringBefore("Toast.makeText")
+        val outcomes = host.substringAfter("private fun handleBackupImportResult")
+            .substringAfter("val messageRes = when (result)").substringBefore("Toast.makeText")
         val invalid = outcomes.substringAfter("BackupImportResult.INVALID_FILE ->")
             .substringBefore("BackupImportResult.WRITE_FAILED")
         val write = outcomes.substringAfter("BackupImportResult.WRITE_FAILED ->")

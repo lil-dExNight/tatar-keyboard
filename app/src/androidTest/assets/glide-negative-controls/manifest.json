@@ -1,0 +1,380 @@
+{
+  "inputs": [
+    "research/glide-evaluation/datasets/session-2-tt-portrait.jsonl",
+    "research/glide-evaluation/datasets/session-2-tt-landscape.jsonl"
+  ],
+  "pairs": [
+    {
+      "negative_record_id": "23bdf97a-100",
+      "positive_record_id": "23bdf97a-54"
+    },
+    {
+      "negative_record_id": "23bdf97a-101",
+      "positive_record_id": "23bdf97a-90"
+    },
+    {
+      "negative_record_id": "23bdf97a-102",
+      "positive_record_id": "23bdf97a-54"
+    },
+    {
+      "negative_record_id": "23bdf97a-103",
+      "positive_record_id": "23bdf97a-54"
+    },
+    {
+      "negative_record_id": "23bdf97a-153",
+      "positive_record_id": "23bdf97a-106"
+    },
+    {
+      "negative_record_id": "23bdf97a-154",
+      "positive_record_id": "23bdf97a-104"
+    },
+    {
+      "negative_record_id": "23bdf97a-155",
+      "positive_record_id": "23bdf97a-151"
+    },
+    {
+      "negative_record_id": "23bdf97a-157",
+      "positive_record_id": "23bdf97a-110"
+    },
+    {
+      "negative_record_id": "23bdf97a-49",
+      "positive_record_id": "23bdf97a-28"
+    },
+    {
+      "negative_record_id": "23bdf97a-50",
+      "positive_record_id": "23bdf97a-42"
+    },
+    {
+      "negative_record_id": "23bdf97a-51",
+      "positive_record_id": "23bdf97a-16"
+    },
+    {
+      "negative_record_id": "23bdf97a-52",
+      "positive_record_id": "23bdf97a-45"
+    },
+    {
+      "negative_record_id": "23bdf97a-53",
+      "positive_record_id": "23bdf97a-42"
+    },
+    {
+      "negative_record_id": "23bdf97a-99",
+      "positive_record_id": "23bdf97a-77"
+    },
+    {
+      "negative_record_id": "83f39982-103",
+      "positive_record_id": "83f39982-53"
+    },
+    {
+      "negative_record_id": "83f39982-104",
+      "positive_record_id": "83f39982-82"
+    },
+    {
+      "negative_record_id": "83f39982-105",
+      "positive_record_id": "83f39982-74"
+    },
+    {
+      "negative_record_id": "83f39982-106",
+      "positive_record_id": "83f39982-92"
+    },
+    {
+      "negative_record_id": "83f39982-107",
+      "positive_record_id": "83f39982-94"
+    },
+    {
+      "negative_record_id": "83f39982-159",
+      "positive_record_id": "83f39982-142"
+    },
+    {
+      "negative_record_id": "83f39982-160",
+      "positive_record_id": "83f39982-109"
+    },
+    {
+      "negative_record_id": "83f39982-161",
+      "positive_record_id": "83f39982-144"
+    },
+    {
+      "negative_record_id": "83f39982-162",
+      "positive_record_id": "83f39982-122"
+    },
+    {
+      "negative_record_id": "83f39982-163",
+      "positive_record_id": "83f39982-136"
+    },
+    {
+      "negative_record_id": "83f39982-48",
+      "positive_record_id": "83f39982-13"
+    },
+    {
+      "negative_record_id": "83f39982-49",
+      "positive_record_id": "83f39982-35"
+    },
+    {
+      "negative_record_id": "83f39982-50",
+      "positive_record_id": "83f39982-20"
+    },
+    {
+      "negative_record_id": "83f39982-51",
+      "positive_record_id": "83f39982-27"
+    },
+    {
+      "negative_record_id": "83f39982-52",
+      "positive_record_id": "83f39982-5"
+    }
+  ],
+  "positive_records": [
+    {
+      "record_id": "23bdf97a-104",
+      "sha256": "afbfcda1440b131f104ae4504005efb81b03d4f6f9c17f2ad574725907aa7961"
+    },
+    {
+      "record_id": "23bdf97a-106",
+      "sha256": "1da76d868be5447c173589661ca476786add00ace25bc56313509be038148a2f"
+    },
+    {
+      "record_id": "23bdf97a-110",
+      "sha256": "36687ccb3621b4f1854860b4c78066a7409637955e8d6fc876c10a3f46c37b86"
+    },
+    {
+      "record_id": "23bdf97a-151",
+      "sha256": "de0426b5bb284243112107530cc48436bb3a680f04b591624530bb0678551e4f"
+    },
+    {
+      "record_id": "23bdf97a-16",
+      "sha256": "7f98a6716d0be506d1af9a9cb95134fe819169e5bcbc5f63fee649f9c9798d14"
+    },
+    {
+      "record_id": "23bdf97a-28",
+      "sha256": "f6d648a46d2a459ae0225477eb67bbe6fa31d5ee6d9b6b0beff836509f65279f"
+    },
+    {
+      "record_id": "23bdf97a-42",
+      "sha256": "78d9c121ad1fbb5374e4f1f19dac06a826c1c1028fbc0f774a1cf5b34ca648f8"
+    },
+    {
+      "record_id": "23bdf97a-45",
+      "sha256": "6d0ac07db45b4255c685599ee0b6cc63197c92535497a9d8525c79d68bcb39c4"
+    },
+    {
+      "record_id": "23bdf97a-54",
+      "sha256": "a034041e39a662f1bdd942f61a08ba6d9ce145013526644c1841efb996529afe"
+    },
+    {
+      "record_id": "23bdf97a-77",
+      "sha256": "0411a4a2583d979dfd219bdecdac043e7dbf7709464435148a72815fdaf6bcfa"
+    },
+    {
+      "record_id": "23bdf97a-90",
+      "sha256": "f10e62a809fe183fb94704bd090fc1b549dfe67b2a09711f117e82e84da7a7b7"
+    },
+    {
+      "record_id": "83f39982-109",
+      "sha256": "3dd20833f2b0ce8de92d3c58b8f7e84063682863b6f37266781f3c09d0c3e46a"
+    },
+    {
+      "record_id": "83f39982-122",
+      "sha256": "145eceb631e6f0f0fe02efdb737f13379011722b4dd03e00b6f10dcc9eb14dd4"
+    },
+    {
+      "record_id": "83f39982-13",
+      "sha256": "ee7dd9ebc2716b95ae462995a765bd638e1a6f9e0c4484bfa0219a129daa5d04"
+    },
+    {
+      "record_id": "83f39982-136",
+      "sha256": "37c282c4385c795a691bfc86ada5095b0da81474d593988888d7872c460359d2"
+    },
+    {
+      "record_id": "83f39982-142",
+      "sha256": "2f2464dcf1af21a54cf5bff4570525874b3f7e1472b6250af67839be6dfc9963"
+    },
+    {
+      "record_id": "83f39982-144",
+      "sha256": "a467a03e3cf877793234fe865f8b4155038f4e953602f04d4e8202bf80e8b2b5"
+    },
+    {
+      "record_id": "83f39982-20",
+      "sha256": "75e262b1770c530928e2c8542ac567eb7eab2a491d8ac592c8826a62f3176814"
+    },
+    {
+      "record_id": "83f39982-27",
+      "sha256": "ec97b696cb2ce1ab74c90b5e55151edcfbee8f738767539d31c0774142f60acb"
+    },
+    {
+      "record_id": "83f39982-35",
+      "sha256": "340532814a1fec23a073bb1f705a8ad135aae67bc5a5b62f97c09f50180197d5"
+    },
+    {
+      "record_id": "83f39982-5",
+      "sha256": "cddc23de7f5aa161536524fc59328c47eef58b4d95f4c4f49ce331e125633a39"
+    },
+    {
+      "record_id": "83f39982-53",
+      "sha256": "db426f8926d91719bd3585fa2ea54fb99f4691e85528689c282fd0de0a67faf6"
+    },
+    {
+      "record_id": "83f39982-74",
+      "sha256": "08024bc31b1d18dc30b425b39b921ee86443afcaff1e83b5ac695da65aa64da0"
+    },
+    {
+      "record_id": "83f39982-82",
+      "sha256": "de9131899c4d9f55c97666a40d1899baf3a4a4a06f79b8d1330f85a0c04412d8"
+    },
+    {
+      "record_id": "83f39982-92",
+      "sha256": "b2754b4d072be5bb4757018305c02c75cbf3796e250b6b58cec3900ec2cbf5a8"
+    },
+    {
+      "record_id": "83f39982-94",
+      "sha256": "92b470df971a87b6e404dcd35fc833dadd245a48210da344ea1fc7faaafd61d7"
+    }
+  ],
+  "records": [
+    {
+      "record_id": "23bdf97a-100",
+      "sha256": "c3ab08acca04c9f2bd21df27ce4b41cb30b844caae463809e323145784dac811",
+      "trial_kind": "tremor"
+    },
+    {
+      "record_id": "23bdf97a-101",
+      "sha256": "07d9f876d87f84c644a6470b1e2091cffb2773bb62c44d942ee601afe40b87ec",
+      "trial_kind": "canceled"
+    },
+    {
+      "record_id": "23bdf97a-102",
+      "sha256": "c7dd9b4b7575c51e5cb554a8412c4524a3dbe63073f7b03e7304dfa661397605",
+      "trial_kind": "short_drag"
+    },
+    {
+      "record_id": "23bdf97a-103",
+      "sha256": "4b32de392b31af942d2a60c4d8f2fcc840e85e812b887b6f82b0e578cb8ce78c",
+      "trial_kind": "unintended_start"
+    },
+    {
+      "record_id": "23bdf97a-153",
+      "sha256": "9225ae55ca9732dbf807c53d7e26f8c27c2df2f0adb4303d749042fee62c6e2b",
+      "trial_kind": "tap"
+    },
+    {
+      "record_id": "23bdf97a-154",
+      "sha256": "8ace259949fe89973458d232c6ec44c3ea1dcd701c35a16977eee1ab812e2a9d",
+      "trial_kind": "tremor"
+    },
+    {
+      "record_id": "23bdf97a-155",
+      "sha256": "9725f7694f09a1d98525772a6bdcc97cbf4337ec1cc20704f23b455c79a891c9",
+      "trial_kind": "canceled"
+    },
+    {
+      "record_id": "23bdf97a-157",
+      "sha256": "d113802751c8daaef6ac82e86efa8ed2b988fd3915a9a6cdd6472b903ede8437",
+      "trial_kind": "unintended_start"
+    },
+    {
+      "record_id": "23bdf97a-49",
+      "sha256": "809bd263f0e8d5a92b7bcdd00cc69637f22c7ef6a7b5f47b0ce1eece64b9d86b",
+      "trial_kind": "tap"
+    },
+    {
+      "record_id": "23bdf97a-50",
+      "sha256": "e0ebbd3d172eb202ee4e1db3b0df8c4098d04be8dbfb15431df162ee2fc4c0d9",
+      "trial_kind": "tremor"
+    },
+    {
+      "record_id": "23bdf97a-51",
+      "sha256": "a8c6f18d686bbf346a539cfe18c4db5dce87d1afdd45ab92ab11662630af662b",
+      "trial_kind": "canceled"
+    },
+    {
+      "record_id": "23bdf97a-52",
+      "sha256": "da3024d35b8693145fcd657d85876b865bfaa9d01890a1353299e4b398694050",
+      "trial_kind": "short_drag"
+    },
+    {
+      "record_id": "23bdf97a-53",
+      "sha256": "deea9507bb84dc0ed8eb40a4cf547ac4e131e58b3cd660b2317733199130f979",
+      "trial_kind": "unintended_start"
+    },
+    {
+      "record_id": "23bdf97a-99",
+      "sha256": "836b463e125fee779c760a1d933ad8233b74d43bb5f0ee6397b6d4e4bcedd853",
+      "trial_kind": "tap"
+    },
+    {
+      "record_id": "83f39982-103",
+      "sha256": "0533e92d076890724bac8c35dbcfffa2101447b79795dcc293f4936df4bca582",
+      "trial_kind": "tap"
+    },
+    {
+      "record_id": "83f39982-104",
+      "sha256": "1e426cb864134e37ae4a87d4f47e0e7113b23470542bb0137a7b500146e175f7",
+      "trial_kind": "tremor"
+    },
+    {
+      "record_id": "83f39982-105",
+      "sha256": "1c85f11d068237ed48c6ef118b1b48bbbb45831661f63dac48ed6ca4c7550512",
+      "trial_kind": "canceled"
+    },
+    {
+      "record_id": "83f39982-106",
+      "sha256": "07349d3836b7c800bc18228b201c663de822a7a474bc9da2991ee7c3e44f969d",
+      "trial_kind": "short_drag"
+    },
+    {
+      "record_id": "83f39982-107",
+      "sha256": "c09a8f07c0873814b4b126caae91e70691c3b0368083eb3e1fd5964773c9534d",
+      "trial_kind": "unintended_start"
+    },
+    {
+      "record_id": "83f39982-159",
+      "sha256": "be1953bb238014fd317c5fdb59049bfe523934aab809843aed4f89a6e8877494",
+      "trial_kind": "tap"
+    },
+    {
+      "record_id": "83f39982-160",
+      "sha256": "2096cf016ffff2415ddeaff442c5aeed3169573ff11ac4f2706abfad9b3e1611",
+      "trial_kind": "tremor"
+    },
+    {
+      "record_id": "83f39982-161",
+      "sha256": "5f696d247592e519329a9407edc90f739048da941ca7e211510aa939cf9e6d6f",
+      "trial_kind": "canceled"
+    },
+    {
+      "record_id": "83f39982-162",
+      "sha256": "283d0c4b87a88e6a7f101535a3beaec7e9d1ccff5d7865d22efe4c4f3e3f958b",
+      "trial_kind": "short_drag"
+    },
+    {
+      "record_id": "83f39982-163",
+      "sha256": "74031cbaca658c7b1a3c384b174fcc97bb771d1a4a74a703be8717cbf525167f",
+      "trial_kind": "unintended_start"
+    },
+    {
+      "record_id": "83f39982-48",
+      "sha256": "e1248e50aac96f1b86ae2bcbd423c72ef9c35ddecbca99e7625905f4ed46debd",
+      "trial_kind": "tap"
+    },
+    {
+      "record_id": "83f39982-49",
+      "sha256": "771d7679c6617b40c0b98404dcb523384e03218805c45f031e7d4d32b1d5f545",
+      "trial_kind": "tremor"
+    },
+    {
+      "record_id": "83f39982-50",
+      "sha256": "1023f34b0a8ffc46b1396ed839db39621b51602c92d91fd9aeacb26fb2eeb296",
+      "trial_kind": "canceled"
+    },
+    {
+      "record_id": "83f39982-51",
+      "sha256": "54dad38f7ec519100687b0768219b77bc3a180be6de338b7fec3292fd6d2dc06",
+      "trial_kind": "short_drag"
+    },
+    {
+      "record_id": "83f39982-52",
+      "sha256": "32660b5cff8517af8fc65912398ef4ded964f68f0ee7b56dd202694e7de2cccd",
+      "trial_kind": "unintended_start"
+    }
+  ],
+  "schema": "glide-negative-control-subset-v1",
+  "selection_rule": "all tracked schema-2 Tatar negatives, sorted by record_id; deterministic paired ordinary positive matching session/orientation/speed/layout, preferring identical prompt, selecting lowest record_id among candidates",
+  "source_dataset": "research/glide-evaluation/datasets/tatar-gestures-v1.json"
+}

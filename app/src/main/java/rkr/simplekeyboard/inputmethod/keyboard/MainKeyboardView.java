@@ -109,7 +109,6 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     private final KeyPreviewChoreographer mKeyPreviewChoreographer;
 
     // More keys keyboard
-    private final Paint mBackgroundDimAlphaPaint = new Paint();
     // The container is a full second KeyboardView chain for a panel that only a long-press
     // opens, so it inflates at the first show, never at construction.
     private final int mMoreKeysKeyboardLayoutId;
@@ -173,10 +172,6 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         mNonDistinctMultitouchHelper = hasDistinctMultitouch ? null
                 : new NonDistinctMultitouchHelper();
 
-        final int backgroundDimAlpha = mainKeyboardViewAttr.getInt(
-                R.styleable.MainKeyboardView_backgroundDimAlpha, 0);
-        mBackgroundDimAlphaPaint.setColor(Color.BLACK);
-        mBackgroundDimAlphaPaint.setAlpha(backgroundDimAlpha);
         final int glideTrailColor = mainKeyboardViewAttr.getColor(
                 R.styleable.MainKeyboardView_glideTrailColor, Color.TRANSPARENT);
         // The theme color carries the trail's peak alpha: the draw applies it to the whole path

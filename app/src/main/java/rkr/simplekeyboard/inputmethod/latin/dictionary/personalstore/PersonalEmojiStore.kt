@@ -17,6 +17,8 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiDictionary
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersemFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersemValidator
@@ -575,6 +577,17 @@ internal class PersonalEmojiStore(
         if (!directory.isDirectory) {
             snapshot = PersonalEmojiDictionary.EMPTY
             return
+        }
+        if (!PersonalFormatFileMigration(PersonalFormats.migrations, fileOps, outputOpener, clock)
+                .migrateIfNeeded(
+                    PersonalStoreFormat.EMOJI,
+                    TpersemFormat.SCHEMA_ID,
+                    TpersemFormat.FORMAT_VERSION,
+                    subtypeId,
+                    directory,
+                )
+        ) {
+            throw IOException("personal format migration failed")
         }
         cleanupTemps(directory)
         readPending(directory)

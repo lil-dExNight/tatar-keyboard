@@ -109,6 +109,9 @@ class RefusedCorrections private constructor(
 
     /** The in-memory bytes to be written whole to disk, in the frozen `.tref` layout. */
     fun serialize(subtypeTag: String): ByteArray {
+        PersonalFormats.requireWriter(
+            PersonalStoreFormat.REFUSALS, TrefFormat.SCHEMA_ID, TrefFormat.FORMAT_VERSION,
+        )
         val encodedTyped = typedWords.map { it.toByteArray(StandardCharsets.UTF_8) }
         val encodedReplacements = replacements.map { it.toByteArray(StandardCharsets.UTF_8) }
         val payloadSize = (0 until size)

@@ -109,6 +109,8 @@ internal object TpersemFormat {
      * The on-disk file name for a subtype, e.g. `personal-emoji-tt_RU-s1-f1.tpersem`, next to the
      * word and pair files. See [TpersFormat.personalFileName].
      */
-    fun personalEmojiFileName(subtypeTag: String): String =
-        "personal-emoji-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpersem"
+    fun personalEmojiFileName(subtypeTag: String): String {
+        PersonalFormats.requireWriter(PersonalStoreFormat.EMOJI, SCHEMA_ID, FORMAT_VERSION)
+        return "personal-emoji-$subtypeTag-s$SCHEMA_ID-f$FORMAT_VERSION.tpersem"
+    }
 }

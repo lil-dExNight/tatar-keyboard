@@ -111,6 +111,24 @@ class TatBigrValidatorTest {
     }
 
     @Test
+    fun trigramSuccessorCountsAcceptOneThroughEightAndRejectZeroAndNine() {
+        val heads = listOf("аб" to listOf("аба"))
+        for ((count, accepted) in listOf(0 to false, 1 to true, 8 to true, 9 to false)) {
+            val successes = (0 until count).map { "с$it" }
+            val contexts = listOf(("аб" to "аба") to successes)
+            val raw = BigramTestFixtures.rawV4(heads, contexts)
+            val spec = BigramTestFixtures.spec(100 + count, "tt", raw)
+                .copy(schemaId = TatBigrFormat.SCHEMA_ID_V4)
+            val file = writeRaw(raw)
+            if (accepted) {
+                assertEquals(raw.size.toLong(), validator.validateRaw(file, spec).rawSize)
+            } else {
+                assertValidationFails { validator.validateRaw(file, spec) }
+            }
+        }
+    }
+
+    @Test
     fun acceptsCommittedTatarBigramAssetWithFrozenProvenance() {
         assertCommittedCounts("tatar_bigrams_v2.tatbigr.zlib", BigramArtifactSpec.TATAR_BIGRAMS_V2)
     }

@@ -52,6 +52,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.PersonalQua
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.emoji.EmojiPanelController
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupCoordinator
+import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupExportResult
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupFormat
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupImportResult
 import rkr.simplekeyboard.inputmethod.latin.setup.SetupState
@@ -159,6 +160,9 @@ class SettingsHostActivity : Activity() {
 
     /** The learned-emoji counterpart of [personalQuarantines]; see [personalPairQuarantines]. */
     private var personalEmojiQuarantines: Map<String, PersonalQuarantineReport>? = null
+
+    /** The sentence-start counterpart of [personalQuarantines]. Counts only, like its siblings. */
+    private var sentenceStartQuarantines: Map<String, PersonalQuarantineReport>? = null
 
     /**
      * The counts shown by the personal-data inventory, or null while not read yet. Counts only;
@@ -479,8 +483,8 @@ class SettingsHostActivity : Activity() {
             confirmationField.text.clear()
             dialog.dismiss()
             // The backup core owns and wipes the submitted password.
-            backupCoordinator().exportTo(uri, password) { written ->
-                showBackupExportOutcome(written)
+            backupCoordinator().exportTo(uri, password) { result ->
+                showBackupExportOutcome(result)
             }
         }
     }
@@ -574,8 +578,8 @@ class SettingsHostActivity : Activity() {
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         when (requestCode) {
-            REQUEST_BACKUP_EXPORT -> backupCoordinator().exportTo(uri) { written ->
-                showBackupExportOutcome(written)
+            REQUEST_BACKUP_EXPORT -> backupCoordinator().exportTo(uri) { result ->
+                showBackupExportOutcome(result)
             }
             REQUEST_ENCRYPTED_BACKUP_EXPORT -> showEncryptedBackupExportPasswordDialog(uri)
             REQUEST_BACKUP_IMPORT -> backupCoordinator().importFrom(uri) { result ->
@@ -584,11 +588,15 @@ class SettingsHostActivity : Activity() {
         }
     }
 
-    private fun showBackupExportOutcome(written: Boolean) {
+    private fun showBackupExportOutcome(result: BackupExportResult) {
         if (isFinishing || isDestroyed) return
-        Toast.makeText(this,
-                if (written) R.string.backup_export_done else R.string.backup_export_failed,
-                Toast.LENGTH_LONG).show()
+        val messageRes = when (result) {
+            BackupExportResult.SAVED -> R.string.backup_export_done
+            BackupExportResult.FAILED -> R.string.backup_export_failed
+            BackupExportResult.FAILED_WITH_POSSIBLE_PARTIAL_DOCUMENT ->
+                R.string.backup_export_failed_partial
+        }
+        Toast.makeText(this, messageRes, Toast.LENGTH_LONG).show()
     }
 
     private fun handleBackupImportResult(uri: Uri, result: BackupImportResult) {
@@ -823,6 +831,7 @@ class SettingsHostActivity : Activity() {
         val controller = PersonalDictionaryScreenController(this)
         val pairController = PersonalBigramScreenController(this)
         val emojiController = PersonalEmojiScreenController(this)
+        val sentenceController = SentStartQuarantineScreenController(this)
         val subtypeIds = personalSubtypeIds()
         val content = PersonalDictionaryScreenModel.build(
                 controller.sections(subtypeIds), pairController.sections(subtypeIds),
@@ -853,6 +862,7 @@ class SettingsHostActivity : Activity() {
         addPersonalQuarantineCards(controller, subtypeIds)
         addPersonalPairQuarantineCards(pairController, subtypeIds)
         addPersonalEmojiQuarantineCards(emojiController, subtypeIds)
+        addSentenceStartQuarantineCards(sentenceController, subtypeIds)
 
         if (content.totalCount == 0) {
             // Three states: no search matches, nothing saved with the personal dictionary on, and
@@ -1063,6 +1073,10 @@ class SettingsHostActivity : Activity() {
                         personalQuarantines = null
                         personalPairQuarantines = null
                         personalEmojiQuarantines = null
+                        sentenceStartQuarantines = null
+                    }
+                    if (category == PersonalInventoryCategory.SENTENCE_STARTS) {
+                        sentenceStartQuarantines = null
                     }
                     if (!cleared) {
                         Toast.makeText(this, R.string.personal_inventory_delete_failed,
@@ -1319,6 +1333,80 @@ class SettingsHostActivity : Activity() {
                 }
     }
 
+    /**
+     * The sentence-start counterpart of [addPersonalQuarantineCards]. The summary is counts only;
+     * restore puts readable words back without deleting the copy, and deleting the copy is the
+     * separate confirmed action.
+     */
+    private fun addSentenceStartQuarantineCards(
+            controller: SentStartQuarantineScreenController, subtypeIds: List<String>) {
+        val reports = sentenceStartQuarantines
+        if (reports == null) {
+            controller.quarantines(subtypeIds) { found ->
+                if (isFinishing || isDestroyed) return@quarantines
+                sentenceStartQuarantines = found
+                if (currentScreen == Screen.PERSONAL_DICTIONARY) {
+                    showScreen(Screen.PERSONAL_DICTIONARY)
+                }
+            }
+            return
+        }
+        // Same language order as every other recovery card.
+        for (subtypeId in subtypeIds) {
+            val report = reports[subtypeId] ?: continue
+            val summary = when {
+                report.wordCount == 0 -> getString(
+                        R.string.personal_sentence_starts_quarantine_none)
+                report.readToEnd -> resources.getQuantityString(
+                        R.plurals.personal_sentence_starts_quarantine_whole,
+                        report.wordCount, report.wordCount)
+                else -> resources.getQuantityString(
+                        R.plurals.personal_sentence_starts_quarantine_partial,
+                        report.wordCount, report.wordCount)
+            }
+            addSectionHeader(LocaleResourceUtils.getLocaleDisplayNameInSystemLocale(subtypeId))
+            val rows = ArrayList<View>()
+            rows.add(inflateRow(R.layout.row_link,
+                    getString(R.string.personal_sentence_starts_quarantine_title), summary).also {
+                it.findViewById<View>(R.id.row_chevron).visibility = View.GONE
+            })
+            if (report.wordCount > 0) {
+                rows.add(actionRow(R.string.personal_sentence_starts_quarantine_restore) {
+                    controller.restoreQuarantine(subtypeId) { restored ->
+                        sentenceStartQuarantines = null
+                        afterPersonalMutation(restored,
+                                R.string.personal_sentence_starts_quarantine_restore_failed)
+                    }
+                })
+            }
+            rows.add(actionRow(R.string.personal_sentence_starts_quarantine_discard) {
+                showDiscardSentenceStartQuarantineDialog(controller, subtypeId)
+            })
+            addCard(rows)
+        }
+    }
+
+    private fun showDiscardSentenceStartQuarantineDialog(
+            controller: SentStartQuarantineScreenController, subtypeId: String) {
+        currentDialog?.dismiss()
+        currentDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.personal_sentence_starts_quarantine_discard)
+                .setMessage(R.string.personal_sentence_starts_quarantine_discard_confirm)
+                .setPositiveButton(R.string.personal_dictionary_delete) { _, _ ->
+                    controller.discardQuarantine(subtypeId) { discarded ->
+                        sentenceStartQuarantines = null
+                        afterPersonalMutation(discarded,
+                                R.string.personal_sentence_starts_quarantine_discard_failed)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+                .also { dialog ->
+                    DialogUtils.filterObscuredTouches(dialog)
+                    dialog.show()
+                }
+    }
+
     /** Every supported personal-store language, including languages currently disabled. */
     private fun personalSubtypeIds(): List<String> =
             DictionaryArtifactSpec.ALL.map { it.languageTag }.distinct()
@@ -1395,6 +1483,7 @@ class SettingsHostActivity : Activity() {
                 .setTitle(getString(R.string.personal_dictionary_forget_title, row.rawForm))
                 .setPositiveButton(R.string.personal_dictionary_delete) { _, _ ->
                     controller.removeWord(row.subtypeId, row.normalizedForm) { removed ->
+                        sentenceStartQuarantines = null
                         afterPersonalMutation(removed,
                                 R.string.personal_dictionary_delete_failed)
                     }
@@ -1561,11 +1650,12 @@ class SettingsHostActivity : Activity() {
                             runOnUiThread {
                                 PersonalErasure.eraseEverything(this, subtypeIds) { erased ->
                                     runOnUiThread {
-                                        // Erasing takes the copies with it, so all three cards are
+                                        // Erasing takes the copies with it, so all four cards are
                                         // re-read rather than repainted from an out-of-date answer.
                                         personalQuarantines = null
                                         personalPairQuarantines = null
                                         personalEmojiQuarantines = null
+                                        sentenceStartQuarantines = null
                                         personalInventorySnapshot = null
                                         val erasedAll = erased && recentsCleared
                                         afterPersonalMutation(erasedAll,

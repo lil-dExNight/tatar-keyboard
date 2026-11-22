@@ -535,8 +535,8 @@ class LogSafetySourceContractTest {
             "rkr/simplekeyboard/inputmethod/latin/LatinIME.java::if (TRACE) Log.i(TAG, \"Starting input. Cursor position = \"",
             "rkr/simplekeyboard/inputmethod/latin/LatinIME.java::if (TRACE) Log.i(TAG, \"Update Selection. Cursor position = \" + newSelStart + \",\" + newSelEnd);",
             // latin/RichInputConnection.java — fixed-string tripwires: nest level and batch pairing.
-            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Nest level too deep : \" + mNestLevel);",
-            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::if (mNestLevel <= 0) Log.e(TAG, \"Batch edit not in progress!\");",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Nest level too deep : \" + nestLevel);",
+            "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Batch edit not in progress!\");",
             // latin/RichInputConnection.java — fixed-string null-read errors (reachable).
             "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"Unable to read around the cursor.\");",
             "rkr/simplekeyboard/inputmethod/latin/RichInputConnection.java::Log.e(TAG, \"The read around the cursor carries an out-of-range selection.\");",

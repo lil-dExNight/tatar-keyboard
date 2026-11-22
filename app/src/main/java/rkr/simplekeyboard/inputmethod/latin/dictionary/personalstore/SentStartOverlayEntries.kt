@@ -15,6 +15,8 @@
 
 package rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore
 
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalFormats
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalStoreFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TsentFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.ValidatedSentStartOverlay
 import java.nio.ByteBuffer
@@ -48,6 +50,21 @@ internal class SentStartOverlayEntries private constructor(
         get() = rawForms.isEmpty()
 
     fun containsNormalized(normalized: String): Boolean = indexOfNormalized(normalized) >= 0
+
+    /** Removes [normalized], or returns this instance when it is not saved. */
+    fun remove(normalized: String): SentStartOverlayEntries {
+        val existing = indexOfNormalized(normalized)
+        if (existing < 0) return this
+        val raw = rawForms.toMutableList()
+        val norm = normalizedForms.toMutableList()
+        val counts = usageCounts.toMutableList()
+        val serials = lastUseSerials.toMutableList()
+        raw.removeAt(existing)
+        norm.removeAt(existing)
+        counts.removeAt(existing)
+        serials.removeAt(existing)
+        return of(raw, norm, counts, serials, nextSerial, maxEntries)
+    }
 
     /**
      * Records one sentence-initial commit of [normalized] (storing [rawWord] as its on-disk form
@@ -98,6 +115,11 @@ internal class SentStartOverlayEntries private constructor(
 
     /** The in-memory bytes to be written whole to disk, in the frozen `.tsent` layout. */
     fun serialize(subtypeTag: String): ByteArray {
+        PersonalFormats.requireWriter(
+            PersonalStoreFormat.SENTENCE_STARTS,
+            TsentFormat.SCHEMA_ID,
+            TsentFormat.FORMAT_VERSION,
+        )
         val encoded = rawForms.map { it.toByteArray(StandardCharsets.UTF_8) }
         val payloadSize = encoded.sumOf { TsentFormat.RECORD_HEADER_SIZE + it.size }
         val fileSize = TsentFormat.HEADER_SIZE + payloadSize

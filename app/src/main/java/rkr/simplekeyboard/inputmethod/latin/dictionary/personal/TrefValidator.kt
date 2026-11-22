@@ -40,7 +40,7 @@ class ValidatedRefusedCorrections internal constructor(
     val typedWords: List<String>,
     /** The parallel replacements, in the normalized lookup form. */
     val replacements: List<String>,
-    /** The parallel refusal counts (>= 1). */
+    /** The parallel refusal counts, in the writer's canonical 1..REFUSAL_THRESHOLD range. */
     val refusalCounts: List<Int>,
     val subtypeTag: String,
 ) {
@@ -142,7 +142,9 @@ class TrefValidator {
             val refusalCount = cursor.get().toInt() and 0xff
             if (typedByteLength < 1) fail("invalid typed word byte length")
             if (replacementByteLength < 1) fail("invalid replacement byte length")
-            if (refusalCount < 1) fail("refusal count must be positive")
+            if (refusalCount !in TrefFormat.MIN_REFUSAL_COUNT..TrefFormat.MAX_REFUSAL_COUNT) {
+                fail("refusal count is outside the writer's canonical range")
+            }
             if (cursor.remaining() < typedByteLength + replacementByteLength) {
                 fail("record bytes truncated")
             }

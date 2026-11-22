@@ -49,13 +49,15 @@ internal object RefusedCorrectionsTestFixtures {
         payload: ByteArray,
         entryCount: Int,
         subtypeTag: String = PersonalSubtypes.TATAR_RU,
+        schemaId: Int = TrefFormat.SCHEMA_ID,
+        formatVersion: Int = TrefFormat.FORMAT_VERSION,
         refreshChecksum: Boolean = true,
     ): ByteArray {
         val buffer = ByteBuffer.allocate(TrefFormat.HEADER_SIZE + payload.size)
             .order(ByteOrder.LITTLE_ENDIAN)
         buffer.put(TrefFormat.MAGIC.toByteArray(StandardCharsets.US_ASCII))
-        buffer.putShort(TrefFormat.SCHEMA_ID.toShort())
-        buffer.putShort(TrefFormat.FORMAT_VERSION.toShort())
+        buffer.putShort(schemaId.toShort())
+        buffer.putShort(formatVersion.toShort())
         buffer.putShort(TrefFormat.HEADER_SIZE.toShort())
         buffer.putShort(TrefFormat.CHECKSUM_ALGORITHM_SHA256.toShort())
         buffer.putInt(entryCount)
