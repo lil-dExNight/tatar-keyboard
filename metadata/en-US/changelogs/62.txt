@@ -1,0 +1,2 @@
+• A backup import that asked for a password now accepts only the encrypted archive; a swapped plaintext file is rejected without changing saved data
+• Backup and cursor handling reject malformed picker results and overflowing editor positions

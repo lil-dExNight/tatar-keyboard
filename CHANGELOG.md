@@ -14,6 +14,18 @@ These hold for every release:
 
 ## [Unreleased]
 
+## [4.0.4] — 2026-11-23
+
+### Fixed
+
+- A backup import that asked for a password now accepts only the encrypted container. If the
+  document provider swaps in a plaintext archive on the second read, the import is rejected
+  without touching saved data.
+- Backup picker results must be `content://` URIs. A `file://` result is rejected before any
+  document is opened.
+- The editor cache drops selected text as soon as a commit replaces it, and a host cursor
+  position at the integer limit no longer wraps into an accepted position.
+
 ## [4.0.3] — 2026-11-23
 
 ### Changed
