@@ -577,6 +577,15 @@ class SettingsHostActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
+        if (!BackupFormat.isContentDocumentScheme(uri.scheme)) {
+            when (requestCode) {
+                REQUEST_BACKUP_EXPORT,
+                REQUEST_ENCRYPTED_BACKUP_EXPORT -> showBackupExportOutcome(BackupExportResult.FAILED)
+                REQUEST_BACKUP_IMPORT ->
+                    handleBackupImportResult(uri, BackupImportResult.INVALID_FILE)
+            }
+            return
+        }
         when (requestCode) {
             REQUEST_BACKUP_EXPORT -> backupCoordinator().exportTo(uri) { result ->
                 showBackupExportOutcome(result)

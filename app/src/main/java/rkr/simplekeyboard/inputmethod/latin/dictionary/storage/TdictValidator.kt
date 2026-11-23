@@ -133,9 +133,15 @@ class TdictValidator {
 
         val blockCountInt = blockCount.toInt()
         val entryCountInt = entryCount.toInt()
+        if (blockCountInt <= 0 || blocksSize <= 0L) {
+            throw DictionaryValidationException("dictionary has no block body")
+        }
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val blockOffsets = IntArray(blockCountInt) {
             buffer.getInt(TdictFormat.HEADER_SIZE + it * 4)
+        }
+        if (blockOffsets[0].toLong() >= fileSize) {
+            throw DictionaryValidationException("first block offset is outside the file")
         }
         if (blockOffsets[0] != blocksOffset.toInt()) {
             throw DictionaryValidationException("first block offset must equal the blocks offset")

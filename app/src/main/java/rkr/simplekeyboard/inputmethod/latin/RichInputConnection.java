@@ -681,14 +681,14 @@ public final class RichInputConnection {
      */
     public void commitText(final CharSequence text, final int newCursorPosition) {
         mHost.resetSubtypeCycleOrder();
+        // Replacing a selection consumes the cached selection; a later cursor move must not
+        // reconstruct the deleted text from it.
+        mTextSelection = "";
         appendToTextBeforeCursor(text);
         // TODO: the following is exceedingly error-prone. Right now when the cursor is in the
         // middle of the composing word mComposingText only holds the part of the composing text
         // that is before the cursor, so this actually works, but it's terribly confusing. Fix this.
-        if (hasCursorPosition()) {
-            mExpectedSelStart += text.length();
-            mExpectedSelEnd = mExpectedSelStart;
-        }
+        advanceExpectedSelection(text.length());
         refreshConnection();
         if (isConnected()) {
             try {
@@ -697,6 +697,25 @@ public final class RichInputConnection {
                 // See the class javadoc.
             }
         }
+    }
+
+    /**
+     * Moves both expected selection ends by [delta] only while the cursor position is known.
+     * An overflow invalidates the position instead of wrapping to a value the next call would
+     * accept; the next host selection report re-syncs it.
+     */
+    private void advanceExpectedSelection(final int delta) {
+        if (!hasCursorPosition()) {
+            return;
+        }
+        final long next = (long) mExpectedSelStart + delta;
+        if (next < 0L || next > Integer.MAX_VALUE) {
+            mExpectedSelStart = INVALID_CURSOR_POSITION;
+            mExpectedSelEnd = INVALID_CURSOR_POSITION;
+            return;
+        }
+        mExpectedSelStart = (int) next;
+        mExpectedSelEnd = mExpectedSelStart;
     }
 
     /**
@@ -996,6 +1015,8 @@ public final class RichInputConnection {
     public void sendKeyEvent(final KeyEvent keyEvent) {
         mHost.resetSubtypeCycleOrder();
         if (keyEvent.getAction() == KeyEvent.ACTION_DOWN) {
+            // Every text-producing legacy key event replaces the selected range.
+            mTextSelection = "";
             // This method is only called for enter or backspace when speaking to old applications
             // (target SDK <= 15 (Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1)), or for digits.
             // When talking to new applications we never use this method because it's inherently
@@ -1005,18 +1026,12 @@ public final class RichInputConnection {
             switch (keyEvent.getKeyCode()) {
             case KeyEvent.KEYCODE_ENTER:
                 appendToTextBeforeCursor("\n");
-                if (hasCursorPosition()) {
-                    mExpectedSelStart += 1;
-                    mExpectedSelEnd = mExpectedSelStart;
-                }
+                advanceExpectedSelection(1);
                 break;
             case KeyEvent.KEYCODE_UNKNOWN:
                 if (null != keyEvent.getCharacters()) {
                     appendToTextBeforeCursor(keyEvent.getCharacters());
-                    if (hasCursorPosition()) {
-                        mExpectedSelStart += keyEvent.getCharacters().length();
-                        mExpectedSelEnd = mExpectedSelStart;
-                    }
+                    advanceExpectedSelection(keyEvent.getCharacters().length());
                 }
                 break;
             case KeyEvent.KEYCODE_DEL:
@@ -1024,10 +1039,7 @@ public final class RichInputConnection {
             default:
                 final String text = StringUtils.newSingleCodePointString(keyEvent.getUnicodeChar());
                 appendToTextBeforeCursor(text);
-                if (hasCursorPosition()) {
-                    mExpectedSelStart += text.length();
-                    mExpectedSelEnd = mExpectedSelStart;
-                }
+                advanceExpectedSelection(text.length());
                 break;
             }
         }
@@ -1100,7 +1112,7 @@ public final class RichInputConnection {
     }
 
     public boolean hasCursorPosition() {
-        return mExpectedSelStart != INVALID_CURSOR_POSITION && mExpectedSelEnd != INVALID_CURSOR_POSITION;
+        return mExpectedSelStart >= 0 && mExpectedSelEnd >= 0;
     }
 
     /**

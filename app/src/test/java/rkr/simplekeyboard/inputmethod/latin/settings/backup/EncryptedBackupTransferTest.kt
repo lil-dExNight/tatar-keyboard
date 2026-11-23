@@ -75,6 +75,21 @@ class EncryptedBackupTransferTest {
     }
 
     @Test
+    fun plaintextBytesCannotUseThePasswordPathAfterTheProviderChangesTheArchive() {
+        val archive = BackupTransfer.export(populatedSource("downgrade-source"))!!
+        assertFalse(BackupEncryption.isEncrypted(archive))
+        val destination = populatedDestination("downgrade-destination")
+        val before = destination.snapshot()
+        val password = "secret".toCharArray()
+
+        assertEquals(BackupImportResult.INVALID_FILE,
+            BackupTransfer.import(destination, archive, password))
+
+        assertTrue(password.all { it == '\u0000' })
+        destination.assertUnchanged("plaintext archive after password prompt", before)
+    }
+
+    @Test
     fun wrongPasswordRejectsWithoutRecoveryOrAnyStoreChange() {
         val archive = BackupTransfer.export(populatedSource("wrong-source"),
             PASSWORD.toCharArray())!!

@@ -135,6 +135,10 @@ internal object BackupTransfer {
                     return BackupImportResult.INVALID_FILE
                 }
             } else {
+                // A password is a promise that the restored bytes are the encrypted container
+                // that prompted for it. A provider can return different bytes on this second
+                // read, so never let a plaintext archive use the encrypted-import path.
+                if (password != null) return BackupImportResult.INVALID_FILE
                 archiveBytes
             }
             val verified = try {

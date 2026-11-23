@@ -64,6 +64,13 @@ object BackupFormat {
     const val SETTINGS_PATH = "settings/preferences.xml"
     const val PERSONAL_DIRECTORY = "personal"
 
+    /**
+     * Only a SAF content URI is a document chosen through the system picker. A `file://` result
+     * would be resolved by [android.content.ContentResolver] under this app's UID, so a malicious
+     * picker could truncate an app-private file.
+     */
+    fun isContentDocumentScheme(scheme: String?): Boolean = scheme == "content"
+
     /** File names the create-document picker is pre-filled with. */
     const val SUGGESTED_FILE_NAME = "tatar-keyboard-backup.zip"
     const val SUGGESTED_ENCRYPTED_FILE_NAME = "tatar-keyboard-backup.zip.enc"

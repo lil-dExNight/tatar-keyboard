@@ -117,10 +117,11 @@ internal class BackupCoordinator(
     private val uiPoster: (Runnable) -> Unit = { Handler(Looper.getMainLooper()).post(it) },
 ) {
     private val appContext = context.applicationContext
-    private val importJournalFiles = BackupImportJournalFiles(
-        appContext.noBackupFilesDir,
-        AndroidDurableFileOps,
-    )
+    // Resolved inside the unlock-gated worker. Constructing BackupImportJournalFiles creates the
+    // directory, which must not happen before the credential-protected storage is readable.
+    private val importJournalFiles by lazy {
+        BackupImportJournalFiles(appContext.noBackupFilesDir, AndroidDurableFileOps)
+    }
     private val executor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "backup-transfer").apply { isDaemon = true }
     }

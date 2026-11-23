@@ -24,6 +24,23 @@ import org.junit.Test
 class BackupOutcomeSourceContractTest {
 
     @Test
+    fun onlyContentUrisAreAcceptedAsBackupDocuments() {
+        assertTrue(BackupFormat.isContentDocumentScheme("content"))
+        for (scheme in listOf("file", "android.resource", "", null)) {
+            assertFalse("$scheme must not reach ContentResolver",
+                BackupFormat.isContentDocumentScheme(scheme))
+        }
+
+        val host = source("java/rkr/simplekeyboard/inputmethod/latin/settings/SettingsHostActivity.kt")
+        val result = host.substringAfter("override fun onActivityResult(")
+            .substringBefore("private fun showBackupExportOutcome(")
+        val gate = result.indexOf("BackupFormat.isContentDocumentScheme(uri.scheme)")
+        val firstUse = result.indexOf("backupCoordinator()")
+        assertTrue("the scheme gate must run before any document access",
+            gate >= 0 && firstUse > gate)
+    }
+
+    @Test
     fun anIncompleteLocalSnapshotDoesNotTouchThePickedDocument() {
         val coordinator = source(
             "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
@@ -122,7 +139,9 @@ class BackupOutcomeSourceContractTest {
         val coordinator = source(
             "java/rkr/simplekeyboard/inputmethod/latin/settings/backup/BackupCoordinator.kt")
         assertTrue(coordinator.contains(
-            "private val importJournalFiles = BackupImportJournalFiles("))
+            "private val importJournalFiles by lazy {"))
+        assertTrue(coordinator.contains(
+            "BackupImportJournalFiles(appContext.noBackupFilesDir, AndroidDurableFileOps)"))
         assertTrue(coordinator.contains(
             "override fun commitImportJournal(): Boolean = importJournalFiles.commit()"))
         assertTrue(coordinator.contains(

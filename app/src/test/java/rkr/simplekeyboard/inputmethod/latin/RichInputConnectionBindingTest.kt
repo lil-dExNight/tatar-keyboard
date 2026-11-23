@@ -139,6 +139,31 @@ class RichInputConnectionBindingTest {
     // --- The connection follows the bound field --------------------------------------------------
 
     @Test
+    fun aHostSelectionAtTheIntegerLimitCannotWrapIntoAnAcceptedCursor() {
+        val connection = RichInputConnection(null, FakeHost(normal, mayRead = true))
+        connection.updateSelection(Int.MAX_VALUE, Int.MAX_VALUE)
+        assertTrue(connection.hasCursorPosition())
+
+        connection.commitText("а", 1)
+
+        assertEquals(-1, connection.expectedSelectionStart)
+        assertEquals(-1, connection.expectedSelectionEnd)
+        assertFalse(connection.hasCursorPosition())
+    }
+
+    @Test
+    fun committingOverSelectionDropsTheDeletedTextFromTheCache() {
+        val connection = RichInputConnection(null, FakeHost(normal, mayRead = true))
+        connection.applyTextAroundCursor("hello world", 2, 5)
+        connection.updateSelection(5, 5)
+
+        connection.commitText("X", 1)
+
+        assertEquals("", connection.selectedText.toString())
+        assertEquals("heX", connection.cachedTextBeforeCursor.toString())
+    }
+
+    @Test
     fun theFieldStartBindsAPasswordFieldWithoutReadingIt() {
         val host = FakeHost(password, mayRead = false)
         val connection = RichInputConnection(null, host)

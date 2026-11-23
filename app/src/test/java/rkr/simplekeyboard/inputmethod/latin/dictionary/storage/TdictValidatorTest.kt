@@ -246,6 +246,23 @@ class TdictValidatorTest {
     }
 
     @Test
+    fun rejectsASingleEmptyBlockBody() {
+        val valid = DictionaryTestFixtures.raw(listOf("а" to 1L))
+        val blocksOffset = 76
+        val emptyBody = valid.copyOf(blocksOffset)
+        ByteBuffer.wrap(emptyBody).order(ByteOrder.LITTLE_ENDIAN).apply {
+            putInt(16, 1)
+            putInt(20, 1)
+            putInt(24, 72)
+            putInt(28, blocksOffset)
+            putInt(32, 0)
+            putInt(36, blocksOffset)
+            putInt(72, blocksOffset)
+        }
+        assertRawFails(DictionaryTestFixtures.refreshEmbeddedChecksum(emptyBody), 300)
+    }
+
+    @Test
     fun rejectsInvalidOffsetsAndZeroFrequency() {
         val artifact = DictionaryTestFixtures.artifact()
         val variants = listOf(
