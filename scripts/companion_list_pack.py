@@ -207,8 +207,13 @@ def decompress_asset(asset: bytes) -> bytes:
     decompressor = zlib.decompressobj(wbits=COMPRESSION_WBITS)
     try:
         raw = decompressor.decompress(asset, MAX_RAW_BYTES + 1)
+        if len(raw) > MAX_RAW_BYTES:
+            raise CompanionListPackError(
+                f"uncompressed list is {len(raw)} bytes; limit is {MAX_RAW_BYTES}"
+            )
         remaining = MAX_RAW_BYTES + 1 - len(raw)
-        raw += decompressor.flush(remaining)
+        if remaining > 0:
+            raw += decompressor.flush(remaining)
     except zlib.error as error:
         raise CompanionListPackError(f"invalid zlib stream: {error}") from error
     if len(raw) > MAX_RAW_BYTES:

@@ -231,6 +231,15 @@ class ReleasePackOutputTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(self.unsigned.read_bytes(), output.read_bytes())
 
+    def test_from_apk_requires_no_sign(self) -> None:
+        output = self.repo.root / "build" / "measure" / "out.apk"
+        result = self.repo.run(
+            "release_pack.sh", "--from-apk", str(self.unsigned), str(output))
+        text = result.stdout + result.stderr
+        self.assertNotEqual(0, result.returncode, text)
+        self.assertIn("--from-apk разрешён только с --no-sign", text)
+        self.assertFalse(output.exists())
+
     def test_a_missing_pin_declaration_fails_before_tool_selection(self) -> None:
         self.repo.environment.pop("TT_BUILD_TOOLS_VERSION")
         self.repo.write("scripts/build-tools-pin.sh", "# No pin declared.\n")

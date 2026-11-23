@@ -34,6 +34,7 @@ RELEASE_CERT_SHA256="98ca6febfed6c146d81c1fdcfe52c79acf7aa926a1033d98b844a59803e
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$REPO_ROOT"
+source "$SCRIPT_DIR/release-build-inputs.sh"
 
 LOG_DIR="build/release_check"
 mkdir -p "$LOG_DIR"
@@ -168,6 +169,7 @@ APKSIGNER=$(resolve_tool apksigner)
 echo "== release_check: кандидат и гейты =="
 
 if [ "$FULL" -eq 1 ]; then
+    tt_check_gradle_wrapper
     # `gradlew clean` deletes the root build/ together with LOG_DIR, so clean separately
     # and recreate the log directory before building (as release_pack.sh does).
     ./gradlew clean --console=plain >/dev/null 2>&1
@@ -211,6 +213,7 @@ elif [ "$QUICK" -eq 1 ]; then
     report SKIP gates.asset_rebuild_check "--quick"
     report SKIP gates.text_hygiene "--quick"
 else
+    tt_check_gradle_wrapper
     # JVM tests; counts come from the JUnit XML reports (app/build/test-results/*/).
     # --rerun-tasks forces a real run instead of an up-to-date skip. calibrationTest carries
     # the suites the default test tasks exclude (app/build.gradle).

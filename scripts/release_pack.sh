@@ -13,8 +13,8 @@
 # Run from the repository root:
 #   bash scripts/release_pack.sh [--no-sign] [--allow-dirty] [--from-apk unsigned.apk] [output.apk]
 # Default output: app/build/outputs/apk/release/app-release-zopfli.apk.
-# --from-apk packs an existing unsigned release APK and skips step 1; CI uses it to prove
-# the packing is deterministic without extra clean builds.
+# --from-apk packs an existing unsigned release APK and skips step 1; it requires --no-sign.
+# CI uses the pair to prove the packing is deterministic without extra clean builds.
 # Step 1 refuses a tree whose build inputs differ from HEAD or include untracked files
 # (scripts/release-build-inputs.sh): the APK records only the HEAD commit, so an APK packed from
 # such a tree would claim code it does not contain. --allow-dirty packs anyway, for measurement
@@ -55,6 +55,10 @@ while [ $# -gt 0 ]; do
 done
 if [ -n "$FROM_APK" ] && [ ! -f "$FROM_APK" ]; then
     echo "ERROR: --from-apk: файл не найден: $FROM_APK" >&2
+    exit 1
+fi
+if [ -n "$FROM_APK" ] && [ "$NO_SIGN" -ne 1 ]; then
+    echo "ERROR: --from-apk разрешён только с --no-sign: подписывать APK без чистой сборки нельзя" >&2
     exit 1
 fi
 
@@ -162,6 +166,7 @@ if [ -n "$FROM_APK" ]; then
     UNSIGNED="$FROM_APK"
 else
     echo "== 1/5 clean assembleRelease -PskipReleaseSigning --no-build-cache =="
+    tt_check_gradle_wrapper
     mkdir -p "$LOG_DIR"
     ./gradlew clean assembleRelease -PskipReleaseSigning --no-build-cache --console=plain \
         >"$LOG_DIR/assemble.log" 2>&1 || {

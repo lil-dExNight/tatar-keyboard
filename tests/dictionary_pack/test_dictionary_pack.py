@@ -231,6 +231,18 @@ class DictionaryPackTest(unittest.TestCase):
         back = pack.repack_asset(built.asset, schema=pack.SCHEMA_ID)
         self.assertEqual(back.raw, raw_v1)
 
+    def test_schema_v2_rejects_a_single_empty_block_body(self) -> None:
+        raw = pack.serialize_entries([("алма", 1)], schema=pack.SCHEMA_ID_V2)
+        fields = pack.HEADER.unpack_from(raw)
+        blocks_offset = fields[8]
+        empty = bytearray(raw[:blocks_offset])
+        struct.pack_into("<I", empty, 28, blocks_offset)
+        struct.pack_into("<I", empty, 32, 0)
+        struct.pack_into("<I", empty, 36, blocks_offset)
+        struct.pack_into("<I", empty, 72, blocks_offset)
+        with self.assertRaises(pack.DictionaryFormatError):
+            pack.validate_raw(rechecksum(bytes(empty)))
+
     def test_schema_v2_rejects_noncanonical_and_truncated_varints(self) -> None:
         # Varint canonicity is checked directly through the decoder.
         self.assertEqual(pack._decode_varint(b"\x09", 0, 1), (9, 1))

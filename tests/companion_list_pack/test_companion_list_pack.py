@@ -278,6 +278,12 @@ class DecompressTest(unittest.TestCase):
         with self.assertRaises(pack.CompanionListPackError):
             pack.decompress_asset(b"plainly not a zlib member")
 
+    def test_a_stream_over_the_raw_cap_is_an_error(self) -> None:
+        import zlib
+
+        compressed = zlib.compress(b"\x00" * (pack.MAX_RAW_BYTES + 1))
+        with self.assertRaises(pack.CompanionListPackError):
+            pack.decompress_asset(compressed)
 
 
 class CliTest(unittest.TestCase):

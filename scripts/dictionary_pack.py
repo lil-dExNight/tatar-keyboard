@@ -561,7 +561,12 @@ def _validate_raw_v2(
     if file_size != expected_file_size or file_size != len(raw):
         raise DictionaryFormatError("declared file size does not match canonical layout")
 
+    if block_count <= 0 or blocks_size <= 0:
+        raise DictionaryFormatError("dictionary has no block body")
+
     block_offsets = struct.unpack_from(f"<{block_count}I", raw, block_index_offset)
+    if block_offsets[0] >= file_size:
+        raise DictionaryFormatError("first block offset is outside the file")
     if block_offsets[0] != blocks_offset:
         raise DictionaryFormatError("first block offset must equal the blocks offset")
     previous_block_offset = block_offsets[0]
