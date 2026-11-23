@@ -14,6 +14,19 @@ These hold for every release:
 
 ## [Unreleased]
 
+## [4.0.3] — 2026-11-23
+
+### Changed
+
+- Typing and suggestion handling reuses a trailing-word derivation within one event, while hot
+  personal-store reads coalesce opens and learned-emoji and refused-correction sources stay cached
+  per language with live gates, cutting avoidable allocations and repeated work.
+- Reactivating a bundled dictionary or bigram table uses the streaming pinned-content check when
+  no recorded validation is available, avoiding the full structural walk.
+- Keyboard drawing skips empty glide trails and redundant preview-placement work, emoji recents
+  stay untouched until the first insertion or recents removal, and an overflowing editor cache
+  builds only its retained tail.
+
 ## [4.0.2] — 2026-11-23
 
 ### Fixed

@@ -1,0 +1,2 @@
+• Typing, suggestions and dictionary loading do less repeated work and create fewer temporary objects
+• Input and suggestion behavior is unchanged

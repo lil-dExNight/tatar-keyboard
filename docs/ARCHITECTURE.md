@@ -62,6 +62,8 @@ Protections (in `RichInputConnection` and `InputLogic` unless noted):
 - batch edits close in `finally`;
 - host answers are cut to `Constants.EDITOR_CONTENTS_CACHE_SIZE` characters; a `SurroundingText`
   with an out-of-range selection empties the cache; negative or inverted selections are normalized;
+- appending to the before-cursor cache keeps the same bound and builds only the retained tail on
+  overflow, without a transient combined string;
 - cache reloads are coalesced (at most one in flight) and applied on the UI thread. Both
   `reloadTextCache` methods ask `EditorHost.mayReadEditorText()` (no password field) before any
   read, which covers the field-start fill, the coalesced follow-up and the reload a refused glide
@@ -146,6 +148,11 @@ Tokens: `LatestOnlyPrefixEngine` keeps only the latest request; a new one supers
 one. Each request gets a `LookupToken` (engine instance, serial, editor session, language, query,
 dictionary identity, `LookupKind`). The worker passes the result to `ResultHandoff`; the controller
 posts it to the UI thread and applies it only if `isCurrent(token)` still holds.
+
+On the ordinary growth path of `SuggestionsController.onTextChanged`, one
+`EditorSurface.cachedWordBeforeCursor()` derivation serves clean-run tracking and
+`requestCurrentPrefix`. The value is method-local and is never reused across an editor mutation;
+other prefix requests and the glide-undo rescue derive the word live.
 
 Lookup kinds (`LookupKind`): `PREFIX` (word completion), `NEXT_WORD` (next-word prediction
 after a committed word), `GLIDE` (glide decoding). At a sentence start (the field start, a line
@@ -382,11 +389,13 @@ start that finds the final file already present re-verifies it by the pinned-con
 one streaming digest pass), without the structural walk; a pinned SHA-256 match authenticates
 the embedded checksum too and implies the walk's outcome, so the walk — which still checks the
 checksum on its own — runs only on freshly written bytes: publication, and the mismatch
-fall-through that deletes a verify failure and republishes. The first activation after that check or a publication
-reuses its recorded result while the file keeps the recorded length and modification time, and
-every later activation validates in full again. The lease carries a process-local validation
-token (`StoreValidationToken`), so the engine's open repeats only the header and section checks
-and skips the structural walk the store already ran. `MappedDictionaryEngine` maps the file
+fall-through that deletes a verify failure and republishes. The first activation after that check
+or a publication reuses its recorded result while the file keeps the recorded length and
+modification time. An activation without a recorded result uses the same streaming
+`verifyPinnedContent` check and skips the full `validateRaw` walk; a file that fails it does not
+become active. The lease carries a process-local validation token (`StoreValidationToken`), so the
+engine's open repeats only the header and section checks and skips the structural walk covered by
+that token. `MappedDictionaryEngine` maps the file
 read-only (`FileChannel.map`) and reads it in place. The bigram table attaches lazily: publication
 hands the engine its catalog, and the engine maps and opens the table on its worker at the first
 next-word lookup or at the first glide decode with a committed context word, so a session that
@@ -435,10 +444,16 @@ from the settings screen, with no counters, no pending hashes and no learning.
 - Loading: a store opens on its worker after the unlock gate. Reading and validation fail
   apart (`PersonalFileReads`): a read that throws (an I/O error) leaves the store not loaded, with
   an empty snapshot, no learning and no writes, so the file on disk is never overwritten from
-  empty memory; the next `prime()` tries again. Words and pairs prime at engine creation, on each
-  repaint of the "Saved words" screen and before a backup; learned emoji and refused corrections
-  on each strip query; sentence starts at each sentence start; text shortcuts once on the strip's
-  first lookup, on their own settings screen and before a backup. A `clearAll` before the first unlock also leaves the store not loaded.
+  empty memory; a later open request tries again. Words and pairs prime at engine creation, on
+  each repaint of the "Saved words" screen and before a backup; the learned-emoji and
+  refused-correction read paths request opens; sentence starts do so at each sentence start; text
+  shortcuts prime once on the strip's first lookup, on their own settings screen and before a
+  backup. For learned emoji, refused corrections and sentence starts, `ensureOpen` returns at once
+  once the store is loaded and otherwise queues one open on the worker, coalescing requests that
+  arrive while that open runs; the next call retries a failed open. The learned-emoji and
+  refused-correction sources are cached per subtype, and each source re-reads its
+  personal-dictionary gate on every lookup. A `clearAll` before the first unlock also leaves the
+  store not loaded.
 - Quarantine: only a file that fails validation, or exceeds its size cap, is moved aside, not
   deleted; the settings screen tells the user once and can restore what is readable. The
   sentence-start store has the same recovery lifecycle as the other stores
@@ -678,7 +693,9 @@ font cannot draw. Skin-tone bases are probed once per process in the background
 draw gets no tone picker, and none of its toned forms is recorded in or shown from recents or
 offered as a learned emoji. Recents (`RecentEmojiStore`) record only sequences the panel's set
 holds, are credential-protected, hidden while the keyguard is shown and not recorded while
-learning is paused (`RecentEmojiGateState`). Recent-emoji writes use temp fsync → rename →
+learning is paused (`RecentEmojiGateState`). An emoji insertion or a recents removal marks
+recents as touched; a panel or input-view hide before that first change resolves no recents store
+and queues no flush. Recent-emoji writes use temp fsync → rename →
 directory fsync. A failure before the rename preserves the previous file; a failure after it
 leaves the list `dirty` for a later hide retry. Only a durable write clears `dirty`. The panel
 opens from the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
