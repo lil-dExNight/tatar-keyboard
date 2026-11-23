@@ -235,6 +235,29 @@ class GlideTrailContractTest {
             nightColors.contains("<color name=\"tatar_glide_trail_refused\">#F2FFDAD6</color>"))
     }
 
+    @Test
+    fun theDrawPassSkipsTheClockOnAnEmptyTrailOnly() {
+        val draw = viewSource.substringAfter("private void drawGlideTrail(final Canvas canvas)")
+            .substringBefore("private static final long FADE_FRAME_MS")
+        val emptyReturn = draw.indexOf("if (mGlideTrail.isEmpty())")
+        val clockRead = draw.indexOf("SystemClock.uptimeMillis()")
+        assertTrue("an empty trail leaves before the wall-clock read",
+            emptyReturn >= 0 && clockRead >= 0 && emptyReturn < clockRead)
+
+        // A live trail still draws every visible segment at full alpha.
+        assertTrue("a live trail still paints its path",
+            draw.contains("paint.setAlpha((int)(mGlideTrail.getMaxAlpha() * fadeFactor));") &&
+                draw.contains("canvas.drawPath(mGlideTrailPath, paint);"))
+
+        // A fading trail still clears when spent and keeps its one-frame-at-a-time schedule.
+        assertTrue("a spent fade still clears the ring",
+            draw.contains("if (mGlideTrail.isFadeDone(nowMs))") &&
+                draw.contains("mGlideTrail.clear();"))
+        assertTrue("a fading trail still reschedules one frame at a time",
+            draw.contains("if (mGlideTrail.getFadingOut())") &&
+                draw.contains("postInvalidateDelayed(FADE_FRAME_MS)"))
+    }
+
     /** The body of one method, from its declaration to the next one (good enough for pins). */
     private fun methodBody(name: String): String {
         // The " void " prefix skips javadoc {@link} references to the same method.

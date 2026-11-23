@@ -39,9 +39,5 @@ public final class DrawingPreviewPlacerView extends RelativeLayout {
     @Override
     public void onDraw(final Canvas canvas) {
         super.onDraw(canvas);
-        final int originX = CoordinateUtils.x(mKeyboardViewOrigin);
-        final int originY = CoordinateUtils.y(mKeyboardViewOrigin);
-        canvas.translate(originX, originY);
-        canvas.translate(-originX, -originY);
     }
 }

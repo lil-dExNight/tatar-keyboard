@@ -30,6 +30,7 @@ import java.io.File
 import java.io.IOException
 import java.security.SecureRandom
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The serialized owner of one subtype's learned-emoji `.tpersem` file. See [PersonalDictionaryStore]
@@ -57,7 +58,17 @@ internal class PersonalEmojiStore(
 
     // Worker-confined state (touched only on [executor]).
     private var entries: PersonalEmojiEntries = PersonalEmojiEntries.empty(maxEntries)
+
+    /**
+     * Written on the worker, read by the hot paths: the volatile is what lets a finished open
+     * publish to the queries [ensureOpen] short-circuits on.
+     */
+    @Volatile
     private var loaded = false
+
+    /** One queued read-side open at a time; see [ensureOpen]. */
+    private val openQueued = AtomicBoolean(false)
+
     private var counterFlushPending = false
 
     // See PersonalDictionaryStore.loadFailed.
@@ -508,7 +519,32 @@ internal class PersonalEmojiStore(
         }
     }
 
-    /** Opens the store on its worker. See [PersonalDictionaryStore.prime]. */
+    /**
+     * The engine's open request. Returns at once once the store is loaded; otherwise it queues one
+     * open on the worker — [openQueued] coalesces the requests that arrive while that one runs —
+     * and a failed open is retried by the next call, like the per-query prime this replaces. Safe
+     * to call from any thread: the file I/O stays on the executor, and the caller keeps reading
+     * the published [snapshot].
+     */
+    fun ensureOpen() {
+        if (loaded) return
+        if (!openQueued.compareAndSet(false, true)) return
+        onWorker {
+            try {
+                loadFailed = false
+                open()
+            } finally {
+                openQueued.set(false)
+            }
+        }
+    }
+
+    /**
+     * Opens the store on its worker, publishing the snapshot, and answers [outcome] with the
+     * result. The backup's and the screens' entry (see [PersonalDictionaryStore.prime]): unlike
+     * [ensureOpen] it is never coalesced, so its callback always comes back through the worker,
+     * in enqueue order.
+     */
     fun prime(outcome: PersonalMutationOutcome? = null) = onWorker {
         loadFailed = false
         report(outcome, open())

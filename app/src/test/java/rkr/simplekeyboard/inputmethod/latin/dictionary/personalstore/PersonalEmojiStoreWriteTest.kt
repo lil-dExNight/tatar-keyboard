@@ -904,6 +904,109 @@ class PersonalEmojiStoreWriteTest {
         assertTrue(File(directory, "pending-emoji-${PersonalSubtypes.RUSSIAN}-s1-f1.bin").isFile)
     }
 
+    // ---- the hot read side -----------------------------------------------------------------------
+
+    /** Enqueues without running; a test drains it, so the queue length stays observable. */
+    private class QueueExecutor : Executor {
+        val queued = mutableListOf<Runnable>()
+
+        override fun execute(command: Runnable) {
+            queued.add(command)
+        }
+
+        fun drain() {
+            val tasks = queued.toList()
+            queued.clear()
+            tasks.forEach { it.run() }
+        }
+    }
+
+    @Test
+    fun repeatedQueriesQueueOneOpenAndALoadedStoreQueuesNothing() {
+        val directory = newPersonalDir()
+        val seeded = store(directory, RecordingOps(), RealOpener)
+        repeat(PersonalEmojiStore.LEARN_THRESHOLD) { seeded.noteObservation("сәләм", "☀️") }
+
+        val queued = QueueExecutor()
+        val store = store(directory, RecordingOps(), RealOpener, executor = queued)
+        repeat(5) { store.ensureOpen() }
+        assertEquals(
+            "not-yet-loaded queries coalesce into one queued open",
+            1,
+            queued.queued.size,
+        )
+
+        queued.drain()
+        assertEquals("☀️", store.snapshot.emojiFor("сәләм"))
+
+        repeat(5) { store.ensureOpen() }
+        assertEquals("a loaded store answers from the snapshot, queueing nothing",
+            0, queued.queued.size)
+    }
+
+    @Test
+    fun aFailedOpenIsRetriedByTheNextHotQuery() {
+        val directory = newPersonalDir()
+        val seeded = store(directory, RecordingOps(), RealOpener)
+        repeat(PersonalEmojiStore.LEARN_THRESHOLD) { seeded.noteObservation("сәләм", "☀️") }
+        val original = destinationFile(directory).readBytes()
+
+        // The first open cannot quarantine the corrupt file, so the whole load fails.
+        quarantineCorruptingLastByte(directory)
+        var failRenames = true
+        val ops = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) {
+                if (failRenames) throw IOException("replace failed")
+                super.atomicReplace(source, destination)
+            }
+        }
+        val queued = QueueExecutor()
+        val store = store(directory, ops, RealOpener, executor = queued)
+
+        store.ensureOpen()
+        queued.drain()
+        assertTrue("the failed open publishes nothing", store.snapshot.isEmpty)
+
+        store.ensureOpen()
+        assertEquals("the failure is retried, not coalesced away", 1, queued.queued.size)
+        destinationFile(directory).writeBytes(original)
+        queued.drain()
+        assertEquals("☀️", store.snapshot.emojiFor("сәләм"))
+
+        store.ensureOpen()
+        assertEquals("and once loaded the queries queue nothing again", 0, queued.queued.size)
+    }
+
+    @Test
+    fun primeOutcomeCallbacksAnswerInEnqueueOrderBesideTheReadSide() {
+        val directory = newPersonalDir()
+        val seeded = store(directory, RecordingOps(), RealOpener)
+        repeat(PersonalEmojiStore.LEARN_THRESHOLD) { seeded.noteObservation("сәләм", "☀️") }
+
+        val queued = QueueExecutor()
+        val store = store(directory, RecordingOps(), RealOpener, executor = queued)
+        val answered = mutableListOf<String>()
+        store.ensureOpen() // the read side queues first
+        store.prime { answered += "first:$it" }
+        store.prime { answered += "second:$it" }
+        assertEquals(3, queued.queued.size)
+
+        queued.drain()
+        assertEquals(
+            "the outcomes still come back through the worker, in enqueue order",
+            listOf("first:true", "second:true"),
+            answered,
+        )
+
+        store.prime { answered += "third:$it" }
+        queued.drain()
+        assertEquals(
+            "prime is never coalesced: a loaded store still answers through the worker",
+            listOf("first:true", "second:true", "third:true"),
+            answered,
+        )
+    }
+
     // ---- shared fault harness -------------------------------------------------------------------
 
     /**
@@ -967,6 +1070,7 @@ class PersonalEmojiStoreWriteTest {
         maxEntries: Int = TpersemFormat.MAX_PERSONAL_EMOJI_ENTRIES.toInt(),
         subtypeId: String = subtype,
         quarantineNotice: PersonalQuarantineNotice? = null,
+        executor: Executor = directExecutor,
     ): PersonalEmojiStore = PersonalEmojiStore(
         subtypeId = subtypeId,
         directoryProvider = { directory },
@@ -974,7 +1078,7 @@ class PersonalEmojiStoreWriteTest {
         outputOpener = opener,
         spaceProbe = spaceProbe,
         clock = { 1000L },
-        executor = directExecutor,
+        executor = executor,
         unlockGate = unlockGate,
         maxEntries = maxEntries,
         quarantineNotice = quarantineNotice,

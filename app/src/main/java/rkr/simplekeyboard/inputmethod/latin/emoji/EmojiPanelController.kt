@@ -180,6 +180,9 @@ class EmojiPanelController internal constructor(
 
     private var executor: ExecutorService? = null
 
+    // Sticky for the controller's lifetime: lifecycle hides need no recents work before a change.
+    private var recentsTouched = false
+
     // Built lazily on first use so IME start never resolves the recents path (directBoot-safe).
     private val recentStore: RecentEmojiStore? by lazy(LazyThreadSafetyMode.NONE) {
         try {
@@ -386,6 +389,7 @@ class EmojiPanelController internal constructor(
      * so a closed gate records nothing.
      */
     fun onEmojiInserted(sequence: String) {
+        recentsTouched = true
         val store = recentStore ?: return
         val backgroundExecutor = backgroundExecutor() ?: return
         val available = availableSequences
@@ -403,6 +407,7 @@ class EmojiPanelController internal constructor(
      * hide's flush, like every other list change.
      */
     fun onRecentRemoved(sequence: String) {
+        recentsTouched = true
         val store = recentStore ?: return
         val backgroundExecutor = backgroundExecutor() ?: return
         val available = availableSequences
@@ -430,6 +435,7 @@ class EmojiPanelController internal constructor(
     }
 
     private fun flushRecentsOnHide() {
+        if (!recentsTouched) return
         val store = recentStore ?: return
         val backgroundExecutor = backgroundExecutor() ?: return
         try {

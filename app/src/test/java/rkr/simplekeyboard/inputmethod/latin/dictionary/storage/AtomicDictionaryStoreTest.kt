@@ -65,7 +65,7 @@ class AtomicDictionaryStoreTest {
     }
 
     @Test
-    fun everyLaterActivationValidatesAgain() {
+    fun everyLaterActivationVerifiesPinnedContentAgainWithoutTheFullWalk() {
         val artifact = DictionaryTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-once")
         val harness = harness(directory, listOf(artifact))
@@ -75,6 +75,7 @@ class AtomicDictionaryStoreTest {
         requireNotNull(harness.store.acquireLatestForActivation()).close()
 
         assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
     }
 
     @Test
@@ -153,14 +154,15 @@ class AtomicDictionaryStoreTest {
         val lease = requireNotNull(harness.store.acquireLatestForActivation())
 
         // The recorded publication validation was spent by the first activation, so this token
-        // comes from a fresh full validation.
+        // comes from a fresh pinned-content verification.
         assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
         assertTrue(requireNotNull(lease.validationToken).matchesFile(lease.dictionary.file))
         lease.close()
     }
 
     @Test
-    fun aFileWithAnotherLengthAfterPublicationIsValidatedAndRejected() {
+    fun aFileWithAnotherLengthAfterPublicationIsVerifiedAndRejected() {
         val artifact = DictionaryTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-length")
         val harness = harness(directory, listOf(artifact))
@@ -170,10 +172,11 @@ class AtomicDictionaryStoreTest {
 
         assertEquals(null, harness.store.acquireLatestForActivation())
         assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
     }
 
     @Test
-    fun aSameLengthRewriteWithANewTimeIsValidatedAndRejected() {
+    fun aSameLengthRewriteWithANewTimeIsVerifiedAndRejected() {
         val artifact = DictionaryTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-time")
         val harness = harness(directory, listOf(artifact))
@@ -186,6 +189,7 @@ class AtomicDictionaryStoreTest {
 
         assertEquals(null, harness.store.acquireLatestForActivation())
         assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
     }
 
     @Test

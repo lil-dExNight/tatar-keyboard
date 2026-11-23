@@ -33,6 +33,40 @@ class RichInputConnectionRobustnessTest {
 
     private val window = Constants.EDITOR_CONTENTS_CACHE_SIZE
 
+    private data class LegacyCache(val text: String, val reachedTextStart: Boolean)
+
+    /** The former combined-string implementation, retained here as an exact output oracle. */
+    private fun legacyAppend(
+        before: String,
+        reachedTextStart: Boolean,
+        appended: CharSequence,
+    ): LegacyCache {
+        val combined = before + appended
+        return if (combined.length <= window) {
+            LegacyCache(combined, reachedTextStart)
+        } else {
+            LegacyCache(combined.substring(combined.length - window), false)
+        }
+    }
+
+    private fun assertAppendMatchesLegacy(
+        connection: RichInputConnection,
+        appended: CharSequence,
+    ) {
+        val expected = legacyAppend(
+            connection.cachedTextBeforeCursor.toString(),
+            connection.cacheReachedTextStart(),
+            appended,
+        )
+
+        connection.appendToTextBeforeCursor(appended)
+
+        assertEquals(expected.text, connection.cachedTextBeforeCursor.toString())
+        assertEquals(expected.reachedTextStart, connection.cacheReachedTextStart())
+        assertTrue("the retained tail remains an immutable String",
+            connection.cachedTextBeforeCursor is String)
+    }
+
     private fun seq(vararg codePoints: Int): String {
         val builder = StringBuilder()
         for (codePoint in codePoints) builder.appendCodePoint(codePoint)
@@ -78,6 +112,88 @@ class RichInputConnectionRobustnessTest {
 
         assertEquals("мин " + "ю".repeat(window - 4), connection.cachedTextBeforeCursor.toString())
         assertTrue(connection.cacheReachedTextStart())
+    }
+
+    @Test
+    fun appendBoundariesAndEmptyAppendsMatchTheLegacyOutput() {
+        val connection = RichInputConnection(null)
+        connection.onBeforeCursorCacheReloaded("мин ")
+
+        assertAppendMatchesLegacy(connection, "ю".repeat(window - 5))
+        assertEquals(window - 1, connection.cachedTextBeforeCursor.length)
+        assertTrue(connection.cacheReachedTextStart())
+        assertAppendMatchesLegacy(connection, StringBuilder())
+
+        assertAppendMatchesLegacy(connection, "б")
+        assertEquals(window, connection.cachedTextBeforeCursor.length)
+        assertTrue("an exactly full cache has not been cut", connection.cacheReachedTextStart())
+        assertAppendMatchesLegacy(connection, "")
+
+        assertAppendMatchesLegacy(connection, "в")
+        assertEquals(window, connection.cachedTextBeforeCursor.length)
+        assertFalse(connection.cacheReachedTextStart())
+        assertAppendMatchesLegacy(connection, StringBuilder())
+
+        connection.onBeforeCursorCacheReloaded("")
+        assertAppendMatchesLegacy(connection, "")
+        assertTrue(connection.cacheReachedTextStart())
+    }
+
+    @Test
+    fun multiCharacterAndOversizedAppendsMatchTheLegacyOutput() {
+        val connection = RichInputConnection(null)
+        connection.onBeforeCursorCacheReloaded("а".repeat(window - 2))
+
+        assertAppendMatchesLegacy(connection, "бвг")
+        assertEquals("а".repeat(window - 3) + "бвг",
+            connection.cachedTextBeforeCursor.toString())
+
+        connection.onBeforeCursorCacheReloaded("")
+        assertAppendMatchesLegacy(connection, "ю".repeat(window))
+        assertTrue("a 1024-char append to an empty cache cuts nothing",
+            connection.cacheReachedTextStart())
+
+        connection.onBeforeCursorCacheReloaded("к")
+        assertAppendMatchesLegacy(connection, "ю".repeat(window))
+        assertEquals("ю".repeat(window), connection.cachedTextBeforeCursor.toString())
+
+        connection.onBeforeCursorCacheReloaded("б")
+        val oversized = StringBuilder("п".repeat(19) + "я".repeat(window))
+        assertAppendMatchesLegacy(connection, oversized)
+        assertEquals("я".repeat(window), connection.cachedTextBeforeCursor.toString())
+    }
+
+    @Test
+    fun decomposedCyrillicSlicesMatchTheLegacyOutputWithoutNormalization() {
+        val connection = RichInputConnection(null)
+        val decomposed = "е\u0301"
+        connection.onBeforeCursorCacheReloaded(decomposed + "х".repeat(window - 2))
+
+        // The one-char head cut removes the base letter but retains its combining acute.
+        assertAppendMatchesLegacy(connection, "б")
+        assertEquals(decomposed[1], connection.cachedTextBeforeCursor[0])
+        assertEquals(window, connection.cachedTextBeforeCursor.length)
+
+        connection.onBeforeCursorCacheReloaded("мин е")
+        assertAppendMatchesLegacy(connection, "\u0301")
+        assertEquals("мин е\u0301", connection.cachedTextBeforeCursor.toString())
+    }
+
+    @Test
+    fun supplementaryCharacterSlicesKeepTheLegacySurrogateSplit() {
+        val connection = RichInputConnection(null)
+        val emoji = seq(0x1F600)
+        val cjk = seq(0x20000)
+        connection.onBeforeCursorCacheReloaded(emoji + "а".repeat(window - 2))
+
+        // The cut lands between the high and low surrogates: substring did not repair the pair.
+        assertAppendMatchesLegacy(connection, "б")
+        assertEquals(emoji[1], connection.cachedTextBeforeCursor[0])
+
+        connection.onBeforeCursorCacheReloaded("")
+        assertAppendMatchesLegacy(connection, cjk + "ә".repeat(window - 1))
+        assertEquals(cjk[1], connection.cachedTextBeforeCursor[0])
+        assertEquals(window, connection.cachedTextBeforeCursor.length)
     }
 
     // --- A lying SurroundingText falls back to the empty cache ------------------------------

@@ -57,14 +57,16 @@ object SentStartOverlays {
 
     /**
      * The strip's read side for [subtypeId]: the saved sentence-initial words in usage order, or
-     * an empty list while the personal-dictionary setting is off. Performs no I/O on the caller
-     * (the store opens lazily on its worker), so it may be called at every sentence start.
+     * an empty list while the personal-dictionary setting is off. Performs no I/O on the caller:
+     * the store opens lazily on its worker, the open is queued once per load and coalesced while
+     * it runs ([SentStartOverlayStore.ensureOpen]), and a failed open is retried by the next
+     * sentence start. So it may be called at every sentence start.
      */
     @JvmStatic
     fun topWordsFor(context: Context, subtypeId: String, gate: PersonalDictionaryGate): List<String> {
         if (!gate.isOn()) return emptyList()
         val store = storeFor(context, subtypeId)
-        store.prime()
+        store.ensureOpen()
         return store.snapshot.topWords()
     }
 

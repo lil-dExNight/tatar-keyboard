@@ -702,16 +702,33 @@ public final class RichInputConnection {
     /**
      * Appends to the before-cursor cache, keeping only the last
      * {@link Constants#EDITOR_CONTENTS_CACHE_SIZE} chars. Cutting the head clears
-     * {@link #mCacheReachedTextStart}. Package-private for the JVM tests; never calls the editor.
+     * {@link #mCacheReachedTextStart}. Overflow builds only the retained tail, not a transient
+     * combined string. All slices use UTF-16 code units, including a possible surrogate split.
+     * Package-private for the JVM tests; never calls the editor.
      */
     /* package */ void appendToTextBeforeCursor(final CharSequence text) {
-        final String combined = mTextBeforeCursor + text;
-        if (combined.length() <= Constants.EDITOR_CONTENTS_CACHE_SIZE) {
-            mTextBeforeCursor = combined;
+        final String textBeforeCursor = mTextBeforeCursor;
+        final String appendedText = String.valueOf(text);
+        final int beforeLength = textBeforeCursor.length();
+        final int appendLength = appendedText.length();
+        final int cacheSize = Constants.EDITOR_CONTENTS_CACHE_SIZE;
+        if (appendLength <= cacheSize - beforeLength) {
+            if (appendLength == 0) {
+                return;
+            }
+            mTextBeforeCursor = textBeforeCursor + appendedText;
             return;
         }
-        mTextBeforeCursor =
-                combined.substring(combined.length() - Constants.EDITOR_CONTENTS_CACHE_SIZE);
+        if (appendLength >= cacheSize) {
+            mTextBeforeCursor = appendedText.substring(appendLength - cacheSize);
+            mCacheReachedTextStart = false;
+            return;
+        }
+        final int retainedBeforeLength = cacheSize - appendLength;
+        final StringBuilder tail = new StringBuilder(cacheSize);
+        tail.append(textBeforeCursor, beforeLength - retainedBeforeLength, beforeLength);
+        tail.append(appendedText);
+        mTextBeforeCursor = tail.toString();
         mCacheReachedTextStart = false;
     }
 

@@ -398,7 +398,6 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
         }
 
         locatePreviewPlacerView();
-        getLocationInWindow(mOriginCoords);
         // The balloon clamp band is the key grid's side edges — the keyboard's side paddings, the
         // margin the edge keys keep — in the placer view's coordinates.
         previewParams.setBalloonClampBand(
@@ -719,6 +718,9 @@ public final class MainKeyboardView extends KeyboardView implements MoreKeysPane
     }
 
     private void drawGlideTrail(final Canvas canvas) {
+        if (mGlideTrail.isEmpty()) {
+            return;
+        }
         // The fade reads wall time at the lift and here; all fade math uses gesture-relative time.
         final float nowMs = (float) (SystemClock.uptimeMillis() - mGlideTrailStartTime);
         if (mGlideTrail.isFadeDone(nowMs)) {

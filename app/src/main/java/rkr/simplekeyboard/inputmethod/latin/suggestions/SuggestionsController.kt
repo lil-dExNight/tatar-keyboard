@@ -968,7 +968,13 @@ class SuggestionsController internal constructor(
         // A clean word that just ended without ever producing an empty-result observation is
         // parked for the engine's deferred empty-prefix probe; it is resolved below, after the
         // separator's lookup is issued, or dropped where no probe can run.
-        val deferredProbeWord = runMachine.trackCleanRun(editor.cachedWordBeforeCursor())
+        // One derivation serves the whole event: this tracking and the ordinary current-prefix
+        // request at the bottom both see the same word. Nothing between the two reads edits the
+        // editor (the rescue, revert and ineligible branches only repaint or return), so the
+        // value is never reused across a mutation; the rescue binding below keeps its own live
+        // re-check, and every other [requestCurrentPrefix] caller derives the word live.
+        val trailingWord = editor.cachedWordBeforeCursor()
+        val deferredProbeWord = runMachine.trackCleanRun(trailingWord)
         // A glide undo armed its rescue candidates and this text change is the deletion itself
         // (the backspace path fires onTextChanged right after the undo). They re-bind to the
         // position the undo emptied, but only while the editor still shows exactly that state;
@@ -1012,7 +1018,7 @@ class SuggestionsController internal constructor(
             if (deferredProbeWord != null) dropDeferredEmptyProbe(deferredProbeWord)
             return
         }
-        requestCurrentPrefix()
+        requestCurrentPrefix(trailingWord = trailingWord)
         // The probe is enqueued only now, behind the separator's next-word lookup
         // ([requestCurrentPrefix] on an empty trailing word), which it must never delay.
         if (deferredProbeWord != null) {
@@ -2322,8 +2328,16 @@ class SuggestionsController internal constructor(
      * (PREFIX and NEXT_WORD) and a prefix in mixed case (PREFIX only; NEXT_WORD ignores the context
      * word's casing). An empty prefix falls through to [requestNextWordContext]: a non-empty prefix
      * means PREFIX only, an empty one NEXT_WORD or nothing, never both on one strip.
+     *
+     * [trailingWord] lets a caller that already derived the word for this event reuse it (the
+     * ordinary growth path of [onTextChanged]); it must be what [EditorSurface.cachedWordBeforeCursor]
+     * returned for the current editor state, with no editor mutation since. Null (every other
+     * caller) derives the word live.
      */
-    private fun requestCurrentPrefix(afterBigramTable: Boolean = false) {
+    private fun requestCurrentPrefix(
+        afterBigramTable: Boolean = false,
+        trailingWord: String? = null,
+    ) {
         if (!eligible || keyguardGate.isLocked()) return
         // The keystroke observation point: a setting change made since the last lookup is pushed
         // to the engines before this request, so a disabled autocorrect never pays the verdict
@@ -2353,7 +2367,7 @@ class SuggestionsController internal constructor(
             clearToReservedBand()
             return
         }
-        val word = editor.cachedWordBeforeCursor()
+        val word = trailingWord ?: editor.cachedWordBeforeCursor()
         // A refused preview lives exactly as long as the trailing word it was made for. A
         // different word, including none, is a new occurrence.
         if (word != suppressedPreviewWord) suppressedPreviewWord = null

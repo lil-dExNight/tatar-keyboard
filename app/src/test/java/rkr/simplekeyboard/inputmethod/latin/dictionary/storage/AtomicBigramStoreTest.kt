@@ -75,7 +75,7 @@ class AtomicBigramStoreTest {
     }
 
     @Test
-    fun everyLaterActivationValidatesAgain() {
+    fun everyLaterActivationVerifiesPinnedContentAgainWithoutTheFullWalk() {
         val artifact = BigramTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-once")
         val harness = harness(directory, listOf(artifact))
@@ -85,6 +85,7 @@ class AtomicBigramStoreTest {
         requireNotNull(harness.store.acquireLatestForActivation()).close()
 
         assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
     }
 
     @Test
@@ -134,7 +135,7 @@ class AtomicBigramStoreTest {
     }
 
     @Test
-    fun aFileWithAnotherLengthAfterPublicationIsValidatedAndRejected() {
+    fun aFileWithAnotherLengthAfterPublicationIsVerifiedAndRejected() {
         val artifact = BigramTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-length")
         val harness = harness(directory, listOf(artifact))
@@ -144,10 +145,11 @@ class AtomicBigramStoreTest {
 
         assertEquals(null, harness.store.acquireLatestForActivation())
         assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
     }
 
     @Test
-    fun aSameLengthRewriteWithANewTimeIsValidatedAndRejected() {
+    fun aSameLengthRewriteWithANewTimeIsVerifiedAndRejected() {
         val artifact = BigramTestFixtures.artifact()
         val directory = temporaryFolder.newFolder("reuse-time")
         val harness = harness(directory, listOf(artifact))
@@ -160,6 +162,7 @@ class AtomicBigramStoreTest {
 
         assertEquals(null, harness.store.acquireLatestForActivation())
         assertEquals(2, harness.store.validationCount)
+        assertEquals(1, harness.store.fullValidationCount)
     }
 
     @Test

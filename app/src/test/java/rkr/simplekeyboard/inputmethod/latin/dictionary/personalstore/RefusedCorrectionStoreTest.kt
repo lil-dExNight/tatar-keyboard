@@ -310,6 +310,110 @@ class RefusedCorrectionStoreTest {
         assertArrayEquals(corrupt, destination.readBytes())
     }
 
+    // ---- the hot read side -----------------------------------------------------------------------
+
+    /** Enqueues without running; a test drains it, so the queue length stays observable. */
+    private class QueueExecutor : Executor {
+        val queued = mutableListOf<Runnable>()
+
+        override fun execute(command: Runnable) {
+            queued.add(command)
+        }
+
+        fun drain() {
+            val tasks = queued.toList()
+            queued.clear()
+            tasks.forEach { it.run() }
+        }
+    }
+
+    @Test
+    fun repeatedQueriesQueueOneOpenAndALoadedStoreQueuesNothing() {
+        val directory = newPersonalDir()
+        val seeded = store(directory)
+        repeat(RefusedCorrections.REFUSAL_THRESHOLD) { seeded.noteRefusal("китәп", "китап") }
+
+        val queued = QueueExecutor()
+        val store = store(directory, executor = queued)
+        repeat(5) { store.ensureOpen() }
+        assertEquals(
+            "not-yet-loaded queries coalesce into one queued open",
+            1,
+            queued.queued.size,
+        )
+
+        queued.drain()
+        assertTrue(store.snapshot.isRefused("китәп", "китап"))
+
+        repeat(5) { store.ensureOpen() }
+        assertEquals("a loaded store answers from the snapshot, queueing nothing",
+            0, queued.queued.size)
+    }
+
+    @Test
+    fun aFailedOpenIsRetriedByTheNextHotQuery() {
+        val directory = newPersonalDir()
+        val seeded = store(directory)
+        repeat(RefusedCorrections.REFUSAL_THRESHOLD) { seeded.noteRefusal("китәп", "китап") }
+        val original = destinationFile(directory).readBytes()
+
+        // The first open cannot quarantine the corrupt file, so the whole load fails.
+        destinationFile(directory).writeBytes(
+            original.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 0x7f).toByte() })
+        var failRenames = true
+        val ops = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) {
+                if (failRenames) throw IOException("replace failed")
+                super.atomicReplace(source, destination)
+            }
+        }
+        val queued = QueueExecutor()
+        val store = store(directory, ops = ops, executor = queued)
+
+        store.ensureOpen()
+        queued.drain()
+        assertTrue("the failed open publishes nothing", store.snapshot.isEmpty)
+
+        store.ensureOpen()
+        assertEquals("the failure is retried, not coalesced away", 1, queued.queued.size)
+        destinationFile(directory).writeBytes(original)
+        queued.drain()
+        assertTrue(store.snapshot.isRefused("китәп", "китап"))
+
+        store.ensureOpen()
+        assertEquals("and once loaded the queries queue nothing again", 0, queued.queued.size)
+    }
+
+    @Test
+    fun primeOutcomeCallbacksAnswerInEnqueueOrderBesideTheReadSide() {
+        val directory = newPersonalDir()
+        val seeded = store(directory)
+        repeat(RefusedCorrections.REFUSAL_THRESHOLD) { seeded.noteRefusal("китәп", "китап") }
+
+        val queued = QueueExecutor()
+        val store = store(directory, executor = queued)
+        val answered = mutableListOf<String>()
+        store.ensureOpen() // the read side queues first
+        store.prime { answered += "first:$it" }
+        store.prime { answered += "second:$it" }
+        assertEquals(3, queued.queued.size)
+
+        queued.drain()
+        assertEquals(
+            "the outcomes still come back through the worker, in enqueue order",
+            listOf("first:true", "second:true"),
+            answered,
+        )
+
+        store.prime { answered += "third:$it" }
+        queued.drain()
+        assertEquals(
+            "prime is never coalesced: a loaded store still answers through the worker",
+            listOf("first:true", "second:true", "third:true"),
+            answered,
+        )
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     private val directExecutor = Executor { it.run() }
@@ -331,6 +435,7 @@ class RefusedCorrectionStoreTest {
         spaceProbe: SpaceProbe = SpaceProbe { Long.MAX_VALUE },
         unlockGate: () -> Boolean = { true },
         maxEntries: Int = TrefFormat.MAX_REFUSED_ENTRIES.toInt(),
+        executor: Executor = directExecutor,
     ): RefusedCorrectionStore = RefusedCorrectionStore(
         subtypeId = subtypeId,
         directoryProvider = { directory },
@@ -338,7 +443,7 @@ class RefusedCorrectionStoreTest {
         outputOpener = opener,
         spaceProbe = spaceProbe,
         clock = { 1000L },
-        executor = directExecutor,
+        executor = executor,
         unlockGate = unlockGate,
         maxEntries = maxEntries,
     )

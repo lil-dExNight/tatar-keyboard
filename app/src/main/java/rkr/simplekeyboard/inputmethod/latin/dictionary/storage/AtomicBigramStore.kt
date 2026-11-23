@@ -89,7 +89,7 @@ class AtomicBigramStore(
             val file = File(directory, spec.finalFileName)
             if (!file.isFile) continue
             val validated = takeRecordedValidation(sharedState, file, spec) ?: try {
-                validate(file, spec)
+                verify(file, spec)
             } catch (error: Exception) {
                 continue
             }

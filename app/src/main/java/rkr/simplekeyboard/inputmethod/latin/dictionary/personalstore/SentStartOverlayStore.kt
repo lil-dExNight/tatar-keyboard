@@ -31,6 +31,7 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The serialized owner of one subtype's `.tsent` sentence-initial overlay file. Threading, the
@@ -58,7 +59,17 @@ internal class SentStartOverlayStore(
 
     // Worker-confined state (touched only on [executor]).
     private var entries: SentStartOverlayEntries = SentStartOverlayEntries.empty(maxEntries)
+
+    /**
+     * Written on the worker, read by the hot paths: the volatile is what lets a finished open
+     * publish to the queries [ensureOpen] short-circuits on.
+     */
+    @Volatile
     private var loaded = false
+
+    /** One queued read-side open at a time; see [ensureOpen]. */
+    private val openQueued = AtomicBoolean(false)
+
     private var pendingCounterFlush = false
 
     // See PersonalDictionaryStore.loadFailed.
@@ -452,8 +463,29 @@ internal class SentStartOverlayStore(
     }
 
     /**
-     * Opens the store on its worker if it is not open yet, publishing the snapshot the strip will
-     * read. Safe to call from any thread: the file read runs on the executor.
+     * The hot read paths' open request. Returns at once once the store is loaded; otherwise it
+     * queues one open on the worker — [openQueued] coalesces the requests that arrive while that
+     * one runs — and a failed open is retried by the next call, like the per-query prime this
+     * replaces. Safe to call from any thread: the file I/O stays on the executor, and the caller
+     * keeps reading the published [snapshot].
+     */
+    fun ensureOpen() {
+        if (loaded) return
+        if (!openQueued.compareAndSet(false, true)) return
+        onWorker {
+            try {
+                loadFailed = false
+                open()
+            } finally {
+                openQueued.set(false)
+            }
+        }
+    }
+
+    /**
+     * Opens the store on its worker unconditionally (a failed load is retried), publishing the
+     * snapshot. [ensureOpen] is the coalescing hot read side; this one stays for the paths that
+     * must force a load before reading, and for the tests that drive the serialized owner.
      */
     fun prime() = onWorker {
         loadFailed = false

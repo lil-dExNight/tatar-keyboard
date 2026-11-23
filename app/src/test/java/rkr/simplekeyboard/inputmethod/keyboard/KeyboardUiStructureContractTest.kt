@@ -255,6 +255,36 @@ class KeyboardUiStructureContractTest {
         assertFalse("draw() allocates nothing", draw.contains("new "))
     }
 
+    @Test
+    fun thePreviewBalloonReusesOneWindowLocationMeasurement() {
+        val view = source(
+            "src/main/java/rkr/simplekeyboard/inputmethod/keyboard/MainKeyboardView.java",
+        )
+        val locate = view.substringAfter("private void locatePreviewPlacerView()")
+            .substringBefore("private void installPreviewPlacerView()")
+        assertEquals(1, Regex("getLocationInWindow\\(").findAll(locate).count())
+
+        // showKeyPreview consumes the coordinates locatePreviewPlacerView just measured: the
+        // clamp band and the placement read the same origin, with no second window read.
+        val show = view.substringAfter("private void showKeyPreview(final Key key)")
+            .substringBefore("private void dismissKeyPreviewWithoutDelay")
+        assertTrue(show.contains("locatePreviewPlacerView();"))
+        assertFalse(show.contains("getLocationInWindow("))
+        assertTrue(show.contains("previewParams.setBalloonClampBand(") &&
+            show.contains("mOriginCoords, mDrawingPreviewPlacerView"))
+    }
+
+    @Test
+    fun thePreviewPlacerKeepsDrawSchedulingWithoutRedundantCanvasTransforms() {
+        val placer = source(
+            "src/main/java/rkr/simplekeyboard/inputmethod/keyboard/internal/DrawingPreviewPlacerView.java",
+        )
+        assertTrue("draw stays scheduled on this view", placer.contains("setWillNotDraw(false)"))
+        val onDraw = placer.substringAfter("public void onDraw(final Canvas canvas)")
+        assertFalse("no self-canceling translate pair remains",
+            onDraw.contains("canvas.translate("))
+    }
+
     // ----- Platform dialog -----
 
     @Test

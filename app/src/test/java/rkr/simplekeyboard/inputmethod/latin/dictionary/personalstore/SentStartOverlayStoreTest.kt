@@ -386,6 +386,83 @@ class SentStartOverlayStoreTest {
         assertArrayEquals(corrupt, destination.readBytes())
     }
 
+    // ---- the hot read side -----------------------------------------------------------------------
+
+    /** Enqueues without running; a test drains it, so the queue length stays observable. */
+    private class QueueExecutor : Executor {
+        val queued = mutableListOf<Runnable>()
+
+        override fun execute(command: Runnable) {
+            queued.add(command)
+        }
+
+        fun drain() {
+            val tasks = queued.toList()
+            queued.clear()
+            tasks.forEach { it.run() }
+        }
+    }
+
+    @Test
+    fun repeatedQueriesQueueOneOpenAndALoadedStoreQueuesNothing() {
+        val directory = newPersonalDir()
+        // A previous session left a saved word.
+        val seeded = store(directory)
+        repeat(PendingCounters.LEARN_THRESHOLD) { seeded.noteSentenceStart("сәләм") }
+        seeded.flush()
+
+        val queued = QueueExecutor()
+        val store = store(directory, executor = queued)
+        repeat(5) { store.ensureOpen() }
+        assertEquals(
+            "not-yet-loaded queries coalesce into one queued open",
+            1,
+            queued.queued.size,
+        )
+
+        queued.drain()
+        assertEquals(listOf("сәләм"), store.snapshot.topWords())
+
+        repeat(5) { store.ensureOpen() }
+        assertEquals("a loaded store answers from the snapshot, queueing nothing",
+            0, queued.queued.size)
+    }
+
+    @Test
+    fun aFailedOpenIsRetriedByTheNextHotQuery() {
+        val directory = newPersonalDir()
+        val seeded = store(directory)
+        repeat(PendingCounters.LEARN_THRESHOLD) { seeded.noteSentenceStart("сәләм") }
+        seeded.flush()
+        val original = overlayFile(directory).readBytes()
+
+        // The first open cannot quarantine the corrupt file, so the whole load fails.
+        overlayFile(directory).writeBytes(
+            original.copyOf().also { it[it.size - 1] = (it[it.size - 1] + 1).toByte() })
+        var failRenames = true
+        val ops = object : RecordingOps() {
+            override fun atomicReplace(source: File, destination: File) {
+                if (failRenames) throw IOException("replace failed")
+                super.atomicReplace(source, destination)
+            }
+        }
+        val queued = QueueExecutor()
+        val store = store(directory, ops = ops, executor = queued)
+
+        store.ensureOpen()
+        queued.drain()
+        assertTrue("the failed open publishes nothing", store.snapshot.isEmpty)
+
+        store.ensureOpen()
+        assertEquals("the failure is retried, not coalesced away", 1, queued.queued.size)
+        overlayFile(directory).writeBytes(original)
+        queued.drain()
+        assertEquals(listOf("сәләм"), store.snapshot.topWords())
+
+        store.ensureOpen()
+        assertEquals("and once loaded the queries queue nothing again", 0, queued.queued.size)
+    }
+
     // ---- helpers ----------------------------------------------------------------------------------
 
     private val directExecutor = Executor { it.run() }
@@ -400,6 +477,7 @@ class SentStartOverlayStoreTest {
         maxEntries: Int = TsentFormat.MAX_SENTSTART_ENTRIES.toInt(),
         ops: DurableFileOps = RecordingOps(),
         quarantineNotice: PersonalQuarantineNotice? = null,
+        executor: Executor = directExecutor,
     ): SentStartOverlayStore = SentStartOverlayStore(
         subtypeId = subtype,
         directoryProvider = { directory },
@@ -407,7 +485,7 @@ class SentStartOverlayStoreTest {
         outputOpener = PersonalOutputOpener { temp -> FileOutputStream(temp) },
         spaceProbe = SpaceProbe { Long.MAX_VALUE },
         clock = { 1000L },
-        executor = directExecutor,
+        executor = executor,
         unlockGate = unlockGate,
         maxEntries = maxEntries,
         quarantineNotice = quarantineNotice,

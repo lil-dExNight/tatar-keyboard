@@ -130,6 +130,97 @@ class EmojiPanelControllerRecentsTest {
     }
 
     @Test
+    fun lifecycleHidesTouchNoRecentsStateUntilAChangeIsMade() {
+        val surface = FakeSurface()
+        val executor = ManualExecutor()
+        val ops = FakeFileOps()
+        val store = RecentEmojiStore(
+            RecentEmojiFileProvider { File("recent_emoji_controller_test") },
+            ops,
+            openGate,
+        )
+        var executorCreations = 0
+        var storeCreations = 0
+        val controller = EmojiPanelController(
+            surface,
+            EmojiUiPoster { it.run() },
+            { executorCreations++; executor },
+            { EmojiSnapshotSource { base } },
+            { storeCreations++; store },
+        )
+
+        // Hide, finish and recreation all flush; with nothing recorded they must not build the
+        // recents path: no store, no background executor.
+        controller.onPanelHidden()
+        controller.onFinishInputView()
+        controller.onInputViewRecreated()
+        assertEquals(0, executorCreations)
+        assertEquals(0, storeCreations)
+        assertEquals(0, executor.queued)
+        assertEquals(0, ops.writeCount)
+
+        // The first change builds the store and the executor and queues the record.
+        controller.onEmojiInserted(grin)
+        assertEquals(1, executorCreations)
+        assertEquals(1, storeCreations)
+        assertEquals(1, executor.queued)
+        executor.runAll()
+
+        controller.onPanelHidden()
+        executor.runAll()
+        assertEquals("one durable flush carries the insertion", 1, ops.writeCount)
+        assertTrue(ops.content!!.contains(grin))
+    }
+
+    @Test
+    fun theRecentsTouchFlagIsStickySoLaterHidesStillOfferAFlush() {
+        val surface = FakeSurface()
+        val executor = ManualExecutor()
+        val ops = FakeFileOps()
+        val controller = controllerWith(surface, executor, ops)
+
+        controller.onEmojiInserted(grin)
+        executor.runAll()
+        controller.onPanelHidden()
+        executor.runAll()
+        assertEquals(1, ops.writeCount)
+
+        // The flag is never cleared: a later hide still queues a flush (an unchanged store
+        // declines to write again), so a failed earlier write is not forgotten.
+        controller.onPanelHidden()
+        assertEquals(1, executor.queued)
+        executor.runAll()
+        assertEquals(1, ops.writeCount)
+    }
+
+    @Test
+    fun aRecentRemovalAloneArmsTheNextHideFlush() {
+        val surface = FakeSurface()
+        val executor = ManualExecutor()
+        val ops = FakeFileOps().apply { content = grin }
+        val controller = controllerWith(surface, executor, ops)
+
+        // Prepare the available emoji and load the persisted recent. Merely showing and hiding
+        // the panel does not touch recents or queue a write.
+        controller.onEmojiKeyPressed()
+        executor.runAll()
+        controller.onPanelHidden()
+        assertEquals(0, executor.queued)
+        assertEquals(0, ops.writeCount)
+
+        // A removal (with no prior insert) is the only touch: the next hide flushes it.
+        controller.onRecentRemoved(grin)
+        assertEquals(1, executor.queued)
+        executor.runAll()
+        controller.onPanelHidden()
+        assertEquals(1, executor.queued)
+        executor.runAll()
+
+        assertEquals(1, ops.writeCount)
+        assertEquals("", ops.content)
+    }
+
+    @Test
     fun recentsContinuationFromAnOldEditorDoesNotShowThePanel() {
         val surface = FakeSurface()
         val executor = ManualExecutor()

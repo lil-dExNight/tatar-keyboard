@@ -39,6 +39,9 @@ object PersonalEmojiDictionaries {
     private val lock = Any()
     private val stores = HashMap<String, PersonalEmojiStore>()
 
+    /** Guarded by [lock]; one source per language, holding its first call's live gate. */
+    private val sources = HashMap<String, PersonalEmojiSource>()
+
     /** Notified after entries are erased. See `PersonalDictionaries.erasureListener`. */
     @Volatile
     private var erasureListener: Runnable? = null
@@ -61,8 +64,12 @@ object PersonalEmojiDictionaries {
         }
 
     /**
-     * The engine's read side for [subtypeId]; see [PersonalDictionaries.sourceFor]. Performs no I/O
-     * (the store opens lazily on its worker), so it may be called for every emoji-cell query.
+     * The engine's read side for [subtypeId]; see [PersonalDictionaries.sourceFor]. Performs no
+     * I/O: the store opens lazily on its worker ([PersonalEmojiStore.ensureOpen] queues one open
+     * per load, coalesced while it runs, a failed open retried by the next query), so it may be
+     * called for every emoji-cell query. The source itself is cached per subtype — one object,
+     * not one per query — and its gate stays live: the setting is re-read on every lookup.
+     * [resetForTest] drops the cache beside the stores.
      */
     @JvmStatic
     fun sourceFor(
@@ -71,10 +78,14 @@ object PersonalEmojiDictionaries {
         gate: PersonalDictionaryGate,
     ): PersonalEmojiSource {
         val store = storeFor(context, subtypeId)
-        if (gate.isOn()) store.prime()
-        // Built in the `personal` package from a snapshot supplier; see PersonalDictionaries.sourceFor.
-        return SnapshotPersonalEmojiSource {
-            if (gate.isOn()) store.snapshot else PersonalEmojiDictionary.EMPTY
+        if (gate.isOn()) store.ensureOpen()
+        return synchronized(lock) {
+            sources.getOrPut(subtypeId) {
+                // Built in the `personal` package from a snapshot supplier; see PersonalDictionaries.sourceFor.
+                SnapshotPersonalEmojiSource {
+                    if (gate.isOn()) store.snapshot else PersonalEmojiDictionary.EMPTY
+                }
+            }
         }
     }
 
@@ -167,10 +178,11 @@ object PersonalEmojiDictionaries {
         openStores.forEach { it.noticeDelivered() }
     }
 
-    /** Test hook: drops every cached store so an isolated test starts from nothing. */
+    /** Test hook: drops every cached store and source so an isolated test starts from nothing. */
     internal fun resetForTest() {
         synchronized(lock) {
             stores.clear()
+            sources.clear()
             pendingQuarantineNotices.clear()
         }
         erasureListener = null

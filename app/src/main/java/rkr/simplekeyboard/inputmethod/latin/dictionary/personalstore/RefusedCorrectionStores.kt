@@ -40,6 +40,9 @@ object RefusedCorrectionStores {
     private val lock = Any()
     private val stores = HashMap<String, RefusedCorrectionStore>()
 
+    /** Guarded by [lock]; one source per language, holding its first call's live gate. */
+    private val sources = HashMap<String, RefusedCorrectionSource>()
+
     /** The store for [subtypeId], created on first use. Safe to call from any thread. */
     internal fun storeFor(context: Context, subtypeId: String): RefusedCorrectionStore =
         synchronized(lock) {
@@ -49,8 +52,12 @@ object RefusedCorrectionStores {
     /**
      * The autocorrect paths' read side for [subtypeId]. Behaves like an empty list while the
      * personal-dictionary setting is off, like the other personal sources: the switch hides every
-     * kind of learned data, this one included. Performs no I/O (the store opens lazily on its
-     * worker), so it may be called for every separator and every strip derivation.
+     * kind of learned data, this one included. Performs no I/O: the store opens lazily on its
+     * worker ([RefusedCorrectionStore.ensureOpen] queues one open per load, coalesced while it
+     * runs, a failed open retried by the next query), so it may be called for every separator and
+     * every strip derivation. The source itself is cached per subtype — one object, not one per
+     * query — and its gate stays live: the setting is re-read on every lookup. [resetForTest]
+     * drops the cache beside the stores.
      */
     @JvmStatic
     fun sourceFor(
@@ -59,9 +66,13 @@ object RefusedCorrectionStores {
         gate: PersonalDictionaryGate,
     ): RefusedCorrectionSource {
         val store = storeFor(context, subtypeId)
-        if (gate.isOn()) store.prime()
-        return RefusedCorrectionSource { typedWord, replacement ->
-            gate.isOn() && store.snapshot.isRefused(typedWord, replacement)
+        if (gate.isOn()) store.ensureOpen()
+        return synchronized(lock) {
+            sources.getOrPut(subtypeId) {
+                RefusedCorrectionSource { typedWord, replacement ->
+                    gate.isOn() && store.snapshot.isRefused(typedWord, replacement)
+                }
+            }
         }
     }
 
@@ -98,8 +109,11 @@ object RefusedCorrectionStores {
         )
     }
 
-    /** Test hook: drops every cached store so an isolated test starts from nothing. */
+    /** Test hook: drops every cached store and source so an isolated test starts from nothing. */
     internal fun resetForTest() {
-        synchronized(lock) { stores.clear() }
+        synchronized(lock) {
+            stores.clear()
+            sources.clear()
+        }
     }
 }
