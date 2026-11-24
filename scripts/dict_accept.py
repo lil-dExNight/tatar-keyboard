@@ -27,6 +27,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "research/corpus"))
 
+import chat_spelling_fold  # noqa: E402
+
 QUEUE = {
     "rus": ROOT / "data/dictionary/ru-conv-review.tsv",
     "tat": ROOT / "data/dictionary/tt-conv-review.tsv",
@@ -869,7 +871,10 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
                    extra: dict[str, int] | None = None,
                    required: frozenset[str] = frozenset(),
                    preserve: dict[str, int] | None = None,
-                   excluded: frozenset[str] = frozenset()):
+                   excluded: frozenset[str] = frozenset(),
+                   hygiene: bool = True,
+                   report_out: dict | None = None,
+                   composition_out: Path | None = None):
     """Composition and frequencies of the new asset.
 
     Composition: shipped plus accepted words plus `extra`, nothing else. Frequency: written plus
@@ -883,6 +888,12 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     same way, so a rebuild never removes a word that already ships. `excluded` words are explicit
     review rejections and are removed from every composition source; a conflict with a required
     or preserved word fails closed instead of silently breaking either guarantee.
+    `hygiene` applies the reviewed Russian-letter spelling rule of chat_spelling_fold.py to the
+    Tatar composition before the cutoff: folded counts move to the standard form, dropped counts
+    leave. A required word that the rule folds is reported and ships under its standard spelling;
+    a required word the rule drops fails closed, because its counts would disappear entirely.
+    `report_out`, when given, receives the rule's counters under "chat_spelling" and any folded
+    required words under "chat_spelling_required_folded".
     """
     conflict = sorted((required | set(preserve or {})) & excluded)
     if conflict:
@@ -904,6 +915,37 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     absent = sorted(required - set(merged))
     if absent:
         raise SystemExit(f"required entries are outside the composition: {', '.join(absent)}")
+    report: chat_spelling_fold.FoldReport | None = None
+    removed: dict[str, str] = {}
+    if composition_out is not None:
+        if tag != "tat":
+            raise SystemExit("--dump-composition is Tatar-only")
+        composition_out.parent.mkdir(parents=True, exist_ok=True)
+        composition_out.write_text(
+            "".join(f"{word}\t{frequency}\n" for word, frequency in sorted(merged.items())),
+            encoding="utf-8",
+        )
+    if hygiene and tag == "tat":
+        review = chat_spelling_fold.read_review(ROOT / chat_spelling_fold.REVIEW)
+        removed = {word: item.target for word, item in review.items() if item.decision != "keep"}
+        merged, report = chat_spelling_fold.apply(merged, review)
+        if report_out is not None:
+            report_out["chat_spelling"] = report.as_dict()
+        folded_required = sorted(
+            word for word in required
+            if review.get(word) is not None and review[word].decision == "fold"
+        )
+        if report_out is not None and folded_required:
+            report_out["chat_spelling_required_folded"] = folded_required
+        hit = sorted(
+            word for word in required
+            if review.get(word) is not None and review[word].decision == "drop"
+        )
+        if hit:
+            raise SystemExit(
+                "required entries are ambiguous Russian-letter spellings the hygiene rule drops: "
+                + ", ".join(hit)
+            )
     selection_weight = TATAR_CONV_SELECTION_WEIGHT if tag == "tat" else 0
     top_entries = sorted(
         merged.items(),
@@ -911,8 +953,20 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
     )[:top]
     selected = dict(top_entries)
     for word in required - set(selected):
-        selected[word] = merged[word]
+        if word in merged:
+            # A required word the hygiene rule folds is gone from `merged`: its counts and its
+            # meaning ship under the standard spelling instead.
+            selected[word] = merged[word]
     for word, frequency in (preserve or {}).items():
+        if word in removed:
+            # The previous asset may hold a spelling the hygiene rule now removes; never let
+            # preservation bring it back.
+            target = removed[word]
+            if target and target in merged:
+                merged[target] += frequency
+                if target in selected:
+                    selected[target] = merged[target]
+            continue
         if word not in selected:
             selected[word] = frequency
     return shipped, accepted, sorted(selected.items(), key=lambda kv: kv[0])
@@ -955,9 +1009,11 @@ def pack(args) -> int:
         if getattr(args, "preserve_existing", False) and target.is_file():
             previous = dp.validate_asset(target.read_bytes(), language=language)
             preserve = dict(zip(previous.words, previous.frequencies))
+        notes: dict[str, object] = {}
         _shipped, accepted, entries = merged_entries(
             tag, baseline, top=args.top, extra=extra, required=required,
-            preserve=preserve, excluded=excluded)
+            preserve=preserve, excluded=excluded, report_out=notes,
+            composition_out=args.dump_composition)
         raw = dp.serialize_entries(entries, schema=dp.SCHEMA_ID_V2)
         asset = dp.compress_raw(raw)
         before_raw = dp.decompress_asset(before, language)
@@ -981,6 +1037,11 @@ def pack(args) -> int:
             "sha256_after": hashlib.sha256(asset).hexdigest(),
             "raw_sha256_after": hashlib.sha256(raw).hexdigest(),
         }
+        if "chat_spelling" in notes:
+            result[tag]["chat_spelling"] = notes["chat_spelling"]
+        if "chat_spelling_required_folded" in notes:
+            result[tag]["chat_spelling_required_folded"] = notes[
+                "chat_spelling_required_folded"]
         if extra is not None:
             result[tag]["extra_entries_offered"] = len(extra)
             result[tag]["extra_entries_that_entered"] = len(words & set(extra))
@@ -1065,6 +1126,9 @@ def main(argv=None) -> int:
     pk.add_argument("--preserve-existing", action="store_true",
                     help="keep every word of the asset being replaced, appending the ones "
                          "that fall outside the cutoff with their stored frequency")
+    pk.add_argument("--dump-composition", type=Path, default=None,
+                    help="write the Tatar composition as word<TAB>frequency before the Russian-"
+                         "letter spelling rule; chat_spelling_fold.py propose reads it")
     pk.set_defaults(func=pack)
     args = parser.parse_args(argv)
     if args.command == "pack":

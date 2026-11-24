@@ -155,10 +155,19 @@ BIGRAMS = (
         # from a few percent to about a tenth. The file is built with
         # research/corpus/make_conv_train.py and an id filter and placed in --corpus-dir by
         # hand; without it the rebuild stops before any step runs.
+        # The cand-*-sentences.txt files are the cleaned streams of
+        # research/corpus/candidate_inputs.py, each thinned to a token budget that is its
+        # weight in the mix; their community sources appear only as word counts.
         train=(
             "tat_mixed_2015_1M-sentences.txt",
             "tat_web_2018_1M-sentences.txt",
             *(["tt_conv_train90-sentences.txt"] * 10),
+            "cand-hplt3-sentences.txt",
+            "cand-fineweb2-sentences.txt",
+            "cand-leipzig_community_2017-sentences.txt",
+            "cand-culturax-sentences.txt",
+            "cand-tatarcom_library-sentences.txt",
+            "cand-tugan_tel-sentences.txt",
         ),
         # Edge punctuation retains its sentence boundaries but no longer discards whole words.
         recover_punctuation=True,
@@ -204,10 +213,26 @@ BIGRAMS = (
 # frequencies are already in the baseline dictionary, and research/corpus/tt_merge_sim.py uses its
 # sentences as a development set. The held-out Tatar set is
 # app/src/test/resources/tt_eval_sentences.txt.
+#
+# The cand-* files are the cleaned corpus streams of research/corpus/candidate_inputs.py, built
+# from the E1/E2 acquisition and cleaning run and pinned in data/corpus-sources/acquisition-pins.json.
+# A community source contributes counts only, under the three-document rule of that tool; the
+# Wikipedia and corpus.tatar lists are lexicon evidence and never train the bigram table.
 WORDFORM_EXCEPTIONS = Path("scripts/wordform_exceptions_tat.tsv")
 WORDFORM_FREQUENCY_SOURCES = (
     "tat_mixed_2015_1M-words.txt",
     "tat_web_2018_1M-words.txt",
+    "cand-hplt3-words.txt",
+    "cand-fineweb2-words.txt",
+    "cand-leipzig_community_2017-words.txt",
+    "cand-culturax-words.txt",
+    "cand-tatarcom_library-words.txt",
+    "cand-tugan_tel-words.txt",
+    "cand-matbugat_ads-words.txt",
+    "cand-matbugat_dating-words.txt",
+    "cand-intertat_comments-words.txt",
+    "cand-corpus_tatar-lexicon.txt",
+    "cand-wikipedia-lexicon.txt",
 )
 WORDFORM_REVIEW = Path("data/dictionary/tatar-wordform-review.tsv")
 # The reviewed compound list and the proper-name display list both feed the Tatar side: the

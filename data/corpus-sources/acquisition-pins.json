@@ -1,0 +1,301 @@
+{
+  "note": "Pins of the corpus inputs of the Tatar candidate rebuild. The raw dump table is the acquisition record of research/corpus/acquisition_manifest.py; each cleaned stream is rebuilt from it by research/corpus/clean_corpora.py and turned into the file the rebuild reads by research/corpus/candidate_inputs.py. The same size and SHA-256 are pinned in data/corpus-manifest.json.",
+  "raw": {
+    "corpus_tatar": {
+      "dump_release": [
+        "tatcorpus2 (mutable)",
+        "tatcorpus3 (mutable)"
+      ],
+      "files": {
+        "curated/corpus-tatar/tatcorpus2.words_frequency_full.txt.zip": {
+          "sha256": "868e96018049fe9618f1118373e7dc2a3dbd5ec1a249980a85c2517175252568",
+          "size_bytes": 15697435,
+          "url": "https://www.corpus.tatar/stat/tatcorpus2.words_frequency_full.txt.zip"
+        },
+        "curated/corpus-tatar/tatcorpus3.words.sorted.length.single.txt": {
+          "sha256": "e7856e9e905e4f192186a5c64897f9d4662bd61814fea120bcab155e73d18dcc",
+          "size_bytes": 9287570,
+          "url": "https://www.corpus.tatar/stat/tatcorpus3.words.sorted.length.single.txt"
+        },
+        "curated/corpus-tatar/tatcorpus3.words_frequency_case-sensitive.bz2": {
+          "sha256": "6f33cd7cb81d39e737061d5a220d30b8f9185387323248a91c4f12ba0e7ac6fc",
+          "size_bytes": 17447835,
+          "url": "https://www.corpus.tatar/stat/tatcorpus3.words_frequency_case-sensitive.bz2"
+        }
+      }
+    },
+    "culturax": {
+      "dump_release": null,
+      "files": {
+        "webscale/culturax-tt-public.parquet": {
+          "sha256": "c4a38b8e1fc436b5fa1ee83370fa40a51b66cd6609d5b6d60239082634d41080",
+          "size_bytes": 7741613,
+          "url": "https://huggingface.co/datasets/devngho/culturax-mini-nonshuffled/resolve/c9993a3add5096e3b18b591230ad9f2a2879572b/tt/train-00000-of-00001.parquet?download=true"
+        }
+      }
+    },
+    "fineweb2": {
+      "dump_release": null,
+      "files": {
+        "webscale/fineweb2-tat_Cyrl-test.parquet": {
+          "sha256": "3c40c5c8da0547842016a62a7087d56a6a128457fafac12f5c4d010f371764b4",
+          "size_bytes": 6380107,
+          "url": "https://huggingface.co/datasets/HuggingFaceFW/fineweb-2/resolve/af9c13333eb981300149d5ca60a8e9d659b276b9/data/tat_Cyrl/test/000_00000.parquet?download=true"
+        },
+        "webscale/fineweb2-tat_Cyrl-train.parquet": {
+          "sha256": "34965d18a9dd622a0ebb5f4c6f45431fbe11eda27be5cf48a48db72086cc2e27",
+          "size_bytes": 513155438,
+          "url": "https://huggingface.co/datasets/HuggingFaceFW/fineweb-2/resolve/af9c13333eb981300149d5ca60a8e9d659b276b9/data/tat_Cyrl/train/000_00000.parquet?download=true"
+        }
+      }
+    },
+    "hplt3": {
+      "dump_release": "HPLT 3.0 (three/sorted)",
+      "files": {
+        "webscale/hplt3-tat_Cyrl-10_1.jsonl.zst": {
+          "sha256": "04664a07d2bfede1b82f6e94c6c0acc25f1eb624f10f2e965849c59286c36a7a",
+          "size_bytes": 10554358,
+          "url": "https://data.hplt-project.org/three/sorted/tat_Cyrl/10_1.jsonl.zst"
+        },
+        "webscale/hplt3-tat_Cyrl-5_1.jsonl.zst": {
+          "sha256": "ef2fbbb852bac3206f7834d6135c3264ce664e69eb75f315174052d28b1dcf52",
+          "size_bytes": 120304087,
+          "url": "https://data.hplt-project.org/three/sorted/tat_Cyrl/5_1.jsonl.zst"
+        },
+        "webscale/hplt3-tat_Cyrl-6_1.jsonl.zst": {
+          "sha256": "75a3a82b4bdc2b00108caf2c168b69b01426c63b1064627d5a86ac24f3b1b555",
+          "size_bytes": 163291582,
+          "url": "https://data.hplt-project.org/three/sorted/tat_Cyrl/6_1.jsonl.zst"
+        },
+        "webscale/hplt3-tat_Cyrl-7_1.jsonl.zst": {
+          "sha256": "3ac2509553cb1cb4cdc9af73e923a1bd948578f04ef70fe3ed5e9b44901ece03",
+          "size_bytes": 285004011,
+          "url": "https://data.hplt-project.org/three/sorted/tat_Cyrl/7_1.jsonl.zst"
+        },
+        "webscale/hplt3-tat_Cyrl-8_1.jsonl.zst": {
+          "sha256": "29cbfefe25bcb10e71c30b4c89da94aa35154b173dbd5a4cdca9ecaf2488e906",
+          "size_bytes": 441740597,
+          "url": "https://data.hplt-project.org/three/sorted/tat_Cyrl/8_1.jsonl.zst"
+        },
+        "webscale/hplt3-tat_Cyrl-9_1.jsonl.zst": {
+          "sha256": "0718ef6d58f1294a214e8f30547fd3fc3083229619eec46ab69f17275ada233c",
+          "size_bytes": 705590540,
+          "url": "https://data.hplt-project.org/three/sorted/tat_Cyrl/9_1.jsonl.zst"
+        }
+      }
+    },
+    "intertat_comments": {
+      "dump_release": null,
+      "files": {
+        "community/intertat-comments-recent.jsonl": {
+          "sha256": "13df8fc87edc1816f7d662c4b1b4a027b35319d840d23224200b8a6b126c79de",
+          "size_bytes": 133337,
+          "url": "https://intertat.tatar/sitemap/sitemap.xml"
+        }
+      }
+    },
+    "leipzig_community_2017": {
+      "dump_release": "tat_community_2017",
+      "files": {
+        "curated/leipzig/tat_community_2017.tar.gz": {
+          "sha256": "145602096ceb37ea9484c17be1fbec4d4eeaba190cbf166cd69f1b5d73bc998c",
+          "size_bytes": 350501213,
+          "url": "https://downloads.wortschatz-leipzig.de/corpora/tat_community_2017.tar.gz"
+        }
+      }
+    },
+    "matbugat_ads": {
+      "dump_release": null,
+      "files": {
+        "community/matbugat-ads.jsonl": {
+          "sha256": "3dc72a8f6ab9f03d4b54bb7367f05a614f6ac0d1fd35b1d948a83bb583ec7fe3",
+          "size_bytes": 2970761,
+          "url": "https://matbugat.ru/ads/"
+        }
+      }
+    },
+    "matbugat_dating": {
+      "dump_release": null,
+      "files": {
+        "community/matbugat-dating.jsonl": {
+          "sha256": "a76dfa9172869d71578f169fce614ab5a743ed3c275e01325f3ec4d788d260a9",
+          "size_bytes": 123067,
+          "url": "https://matbugat.ru/dating/"
+        }
+      }
+    },
+    "tatarcom_library": {
+      "dump_release": null,
+      "files": {
+        "community/tatarcom-library.jsonl": {
+          "sha256": "f6cb38a45d8a6af8a17a91f8a1d0a32afeb4e22de74f4c038aede7f2487c70e5",
+          "size_bytes": 5695416,
+          "url": "https://tatar.com.ru/rubrika/lib/"
+        }
+      }
+    },
+    "tugan_tel": {
+      "dump_release": null,
+      "files": {
+        "community/tugan-lessons.jsonl": {
+          "sha256": "a4c9a7e4309f45dae485f58c659f42472c9928bb75c05dbcfc5a6813348fc98f",
+          "size_bytes": 599259,
+          "url": "https://tugan-tel.ru/sitemap.html"
+        }
+      }
+    },
+    "wikipedia": {
+      "dump_release": "dump 20261101",
+      "files": {
+        "curated/wikipedia/ttwiki-20261101-pages-articles.xml.bz2": {
+          "sha256": "6de9c806f3d775da8211fa9b10b1ccae81e4d1453e57f0f6ad84473189d96a51",
+          "size_bytes": 164802074,
+          "url": "https://dumps.wikimedia.org/ttwiki/20261101/ttwiki-20261101-pages-articles.xml.bz2"
+        }
+      }
+    }
+  },
+  "roots": {
+    "corpus-clean/": "cleaning output of research/corpus/clean_corpora.py: sentences/, lexicon-only/ and chat-spelling/",
+    "corpus-raw/": "acquisition output of research/corpus/acquisition_manifest.py, one directory per source; the raw dump table below pins every retained file"
+  },
+  "schema": 1,
+  "streams": {
+    "cand-corpus_tatar-lexicon.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py lexicon --input corpus-clean/lexicon-only/corpus_tatar.txt --output cand-corpus_tatar-lexicon.txt",
+      "mode": "lexicon",
+      "note": "E1/E2 lexicon evidence from corpus_tatar",
+      "sha256": "8bb3d8afa4a40bdbccd2e4b5e3c8d8af4a6bbb23975f01c7dabc31cd774e6e39",
+      "size_bytes": 32610593,
+      "source_id": "corpus_tatar"
+    },
+    "cand-culturax-sentences.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py sentences --input corpus-clean/sentences/culturax.txt --source-tokens 304506 --budget-tokens 294366 --output cand-culturax-sentences.txt",
+      "mode": "sentences",
+      "note": "E1/E2 cleaned stream of culturax, thinned to 304506 tokens",
+      "sha256": "64e497e3fa4514f639a6563531097b81169723878f8525414df8dbe515f40696",
+      "size_bytes": 4284753,
+      "source_id": "culturax"
+    },
+    "cand-culturax-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py words --input corpus-clean/sentences/culturax.txt --output cand-culturax-words.txt",
+      "mode": "words",
+      "note": "E1/E2 cleaned culturax word counts",
+      "sha256": "add0fd751d6bd7c05f94b8e201cee101f954ef180269462a267cfe672497b645",
+      "size_bytes": 839081,
+      "source_id": "culturax"
+    },
+    "cand-fineweb2-sentences.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py sentences --input corpus-clean/sentences/fineweb2.txt --source-tokens 18331241 --budget-tokens 3000000 --output cand-fineweb2-sentences.txt",
+      "mode": "sentences",
+      "note": "E1/E2 cleaned stream of fineweb2, thinned to 3047465 tokens",
+      "sha256": "6c7e298c50b7d4c681bedc2981dbba38b4c644edf3bddafbf25097cd68d7638e",
+      "size_bytes": 42641552,
+      "source_id": "fineweb2"
+    },
+    "cand-fineweb2-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py words --input corpus-clean/sentences/fineweb2.txt --output cand-fineweb2-words.txt",
+      "mode": "words",
+      "note": "E1/E2 cleaned fineweb2 word counts",
+      "sha256": "b1ef0652c508073b705a23b57ed019e7c3be43451be6b5264f6542c0020c15d0",
+      "size_bytes": 9812335,
+      "source_id": "fineweb2"
+    },
+    "cand-hplt3-sentences.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py sentences --input corpus-clean/sentences/hplt3.txt --source-tokens 423244406 --budget-tokens 8000000 --output cand-hplt3-sentences.txt",
+      "mode": "sentences",
+      "note": "E1/E2 cleaned stream of hplt3, thinned to 8311784 tokens",
+      "sha256": "2e3ab4c7d0ac383208c31b0142e918f70b282554d6edae2fc745bb700240182c",
+      "size_bytes": 117223038,
+      "source_id": "hplt3"
+    },
+    "cand-hplt3-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py words --input corpus-clean/sentences/hplt3.txt --output cand-hplt3-words.txt",
+      "mode": "words",
+      "note": "E1/E2 cleaned hplt3 word counts",
+      "sha256": "d558bd2a67ec0a107980338a805727546a22ec5a153147402f15a7d2d514883c",
+      "size_bytes": 58194600,
+      "source_id": "hplt3"
+    },
+    "cand-intertat_comments-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py community --input corpus-raw/community/intertat-comments-recent.jsonl --cleaned-stream corpus-clean/sentences/intertat_comments.txt --output cand-intertat_comments-words.txt",
+      "mode": "community",
+      "note": "E1/E2 community documents of intertat_comments under the three-document rule",
+      "sha256": "e7380fbe505174544a01eb15cb22c86f220742e3736f82e884b6d7bbedb4382f",
+      "size_bytes": 2327,
+      "source_id": "intertat_comments"
+    },
+    "cand-leipzig_community_2017-sentences.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py sentences --input corpus-clean/sentences/leipzig_community_2017.txt --source-tokens 23710297 --budget-tokens 12000000 --output cand-leipzig_community_2017-sentences.txt",
+      "mode": "sentences",
+      "note": "E1/E2 cleaned stream of leipzig_community_2017, thinned to 11850706 tokens",
+      "sha256": "6617961ae5a56c5b137f8e8a7298ab4d0b33c359968160c5770f3a56081a72e7",
+      "size_bytes": 169828130,
+      "source_id": "leipzig_community_2017"
+    },
+    "cand-leipzig_community_2017-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py community --input corpus-clean/sentences/leipzig_community_2017.txt --output cand-leipzig_community_2017-words.txt",
+      "mode": "community",
+      "note": "E1/E2 community documents of leipzig_community_2017 under the three-document rule",
+      "sha256": "fccf2b9f6827c772bc3284031b5268cac01729aa19421af73b86c6c1a60fbb0b",
+      "size_bytes": 9665439,
+      "source_id": "leipzig_community_2017"
+    },
+    "cand-matbugat_ads-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py community --input corpus-raw/community/matbugat-ads.jsonl --cleaned-stream corpus-clean/sentences/matbugat_ads.txt --output cand-matbugat_ads-words.txt",
+      "mode": "community",
+      "note": "E1/E2 community documents of matbugat_ads under the three-document rule",
+      "sha256": "8635a53f8e99ed802daab4cfe2b786aefd1f8069187d09a5795a7c58347d85d7",
+      "size_bytes": 50744,
+      "source_id": "matbugat_ads"
+    },
+    "cand-matbugat_dating-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py community --input corpus-raw/community/matbugat-dating.jsonl --cleaned-stream corpus-clean/sentences/matbugat_dating.txt --output cand-matbugat_dating-words.txt",
+      "mode": "community",
+      "note": "E1/E2 community documents of matbugat_dating under the three-document rule",
+      "sha256": "3489eb195ab95645553d2bd9b99c26b65088cdb65c4c5a3991a1e4959530b842",
+      "size_bytes": 1300,
+      "source_id": "matbugat_dating"
+    },
+    "cand-tatarcom_library-sentences.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py sentences --input corpus-clean/sentences/tatarcom_library.txt --source-tokens 65252 --budget-tokens 63555 --output cand-tatarcom_library-sentences.txt",
+      "mode": "sentences",
+      "note": "E1/E2 cleaned stream of tatarcom_library, thinned to 65252 tokens",
+      "sha256": "c4cdf55c9b2625668f29e714a2e4aa404341197d73d7689e235e0025bfa73db6",
+      "size_bytes": 863150,
+      "source_id": "tatarcom_library"
+    },
+    "cand-tatarcom_library-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py words --input corpus-clean/sentences/tatarcom_library.txt --output cand-tatarcom_library-words.txt",
+      "mode": "words",
+      "note": "E1/E2 cleaned tatarcom_library word counts",
+      "sha256": "eec6d02bdeed7ddcce6a143870fddd65656f730907769ee777ec71139866fab7",
+      "size_bytes": 317999,
+      "source_id": "tatarcom_library"
+    },
+    "cand-tugan_tel-sentences.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py sentences --input corpus-clean/sentences/tugan_tel.txt --source-tokens 3225 --budget-tokens 2702 --output cand-tugan_tel-sentences.txt",
+      "mode": "sentences",
+      "note": "E1/E2 cleaned stream of tugan_tel, thinned to 3225 tokens",
+      "sha256": "520c8dc4518c55384e8870748de3d6da04396c749ceb72636f370e0c4f6ee67f",
+      "size_bytes": 37276,
+      "source_id": "tugan_tel"
+    },
+    "cand-tugan_tel-words.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py words --input corpus-clean/sentences/tugan_tel.txt --output cand-tugan_tel-words.txt",
+      "mode": "words",
+      "note": "E1/E2 cleaned tugan_tel word counts",
+      "sha256": "6d0b79a2dc35fd89a6d357fe1b98695789fd8ca095fd46b67c3c0f6e41017867",
+      "size_bytes": 19709,
+      "source_id": "tugan_tel"
+    },
+    "cand-wikipedia-lexicon.txt": {
+      "generation_command": "research/corpus/candidate_inputs.py lexicon --input corpus-clean/lexicon-only/wikipedia.txt --output cand-wikipedia-lexicon.txt",
+      "mode": "lexicon",
+      "note": "E1/E2 lexicon evidence from wikipedia",
+      "sha256": "c873d1c42ce73e692b2de2d0bdad7cf7927544dacc3e2f14dee7b42d9739578c",
+      "size_bytes": 207024,
+      "source_id": "wikipedia"
+    }
+  }
+}

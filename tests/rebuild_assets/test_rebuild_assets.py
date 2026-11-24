@@ -1216,12 +1216,16 @@ class WordformStageTest(unittest.TestCase):
             "# head\nword\tconv_freq\nкитаплар\t3\n", encoding="utf-8")
         # Leipzig words files: китаплар attested 10 (so 10+3 after the conv sum),
         # китабы 5 (the voicing exception form), суга 4, язар 7.
-        for name in rebuild_assets.WORDFORM_FREQUENCY_SOURCES:
-            (self.corpora / name).write_text(
-                "1\tкитаплар\t5\n2\tкитабы\t2\n3\tсуга\t4\n", encoding="utf-8")
+        # Every registered source needs a file; the first two carry the counts and the rest are
+        # empty, so the fixture does not depend on the length of the registry.
+        sources = rebuild_assets.WORDFORM_FREQUENCY_SOURCES
+        for name in sources:
+            (self.corpora / name).write_text("", encoding="utf-8")
+        (self.corpora / sources[0]).write_text(
+            "1\tкитаплар\t5\n2\tкитабы\t2\n3\tсуга\t4\n", encoding="utf-8")
         # Second source adds the rest, so the merge across files is exercised too.
-        second = self.corpora / rebuild_assets.WORDFORM_FREQUENCY_SOURCES[1]
-        second.write_text("1\tкитаплар\t5\n2\tкитабы\t3\n3\tязар\t7\n", encoding="utf-8")
+        (self.corpora / sources[1]).write_text(
+            "1\tкитаплар\t5\n2\tкитабы\t3\n3\tязар\t7\n", encoding="utf-8")
         self._saved = (dict_accept.BASELINE_SHA256, dict_accept.OUT_DIR)
         dict_accept.BASELINE_SHA256 = {**dict_accept.BASELINE_SHA256,
                                        "tat": self.baseline_sha}

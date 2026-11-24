@@ -94,6 +94,142 @@
       "sentence_column": 1,
       "optional": true,
       "role": "shipped Tatar bigram training input with weight 10; pin in data/corpus-manifest.json"
+    },
+    {
+      "id": "tt-bigram-cand-hplt3",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-hplt3-sentences.txt",
+      "role": "HPLT 3.0 tat_Cyrl, cleaned and thinned to its bigram token budget",
+      "optional": true
+    },
+    {
+      "id": "tt-bigram-cand-fineweb2",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-fineweb2-sentences.txt",
+      "role": "FineWeb-2 tat_Cyrl, cleaned and deduplicated against HPLT, thinned to its budget",
+      "optional": true
+    },
+    {
+      "id": "tt-bigram-cand-leipzig-community-2017",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-leipzig_community_2017-sentences.txt",
+      "role": "Leipzig tat_community_2017, cleaned and thinned to its conversational weight",
+      "optional": true
+    },
+    {
+      "id": "tt-bigram-cand-culturax",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-culturax-sentences.txt",
+      "role": "CulturaX tt, cleaned",
+      "optional": true
+    },
+    {
+      "id": "tt-bigram-cand-tatarcom-library",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-tatarcom_library-sentences.txt",
+      "role": "Tatar.com.ru library pages, cleaned",
+      "optional": true
+    },
+    {
+      "id": "tt-bigram-cand-tugan-tel",
+      "kind": "bigram_training",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-tugan_tel-sentences.txt",
+      "role": "Tugan tel lesson pages, cleaned",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-hplt3",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-hplt3-words.txt",
+      "role": "HPLT 3.0 tat_Cyrl word counts",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-fineweb2",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-fineweb2-words.txt",
+      "role": "FineWeb-2 tat_Cyrl word counts",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-leipzig-community-2017",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-leipzig_community_2017-words.txt",
+      "role": "Leipzig tat_community_2017 word counts",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-culturax",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-culturax-words.txt",
+      "role": "CulturaX tt word counts",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-tatarcom-library",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-tatarcom_library-words.txt",
+      "role": "Tatar.com.ru library word counts",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-tugan-tel",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-tugan_tel-words.txt",
+      "role": "Tugan tel word counts",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-matbugat-ads",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-matbugat_ads-words.txt",
+      "role": "Matbugat ads, three-document community rule",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-matbugat-dating",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-matbugat_dating-words.txt",
+      "role": "Matbugat dating posts, three-document community rule",
+      "optional": true
+    },
+    {
+      "id": "tt-freq-cand-intertat-comments",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-intertat_comments-words.txt",
+      "role": "Intertat comments, three-document community rule",
+      "optional": true
+    },
+    {
+      "id": "tt-lexicon-cand-corpus-tatar",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-corpus_tatar-lexicon.txt",
+      "role": "corpus.tatar frequency list, lexicon evidence only",
+      "optional": true
+    },
+    {
+      "id": "tt-lexicon-cand-wikipedia",
+      "kind": "frequencies",
+      "split": "train",
+      "path": "${CORPUS_DIR}/cand-wikipedia-lexicon.txt",
+      "role": "Tatar Wikipedia dump, lexicon evidence only",
+      "optional": true
     }
   ]
 }

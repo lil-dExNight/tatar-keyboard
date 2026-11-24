@@ -334,7 +334,7 @@ class PrivateDeclarationTest(unittest.TestCase):
 class LiveDeclarationTest(unittest.TestCase):
     def test_clean_offline_tatar_and_russian_declarations_pass(self) -> None:
         with tempfile.TemporaryDirectory() as empty_corpus:
-            for language, optional_count in (("tt", 3), ("ru", 6)):
+            for language, optional_count in (("tt", 20), ("ru", 6)):
                 with self.subTest(language=language):
                     config = ROOT / "data" / "evaluation" / f"splits-{language}.json"
                     report = splits.check_splits(ROOT, config, corpus_dir=Path(empty_corpus))

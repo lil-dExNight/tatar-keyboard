@@ -119,6 +119,20 @@ These inputs are not in the repository:
 - Emoji sources: `emoji-test.txt` (Unicode Emoji 15.1) and the CLDR 44 ru/en annotation
   files, saved in one `--cldr-dir` as `ru.xml`, `en.xml`, `derived-ru.xml` and
   `derived-en.xml`. The packers pin their SHA-256.
+- Cleaned corpus streams of a candidate rebuild. `research/corpus/clean_corpora.py` writes them
+  outside the repository; `research/corpus/candidate_inputs.py` turns them into the files the
+  rebuild reads, each pinned in `data/corpus-manifest.json` by size, SHA-256 and the command in
+  its `source` note:
+  - `sentences`: a thinned bigram-training file. The token budget given to a source is its
+    weight in the mix; thinning keeps the lines whose BLAKE2b digest falls on a stride derived
+    from the budget and the source's token count, so the selection does not depend on key order.
+  - `words`: `word<TAB>count` over a cleaned stream, or one attestation per line of a curated
+    word list, for the dictionary admission stage. Wikipedia output stays lexicon evidence: it
+    feeds `words`, never sentence training.
+  - `community`: counts from the community documents (ads, dating posts, comments). A word needs
+    at least three distinct documents, three occurrences, no digits (phone and price strings),
+    and fewer than half of its occurrences capitalized outside the sentence-initial position.
+    Community sources contribute counts only; their sentences never enter bigram training.
 
 These inputs are in the repository:
 
@@ -335,6 +349,17 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    `scripts/release_check.sh` after you change `TATAR_DICTIONARY_TOP`. The packer's raw size
    bound (`MAX_UNCOMPRESSED_BYTES`) equals the reader's safety bound `TdictFormat.MAX_RAW_SIZE`
    and is not a budget.
+   The Tatar composition then passes the Russian-letter spelling rule of
+   `scripts/chat_spelling_fold.py` before the cutoff. A word that another composition word
+   produces by replacing some of ә ө ү җ ң һ with э о у ж н х is a chat spelling: it is folded
+   into its only standard form when that form is at least four times more frequent, dropped when
+   several standard forms could claim it, and kept when no standard form dominates it — that case
+   is a word of its own, such as `монда` against `моңда`. Each removal needs a reviewed row in
+   `data/dictionary/tatar-chat-spelling-review.tsv`; a word the rule would remove without a row
+   stops the packer, and a required or preserved word the rule removes fails closed. `dict_accept.py
+   pack --dump-composition FILE` writes the composition before the rule; `python3
+   scripts/chat_spelling_fold.py propose --composition FILE` pre-fills the table from it for
+   review and keeps the decisions already recorded.
 3. **Bigram and trigram tables.** `bigram_asset_pack.py pack --schema 3` is run against the new
    dictionaries with the `BIGRAMS` parameters (head count, successors per head, extra heads,
    training corpora). For Tatar, that image is an intermediate: `trigram_asset_pack.py pack`
