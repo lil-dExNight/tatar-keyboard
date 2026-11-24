@@ -455,9 +455,11 @@ class SettingsHostActivity : Activity() {
 
     /** Opens a blank message; the user chooses and writes everything sent. */
     private fun sendFeedback() {
-        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$FEEDBACK_EMAIL"))
-            .putExtra(Intent.EXTRA_SUBJECT, getString(R.string.feedback_email_subject,
-                getString(R.string.english_ime_name), ApplicationUtils.getVersionName(this)))
+        val subject = getString(R.string.feedback_email_subject,
+            getString(R.string.english_ime_name), ApplicationUtils.getVersionName(this))
+        val intent = Intent(Intent.ACTION_SENDTO,
+            Uri.parse(FeedbackEmailUri.build(FEEDBACK_EMAIL, subject)))
+            .putExtra(Intent.EXTRA_SUBJECT, subject)
         // The platform answers an unroutable implicit intent with its own fallback activity
         // instead of throwing, so a resolved handler in that package means no mail app exists.
         val handler = intent.resolveActivity(packageManager)

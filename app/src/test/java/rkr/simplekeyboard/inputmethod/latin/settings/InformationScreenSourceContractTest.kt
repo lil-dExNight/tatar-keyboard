@@ -82,7 +82,7 @@ class InformationScreenSourceContractTest {
         assertTrue(screenBody.contains("sendFeedback()"))
         val compact = feedbackBody.replace(Regex("\\s+"), "")
         assertTrue(compact.contains(
-            "Intent(Intent.ACTION_SENDTO,Uri.parse(\"mailto:${'$'}FEEDBACK_EMAIL\"))"))
+            "Intent(Intent.ACTION_SENDTO,Uri.parse(FeedbackEmailUri.build(FEEDBACK_EMAIL,subject)))"))
         assertEquals("the subject is the only intent extra", 1,
             Regex("\\.putExtra\\(").findAll(feedbackBody).count())
         assertTrue(compact.contains(".putExtra(Intent.EXTRA_SUBJECT,"))
