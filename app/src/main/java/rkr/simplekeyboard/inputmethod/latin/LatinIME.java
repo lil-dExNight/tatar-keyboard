@@ -787,7 +787,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 // lands at a word start the live shift state cannot see yet — a sentence start
                 // in a CAP_SENTENCES field, a word start in a CAP_WORDS field.
                 final EditorInfo editorInfo = getCurrentInputEditorInfo();
-                if (!mSettings.getCurrent().mAutoCap || editorInfo == null) {
+                final SettingsValues settingsValues = mSettings.getCurrent();
+                if (settingsValues == null || !settingsValues.mAutoCap || editorInfo == null) {
                     return false;
                 }
                 final CharSequence beforeCursor =
@@ -914,11 +915,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         });
         // Read live from SettingsValues, which already requires suggestions to be on, so either
         // setting takes effect on the next separator without restarting the engine.
-        mSuggestionsController.setAutocorrectGate(
-                () -> mSettings.getCurrent().mTatarAutocorrectEnabled);
+        mSuggestionsController.setAutocorrectGate(() -> {
+            final SettingsValues settingsValues = mSettings.getCurrent();
+            return settingsValues != null && settingsValues.mTatarAutocorrectEnabled;
+        });
         // Emoji suggestions: read live the same way.
-        mSuggestionsController.setEmojiSuggestGate(
-                () -> mSettings.getCurrent().mEmojiSuggestEnabled);
+        mSuggestionsController.setEmojiSuggestGate(() -> {
+            final SettingsValues settingsValues = mSettings.getCurrent();
+            return settingsValues != null && settingsValues.mEmojiSuggestEnabled;
+        });
         // Active transforms and learning re-read both lock states; the field-start snapshot can
         // predate a mid-session lock or a Direct Boot transition.
         mSuggestionsController.setKeyguardGate(this::isPrivacyLocked);
@@ -972,8 +977,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // Glide typing: the setting is read live and does not depend on the suggestions setting.
         // The shift-state gate cases a glide word as typed letters would be: shift capitalizes
         // it, Caps Lock types it in capitals.
-        mSuggestionsController.setGlideGate(
-                () -> mSettings.getCurrent().mGlideTypingEnabled);
+        mSuggestionsController.setGlideGate(() -> {
+            final SettingsValues settingsValues = mSettings.getCurrent();
+            return settingsValues != null && settingsValues.mGlideTypingEnabled;
+        });
         mSuggestionsController.setGlideShiftStateGate(() -> {
             final Keyboard current = mKeyboardSwitcher.getKeyboard();
             if (current == null || current.mId == null) {
@@ -2225,13 +2232,17 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (!personalDictionaryOn) {
             return false;
         }
+        final SettingsValues settingsValues = mSettings.getCurrent();
+        if (settingsValues == null) {
+            return false;
+        }
         final boolean unlocked = isUserUnlocked();
         return unlocked && !mLearningKeyguardScope.isLocked(mLiveKeyguardRead)
                 && PersonalLearningGates.mayLearn(
                 isSuggestionsEligible(),
                 personalDictionaryOn,
                 unlocked,
-                mSettings.getCurrent().mInputAttributes.mIsPostalAddressField,
+                settingsValues.mInputAttributes.mIsPostalAddressField,
                 Settings.readIncognitoModeEnabled(mDevicePrefs));
     }
 
