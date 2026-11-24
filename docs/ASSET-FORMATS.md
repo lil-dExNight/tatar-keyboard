@@ -364,14 +364,16 @@ The list is read whole into memory once per process (it is the top of a frequenc
 dictionary), never copied into device-protected storage. Strings are decoded only if the `words`
 view is read; membership probes compare bytes.
 
-## TATSTEM schema 1: incremental Tatar stem lexicon
+## TATSTEM schema 1: Tatar stem lexicon
 
-Asset: `assets/dictionaries/tatar_stems_v1.tstem.zlib`. The lexicon contains stems from
-Apertium-tat, unambiguous bundled-dictionary word-form groups and the word-form review table.
-Every stem already shipped as a dictionary form is excluded. Bare-stem acceptance and suffix
-chains are separate: only Apertium-attested stems carry continuation flags. Constants:
-`BLOCK_SIZE = 8`, `MAX_STEM_BYTES = 128`, `MAX_STEM_CODE_POINTS = 64`, `MAX_STEMS`, `MAX_RAW_SIZE`
-and `MAX_COMPRESSED_SIZE` in `TatStemFormat`.
+Asset: `assets/dictionaries/tatar_stems_v1.tstem.zlib`. The lexicon contains every valid
+Apertium-tat stem, plus stems from unambiguous bundled-dictionary word-form groups and the
+word-form review table that are not already dictionary forms. An Apertium stem that is also a
+bundled dictionary form keeps its chain flags: the dictionary accepts its bare form, while the
+lexicon licenses its suffix chains. Non-Apertium inferred and review stems remain bare-only.
+The existing chain bits distinguish these roles; no entry-kind flag or schema change is needed.
+Constants: `BLOCK_SIZE = 8`, `MAX_STEM_BYTES = 128`, `MAX_STEM_CODE_POINTS = 64`, `MAX_STEMS`,
+`MAX_RAW_SIZE` and `MAX_COMPRESSED_SIZE` in `TatStemFormat`.
 
 The 136-byte header uses the common conventions:
 

@@ -135,7 +135,7 @@ class ApertiumExtractTest(unittest.TestCase):
 
 
 class MergePolicyTest(unittest.TestCase):
-    def test_incremental_sources_and_conservative_chain_flags(self) -> None:
+    def test_every_apertium_stem_is_retained_and_others_stay_conservative(self) -> None:
         apertium = {
             "алма": {"pos": {"n"}, "continuations": {"N1"}},
             "бала": {"pos": {"n"}, "continuations": {"N1"}},
@@ -146,21 +146,29 @@ class MergePolicyTest(unittest.TestCase):
             ("алма", "алмалар"), apertium, review, wordform_gen.EMPTY_EXCEPTIONS
         )
         by_word = {entry.word: entry.flags for entry in entries_out}
-        self.assertEqual({"бала", "башла", "кондиционер"}, set(by_word))
+        self.assertEqual({"алма", "бала", "башла", "кондиционер"}, set(by_word))
+        self.assertTrue(by_word["алма"] & pack.FLAG_NOUN_CHAIN)
         self.assertTrue(by_word["бала"] & pack.FLAG_NOUN_CHAIN)
         self.assertFalse(by_word["башла"] & (pack.FLAG_NOUN_CHAIN | pack.FLAG_VERB_CHAIN))
         self.assertTrue(by_word["башла"] & pack.FLAG_VERB)
         self.assertTrue(by_word["кондиционер"] & pack.FLAG_FORCE_BACK)
         self.assertTrue(by_word["кондиционер"] & pack.FLAG_BACK)
         self.assertEqual(1, report["source_counts"]["inferred"])
+        self.assertEqual(4, report["asset_stems"])
         self.assertEqual(3, report["incremental_stems"])
+        self.assertEqual(1, report["bundled_apertium_chain_stems"])
 
-    def test_dictionary_forms_never_enter_the_incremental_set(self) -> None:
+    def test_non_apertium_dictionary_forms_are_excluded(self) -> None:
         apertium = {"алма": {"pos": {"n"}, "continuations": {"N1"}}}
-        entries_out, _report = pack.merge_stems(
-            ("алма",), apertium, {}, wordform_gen.EMPTY_EXCEPTIONS
+        entries_out, report = pack.merge_stems(
+            ("алма", "бала"), apertium, {"бала": {"noun"}},
+            wordform_gen.EMPTY_EXCEPTIONS,
         )
-        self.assertEqual((), entries_out)
+        self.assertEqual(("алма",), tuple(entry.word for entry in entries_out))
+        self.assertTrue(entries_out[0].flags & pack.FLAG_NOUN_CHAIN)
+        self.assertEqual(1, report["asset_stems"])
+        self.assertEqual(0, report["incremental_stems"])
+        self.assertEqual(1, report["bundled_apertium_chain_stems"])
 
 
 class FormatTest(unittest.TestCase):
@@ -264,7 +272,7 @@ class CliTest(unittest.TestCase):
 
 
 class ShippedAssetTest(unittest.TestCase):
-    def test_shipped_asset_matches_contract_and_incremental_policy(self) -> None:
+    def test_shipped_asset_matches_contract_and_chain_policy(self) -> None:
         compressed = ASSET.read_bytes()
         raw = pack.decompress_asset(compressed)
         entries_out, fields = pack.parse_raw(raw)
@@ -281,13 +289,22 @@ class ShippedAssetTest(unittest.TestCase):
         self.assertEqual(pack.APERTIUM_LEXC_SHA256, fields["apertium_lexc_sha256"])
         dictionary = dictionary_pack.validate_asset(DICTIONARY.read_bytes())
         self.assertEqual(pins.dictionary_raw_sha256, hashlib.sha256(dictionary.raw).hexdigest())
-        self.assertTrue(set(dictionary.words).isdisjoint(entry.word for entry in entries_out))
+        dictionary_words = set(dictionary.words)
+        bundled = {
+            entry for entry in entries_out if entry.word in dictionary_words
+        }
+        self.assertEqual(15_645, len(bundled))
+        for entry in bundled:
+            self.assertTrue(
+                entry.flags & (pack.FLAG_NOUN_CHAIN | pack.FLAG_VERB_CHAIN),
+                entry.word,
+            )
         self.assertLessEqual(len(compressed), pack.MAX_COMPRESSED_BYTES)
         self.assertLessEqual(len(raw), pack.MAX_RAW_BYTES)
 
     def test_shipped_counts_and_flag_invariants(self) -> None:
         entries_out, _fields = pack.parse_raw(pack.decompress_asset(ASSET.read_bytes()))
-        self.assertEqual(34_286, len(entries_out))
+        self.assertEqual(49_931, len(entries_out))
         pos_counts = {
             name: sum(
                 (bool(entry.flags & pack.FLAG_NOUN) == noun)
@@ -298,12 +315,29 @@ class ShippedAssetTest(unittest.TestCase):
                 ("noun", True, False), ("verb", False, True), ("noun,verb", True, True)
             )
         }
-        self.assertEqual({"noun": 32_939, "verb": 1_185, "noun,verb": 162}, pos_counts)
-        self.assertEqual(34_179, sum(
+        self.assertEqual({"noun": 48_090, "verb": 1_481, "noun,verb": 360}, pos_counts)
+        self.assertEqual(49_824, sum(
             bool(entry.flags & (pack.FLAG_NOUN_CHAIN | pack.FLAG_VERB_CHAIN))
             for entry in entries_out
         ))
-        self.assertEqual(5_364, sum(bool(entry.flags & pack.FLAG_FORCE_BACK) for entry in entries_out))
+        self.assertEqual(107, sum(
+            not entry.flags & (pack.FLAG_NOUN_CHAIN | pack.FLAG_VERB_CHAIN)
+            for entry in entries_out
+        ))
+        self.assertEqual(6_879, sum(bool(entry.flags & pack.FLAG_FORCE_BACK) for entry in entries_out))
+
+    def test_rebuild_check_rejects_a_bare_only_dictionary_entry(self) -> None:
+        dictionary = dictionary_pack.validate_asset(DICTIONARY.read_bytes())
+        self.assertIn("алма", dictionary.words)
+        raw = pack.build_raw(
+            [pack.StemEntry("алма", flags_for("алма", chains=False))],
+            hashlib.sha256(dictionary.raw).hexdigest(), pack.APERTIUM_LEXC_SHA256,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            asset = Path(directory) / "stems.zlib"
+            asset.write_bytes(pack.compress_raw(raw))
+            with self.assertRaises(rebuild_assets.ContractError):
+                rebuild_assets.measure_stem_lexicon(asset, DICTIONARY)
 
 
 if __name__ == "__main__":

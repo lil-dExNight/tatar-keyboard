@@ -923,7 +923,7 @@ def measure_companion(asset_path: Path) -> Pins:
 
 
 def measure_stem_lexicon(asset_path: Path, dictionary_path: Path) -> Pins:
-    """Validate the stem image, its source identities and the incremental boundary."""
+    """Validate the stem image, source identities and bundled chain boundary."""
     asset = asset_path.read_bytes()
     raw = stem_lexicon_pack.decompress_asset(asset)
     entries, fields = stem_lexicon_pack.parse_raw(raw)
@@ -935,8 +935,11 @@ def measure_stem_lexicon(asset_path: Path, dictionary_path: Path) -> Pins:
         raise ContractError("stem lexicon names a different dictionary")
     if fields["apertium_lexc_sha256"] != stem_lexicon_pack.APERTIUM_LEXC_SHA256:
         raise ContractError("stem lexicon names a different Apertium source")
-    if not set(dictionary.words).isdisjoint(entry.word for entry in entries):
-        raise ContractError("stem lexicon contains a shipped dictionary form")
+    chain_flags = stem_lexicon_pack.FLAG_NOUN_CHAIN | stem_lexicon_pack.FLAG_VERB_CHAIN
+    dictionary_words = set(dictionary.words)
+    for entry in entries:
+        if entry.word in dictionary_words and not entry.flags & chain_flags:
+            raise ContractError("bundled dictionary stem lacks an Apertium chain flag")
     return Pins(
         compressed_size=len(asset),
         compressed_sha256=hashlib.sha256(asset).hexdigest(),

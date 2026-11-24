@@ -393,10 +393,12 @@ still-loading, corrupt or generation-mismatched lexicon publishes no acceptor: u
 not a negative verdict, and the dictionary engine is unaffected. The image is not published to a
 device file, so there is no quarantined copy to restore; every load starts from the pinned APK
 asset. `TatarMorphologicalAcceptor.accepts` accepts a bare listed stem, and otherwise only a
-suffix chain licensed by the stem's Apertium continuation flags. It applies the word-form
-generator's vowel harmony, forced-back harmony, consonant assimilation, final voicing,
-possessive, suppletive and override rules, reuses fixed scratch and allocates nothing per
-lookup. No suggestion, autocorrect, glide or learning path calls it yet.
+suffix chain licensed by the stem's Apertium continuation flags. The lexicon also retains
+Apertium stems whose bare forms already ship in the dictionary, so those chains are available
+without duplicating dictionary admission. Non-Apertium inferred and review stems stay
+bare-only. The acceptor applies the word-form generator's vowel harmony, forced-back harmony,
+consonant assimilation, final voicing, possessive, suppletive and override rules, reuses fixed
+scratch and allocates nothing per lookup. No suggestion, autocorrect, glide or learning path calls it yet.
 
 On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it in
 full (`TdictValidator.validateRaw`, `TatBigrValidator.validateRaw`) and publish it to

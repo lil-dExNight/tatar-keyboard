@@ -22,6 +22,12 @@ class TatarMorphologicalAcceptorTest {
     }
 
     @Test
+    fun bundledDictionaryStemCanStartAChain() {
+        val acceptor = MorphologyTestSupport.realAcceptor()
+        assertTrue(acceptor.accepts("китапларымның"))
+    }
+
+    @Test
     fun acceptsBareStemsAndAllNounContinuationFamilies() {
         val acceptor = acceptor("татар", "өй", "урман", "китап", "су", "әби", "аба", "аракы")
         assertAccepted(

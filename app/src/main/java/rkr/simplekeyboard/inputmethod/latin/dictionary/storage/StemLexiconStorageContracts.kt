@@ -2,7 +2,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.storage
 
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 
-/** One incremental Tatar stem lexicon, tied to its dictionary and Apertium source. */
+/** One Tatar stem lexicon, tied to its dictionary and Apertium source. */
 data class StemLexiconArtifactSpec(
     val family: String,
     val languageTag: String,
@@ -42,13 +42,13 @@ data class StemLexiconArtifactSpec(
             family = "tatar_stems",
             languageTag = PersonalSubtypes.TATAR_RU,
             assetPath = "dictionaries/tatar_stems_v1.tstem.zlib",
-            expectedCompressedSize = 181_264,
+            expectedCompressedSize = 240_291,
             expectedCompressedSha256 =
-                "97209dd45830ef08779dee3702ea4e4677fc4f2b91721d2cc5c3f91ab2baec02",
-            expectedRawSize = 489_860,
+                "98fe63ee5446a4e5599cc1828043bdfddda613c89b9f2d21c3e60077035cdbd9",
+            expectedRawSize = 642_469,
             expectedRawSha256 =
-                "d258cdbd8535cd3eb4adcc231df7f7e2951bea74311985dfabe16d92e4dcd731",
-            expectedStemCount = 34_286,
+                "381825be961dc55f0433bdeb219da6f58307cf7bbd79b30db114aa6fdc202f55",
+            expectedStemCount = 49_931,
             expectedDictionaryRawSha256 =
                 "41586468b3cf1acb58637e05d153d14f10d3297d7a5744adbadc6112a561c8f0",
             expectedApertiumLexiconSha256 =

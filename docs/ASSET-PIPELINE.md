@@ -353,12 +353,14 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    and no baseline input. The words are an exact list, never a probabilistic filter, because a
    false positive would suppress a legitimate correction.
 4b. **Tatar stem lexicon.** `stem_lexicon_pack.py build` extracts literal stems, parts of speech
-   and continuation classes from the pinned Apertium-tat lexc source. It merges them with stems
-   inferred by `wordform_gen.build_groups` and review-table lemmas, then excludes every form in
-   the rebuilt Tatar dictionary. Only Apertium stems receive noun or verb suffix-chain flags.
-   Apertium's `-RUS` continuation forces back harmony. Entries are sorted, front-coded in blocks,
-   linked to the dictionary's raw SHA-256 and the lexc SHA-256, and zlib-compressed. The build
-   parses the complete image back before atomically replacing the asset.
+   and continuation classes from the pinned Apertium-tat lexc source. It retains every valid
+   Apertium stem, including one whose bare form is already in the rebuilt Tatar dictionary. It
+   adds stems inferred by `wordform_gen.build_groups` and review-table lemmas only when absent
+   from that dictionary. Only Apertium stems receive noun or verb suffix-chain flags. A bundled
+   Apertium stem therefore starts suffix chains without needing a second bare-form admission
+   path. Apertium's `-RUS` continuation forces back harmony. Entries are sorted, front-coded in
+   blocks, linked to the dictionary's raw SHA-256 and the lexc SHA-256, and zlib-compressed. The
+   build parses the complete image back before atomically replacing the asset.
 5. **Pins.** Each asset is measured, and its pins are rewritten in
    `DictionaryStorageContracts.kt`, `BigramStorageContracts.kt`,
    `CompanionListStorageContracts.kt` and `StemLexiconStorageContracts.kt`, between the
@@ -408,7 +410,8 @@ This mode rebuilds and writes nothing, and needs no corpora. It checks that:
 - the words of each cold-companion list equal the top words the packer would select from the
   current dictionary;
 - the stem lexicon matches its contract, names the current Tatar dictionary and pinned Apertium
-  source, and contains no shipped dictionary form. The lexc file itself is not needed.
+  source, and gives every bundled dictionary form in the image at least one Apertium chain flag.
+  The lexc file itself is not needed.
 
 Each asset gets a verdict: `ok`, `mismatch`, `missing`, `drift`, `known-drift` or
 `stale-known-drift`. The corpus section gets `not-checked` (no `--corpus-dir`), `ok`, `missing`

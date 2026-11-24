@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build the incremental Tatar stem lexicon (TATSTEM schema 1).
+"""Build the Tatar stem lexicon (TATSTEM schema 1).
 
 The Apertium source is a pinned lexc file. Other stems come from unambiguous
 word-form groups in the bundled Tatar dictionary and from lemmas in the
-word-form review table. Every shipped dictionary form is excluded. Only
-Apertium entries receive suffix-chain flags; all retained entries can still be
-accepted as bare stems by the runtime reader.
+word-form review table. Every valid Apertium stem is retained, including one
+whose bare form already ships in the dictionary. Non-Apertium stems are
+retained only when absent from the dictionary. Only Apertium entries receive
+suffix-chain flags.
 
 Use ``fetch`` to acquire the lexc file under build/, then ``build`` to write the
 zlib-compressed asset. The build validates its raw image before atomically
@@ -569,7 +570,7 @@ def merge_stems(
     review: dict[str, set[str]],
     exceptions: wordform_gen.Exceptions,
 ) -> tuple[tuple[StemEntry, ...], dict[str, object]]:
-    """Merge sources and return only entries absent from the shipped dictionary."""
+    """Merge sources and retain every Apertium stem, including dictionary forms."""
     groups, group_stats = wordform_gen.build_groups(list(dictionary_words), exceptions)
     inferred: dict[str, set[str]] = defaultdict(set)
     for stem, _form, label in groups:
@@ -584,12 +585,22 @@ def merge_stems(
         "review": set(review),
     }
     merged = set().union(*source_sets.values())
-    incremental = sorted(merged - dictionary_set, key=lambda word: word.encode("utf-8"))
+    bundled_apertium = set(apertium) & dictionary_set
+    incremental = merged - dictionary_set
+    retained = sorted(incremental | bundled_apertium, key=lambda word: word.encode("utf-8"))
     entries: list[StemEntry] = []
-    for stem in incremental:
-        parts = pos_parts_for_entries(apertium.get(stem, {}).get("pos", set()))  # type: ignore[arg-type]
-        parts.update(review.get(stem, set()))
-        parts.update(inferred.get(stem, set()))
+    for stem in retained:
+        apertium_parts = pos_parts_for_entries(  # type: ignore[arg-type]
+            apertium.get(stem, {}).get("pos", set())
+        )
+        if stem in dictionary_set:
+            # A bundled bare form is the dictionary's responsibility. Its entry carries only
+            # the POS, harmony and continuations attested by Apertium.
+            parts = apertium_parts
+        else:
+            parts = set(apertium_parts)
+            parts.update(review.get(stem, set()))
+            parts.update(inferred.get(stem, set()))
         if not parts:
             raise StemLexiconError(f"stem has no part of speech: {stem}")
         entries.append(StemEntry(stem, _record_flags(stem, parts, apertium.get(stem))))
@@ -616,9 +627,11 @@ def merge_stems(
             "dictionary_forms_as_stems": len(dictionary_stems),
         },
         "merged_unique_stems": len(full_merged),
-        "incremental_stems": len(entries),
-        "incremental_pos_counts": dict(sorted(pos_counts.items())),
-        "incremental_chain_counts": dict(sorted(chain_counts.items())),
+        "asset_stems": len(entries),
+        "incremental_stems": len(incremental),
+        "bundled_apertium_chain_stems": len(bundled_apertium),
+        "asset_pos_counts": dict(sorted(pos_counts.items())),
+        "asset_chain_counts": dict(sorted(chain_counts.items())),
         "forced_back_loans": sum(bool(entry.flags & FLAG_FORCE_BACK) for entry in entries),
         "overlap": {
             "apertium_and_review": len(set(apertium) & set(review)),
