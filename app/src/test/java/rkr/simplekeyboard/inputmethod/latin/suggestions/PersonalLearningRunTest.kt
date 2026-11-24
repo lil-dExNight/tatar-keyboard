@@ -153,10 +153,7 @@ class PersonalLearningRunTest {
             controller.onTextChanged()
         }
 
-        /**
-         * Witnesses one word boundary, which is what makes the NEXT run countable. A session starts
-         * without one on purpose — see [theFirstWordOfASessionIsNotCountedAtAll].
-         */
+        /** Witnesses one ordinary word boundary before the cases that start after a completed word. */
         fun witnessABoundary() {
             type("баш")
             endWord()
@@ -164,11 +161,18 @@ class PersonalLearningRunTest {
     }
 
     @Test
-    fun theFirstWordOfASessionIsNotCountedAtAll() {
+    fun theFirstWordOfASessionIsCountedWhenTypedFromAnEmptyField() {
         val h = Harness()
-        // No word boundary has been witnessed yet, so the trailing word may well be text the app
-        // pre-filled and the user merely appended to. Report nothing: it is not a run we saw start.
         h.type("гүз")
+        h.type("гүзәлия")
+        h.endWord()
+        assertEquals(listOf("гүзәлия"), h.completions)
+    }
+
+    @Test
+    fun aPrefilledFirstWordIsNotCounted() {
+        val h = Harness()
+        h.paste("гүзәл")
         h.type("гүзәлия")
         h.endWord()
         assertTrue(h.completions.isEmpty())

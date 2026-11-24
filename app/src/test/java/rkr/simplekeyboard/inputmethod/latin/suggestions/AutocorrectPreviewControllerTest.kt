@@ -559,8 +559,6 @@ class AutocorrectPreviewControllerTest {
         // with autocorrect off. A correction, by contrast, teaches nothing.
         val h = Harness()
         h.start()
-        // Personal learning skips the session's first word (it was not seen from its start);
-        // witness a boundary so the word below is a run of its own.
         h.typeWord("баш")
         h.separator(' ')
         h.advise("китәп", "китап")
@@ -569,7 +567,7 @@ class AutocorrectPreviewControllerTest {
 
         h.separator(' ')
 
-        assertEquals(listOf("китәп"), h.sink.completions)
+        assertEquals(listOf("баш", "китәп"), h.sink.completions)
     }
 
     @Test

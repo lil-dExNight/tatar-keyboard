@@ -432,16 +432,14 @@ class TextShortcutControllerTest {
 
     @Test
     fun theExpansionTeachesNeitherTheShortcutNorItsWords() {
-        // Control: the same typing without the pair — the second word is cleanly completed and
-        // learned (the session's first word is the witness boundary and is not seen from its
-        // start).
+        // Control: the same typing without the pair completes both words cleanly.
         val control = Harness()
         control.start()
         control.typeWord("баш")
         control.separator(' ')
         control.typeWord("тк")
         control.separator(' ')
-        assertEquals(listOf("тк"), control.sink.completions)
+        assertEquals(listOf("баш", "тк"), control.sink.completions)
 
         val h = Harness()
         h.start()
@@ -458,7 +456,8 @@ class TextShortcutControllerTest {
         h.typeWord("дөнья")
         h.separator(' ')
 
-        assertTrue(h.sink.completions.isEmpty())
+        // The ordinary first word was learned; neither the shortcut nor its expansion joined it.
+        assertEquals(listOf("баш"), h.sink.completions)
         assertEquals(listOf("Татарстан" to "дөнья"), h.pairSink.pairs)
     }
 

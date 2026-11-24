@@ -881,7 +881,7 @@ class SuggestionsController internal constructor(
     @JvmOverloads
     fun onStartInput(eligible: Boolean, subtypeId: String? = DEFAULT_LANGUAGE,
                      glideEligible: Boolean = eligible) {
-        runMachine.markRunDirty()
+        runMachine.resetForSessionStart()
         clearRevertState()
         refusedCorrections.clear()
         // Lifecycle boundary: one of the only two places allowed to run the blocking engine

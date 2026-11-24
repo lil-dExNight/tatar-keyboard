@@ -262,6 +262,12 @@ internal class CleanRunMachine(private val editor: EditorSurface) {
         deferredProbeAwaitingAnswer = null
     }
 
+    /** Starts a fresh session with typed-word tracking armed; the first-observation cap still applies. */
+    fun resetForSessionStart() {
+        markRunDirty()
+        runClean = true
+    }
+
     /** Marks a clipboard run dirty for learning and for the pair context that follows it. */
     fun markClipboardPasteDirty() {
         markRunDirty()

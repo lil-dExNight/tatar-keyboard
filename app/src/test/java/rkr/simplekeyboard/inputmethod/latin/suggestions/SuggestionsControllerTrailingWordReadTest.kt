@@ -333,8 +333,9 @@ class SuggestionsControllerTrailingWordReadTest {
         val eventsAfterWord = h.engine.events.size
         h.endWord()
         assertEquals(1, h.editor.trailingWordReads - readsAfterWord)
+        // The first clean word also runs its deferred learning probe behind the NEXT_WORD lookup.
         assertEquals(
-            listOf("next:сәләм"),
+            listOf("next:сәләм", "probe:сәләм"),
             h.engine.events.drop(eventsAfterWord),
         )
 
