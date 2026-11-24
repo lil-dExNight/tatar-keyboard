@@ -771,12 +771,25 @@ suggestions and no dictionary is loaded. The service is `directBootAware`; an un
 dictionaries and acceptor only and never opens the personal dictionary. After that unlock,
 personal snapshots are read-only.
 
-The Tatar and Russian prefix indexes load lazily from the bundled assets through the full
-validator into read-only buffers, without publishing storage-catalog files. Binder threads may
-call concurrently: a monitor serializes membership and lookup calls through each index's mutable
-scratch, while the acceptor and personal snapshots are immutable and thread-safe. The acceptor is
-the same process-wide instance used by the IME; an acceptor load failure leaves dictionary
-checking available.
+For each language, the loader first uses the existing catalog's read-only activation path. An
+active-generation published file that passes the catalog's validation is mapped read-only with
+`MappedDictionaryEngine.FILE_MAPPER`. Its store validation token lets `TdictPrefixIndex.open`
+skip another full structural walk after the same file-freshness check the IME uses. The spell
+checker holds the file lease for the source's process lifetime, so catalog retention cannot
+remove the mapping's file. If corruption is found later, that lease also makes an in-process
+repair wait until process death; both consumers fall back to the bundled asset meanwhile. A
+missing, unreadable or invalid published file affects only that language: the loader falls back
+to inflating the pinned APK asset into a read-only heap buffer.
+Published files live in device-protected storage and are usable during Direct Boot; asset fallback
+also covers first run before publication and a published file rejected by the catalog. The service
+never calls publication, cleanup or quarantine APIs; the IME is the only catalog writer. A
+successful source load does this I/O once, not on later requests, and repeated mappings of one
+file share its clean file-backed pages.
+
+Binder threads may call concurrently: a monitor serializes membership and lookup calls through
+each index's mutable scratch, while the acceptor and personal snapshots are immutable and
+thread-safe. The acceptor is the same process-wide instance used by the IME; an acceptor load
+failure leaves dictionary checking available.
 
 The service retains no submitted text or per-word verdict beyond the call and performs no
 logging, storage writes, learning or input caching. It starts no editor, keyboard-view or learning

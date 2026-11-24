@@ -36,6 +36,7 @@ class SpellCheckerStatelessSourceContractTest {
             "android.content.SharedPreferences", ".edit(", ".apply()", ".commit()",
             "FileOutputStream", "FileWriter", "RandomAccessFile", "Files.write",
             ".writeText(", ".writeBytes(", ".appendText(", ".appendBytes(",
+            ".ensurePublished(", ".cleanupReleasedVersions(",
         )
         for (file in sourceFiles()) {
             val source = file.readText()

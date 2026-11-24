@@ -20,11 +20,15 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.os.UserManager
 import java.io.File
+import java.util.concurrent.Executor
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.AndroidPersonalDictionaryStorage
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDictionaryStorageFactory
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
 import rkr.simplekeyboard.inputmethod.latin.morphology.SharedTatarMorphology
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder
@@ -47,6 +51,24 @@ internal object AndroidPersonalDictionarySource {
                 )
             },
         )
+    }
+}
+
+/** Uses only the catalog's read-only activation path; the spell checker never prepares storage. */
+internal class AndroidSpellCheckerDictionaryLeaseSource(
+    context: Context,
+) : SpellCheckerDictionaryLeaseSource {
+    private val appContext = context.applicationContext
+
+    override fun acquire(spec: DictionaryArtifactSpec): DictionaryFileLease? = try {
+        AndroidDictionaryStorageFactory.create(appContext, DIRECT_EXECUTOR, spec)
+            .acquireLatestForActivation()
+    } catch (_: Exception) {
+        null
+    }
+
+    private companion object {
+        val DIRECT_EXECUTOR = Executor { command -> command.run() }
     }
 }
 
@@ -111,6 +133,7 @@ internal object SharedSpellCheckerEngine {
             { SharedTatarMorphology.get(personalContext) },
             AndroidPersonalDictionarySource.create(personalContext),
             neighbors ?: emptyNeighbors,
+            AndroidSpellCheckerDictionaryLeaseSource(deviceContext),
         ).load()
     } catch (_: Exception) {
         null

@@ -26,11 +26,13 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ImmutableUtf8Prefix
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.InflectedSuffixTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.MappedDictionaryEngine
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.TdictPrefixIndex
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersFormat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.TpersValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import rkr.simplekeyboard.inputmethod.latin.morphology.TatarMorphologicalAcceptor
 import rkr.simplekeyboard.inputmethod.latin.suggestions.ProperNameIndex
@@ -52,6 +54,8 @@ internal class SpellCheckerDictionaries(
     private val acceptor: () -> TatarMorphologicalAcceptor?,
     private val properNames: ProperNameIndex,
     private val personal: PersonalDictionarySource,
+    /** Keeps published files leased for the lifetime of their mappings. */
+    private val dictionaryLeases: List<DictionaryFileLease>,
 ) : SpellCheckerWordSource {
     private val tatarMonitor = Any()
     private val russianMonitor = Any()
@@ -76,43 +80,118 @@ internal class SpellCheckerDictionaries(
         }
 }
 
+/** Acquires an already published dictionary without preparing or cleaning storage. */
+internal fun interface SpellCheckerDictionaryLeaseSource {
+    fun acquire(spec: DictionaryArtifactSpec): DictionaryFileLease?
+}
+
 /** An opener for one read-only APK asset. */
 internal fun interface SpellCheckerAssetOpener {
     fun open(path: String): InputStream
 }
 
-/** Loads the pinned Tatar and Russian dictionaries from APK assets without a storage catalog. */
+/** Loads published dictionaries as read-only mappings, with pinned APK assets as the fallback. */
 internal class SpellCheckerDictionaryLoader(
     private val opener: SpellCheckerAssetOpener,
     private val acceptor: () -> TatarMorphologicalAcceptor?,
     private val personal: PersonalDictionarySource,
     private val neighbors: KeyNeighborTable,
+    private val leaseSource: SpellCheckerDictionaryLeaseSource? = null,
 ) {
-    fun load(): SpellCheckerDictionaries? = try {
-        val tatar = openIndex(
-            DictionaryArtifactSpec.TATAR_TOP100K_V1,
-            TatarSuffixRules,
-            FuzzyEditPolicy.TATAR,
-            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
-        ).also { it.updateKeyNeighbors(neighbors) }
-        val russian = openIndex(
-            DictionaryArtifactSpec.RUSSIAN_TOP100K_V1,
-            null,
-            FuzzyEditPolicy.RUSSIAN,
-            AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
-        )
-        SpellCheckerDictionaries(
-            requireNotNull(tatar),
-            requireNotNull(russian),
-            acceptor,
-            loadProperNames(),
-            personal,
-        )
-    } catch (_: Exception) {
-        null
+    fun load(): SpellCheckerDictionaries? {
+        val leases = ArrayList<DictionaryFileLease>(2)
+        return try {
+            val tatar = openIndex(
+                DictionaryArtifactSpec.TATAR_TOP100K_V1,
+                TatarSuffixRules,
+                FuzzyEditPolicy.TATAR,
+                AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                leases,
+            ).also { it.updateKeyNeighbors(neighbors) }
+            val russian = openIndex(
+                DictionaryArtifactSpec.RUSSIAN_TOP100K_V1,
+                null,
+                FuzzyEditPolicy.RUSSIAN,
+                AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
+                leases,
+            )
+            SpellCheckerDictionaries(
+                tatar,
+                russian,
+                acceptor,
+                loadProperNames(),
+                personal,
+                leases.toList(),
+            )
+        } catch (_: Exception) {
+            leases.forEach { it.close() }
+            null
+        }
     }
 
     private fun openIndex(
+        spec: DictionaryArtifactSpec,
+        suffixTable: InflectedSuffixTable?,
+        policy: FuzzyEditPolicy,
+        autocorrectFloor: Long,
+        leases: MutableList<DictionaryFileLease>,
+    ): TdictPrefixIndex {
+        val index = openPublishedIndex(spec, suffixTable, policy, autocorrectFloor, leases)
+            ?: openBundledIndex(spec, suffixTable, policy, autocorrectFloor)
+        index.setAutocorrectAdviceEnabled(false)
+        return index
+    }
+
+    private fun openPublishedIndex(
+        spec: DictionaryArtifactSpec,
+        suffixTable: InflectedSuffixTable?,
+        policy: FuzzyEditPolicy,
+        autocorrectFloor: Long,
+        leases: MutableList<DictionaryFileLease>,
+    ): TdictPrefixIndex? {
+        val lease = try {
+            leaseSource?.acquire(spec)
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        var retained = false
+        try {
+            val dictionary = lease.dictionary
+            val token = lease.validationToken?.takeIf { it.matchesFile(dictionary.file) }
+                ?: return null
+            val mapped = MappedDictionaryEngine.FILE_MAPPER.mapReadOnly(
+                dictionary.file,
+                dictionary.rawSize,
+            )
+            val identity = DictionaryIdentity(
+                dictionary.generation,
+                dictionary.schemaId,
+                dictionary.formatVersion,
+                dictionary.rawSha256,
+            )
+            // The catalog token avoids faulting every page in another structural walk. Check its
+            // file freshness as in IME activation; later requests reuse the opened index.
+            val index = TdictPrefixIndex.open(
+                mapped,
+                identity,
+                dictionary.entryCount,
+                dictionary.rawSize,
+                suffixTable,
+                policy,
+                autocorrectFloor,
+                token,
+            ) ?: return null
+            leases += lease
+            retained = true
+            return index
+        } catch (_: Exception) {
+            return null
+        } finally {
+            if (!retained) lease.close()
+        }
+    }
+
+    private fun openBundledIndex(
         spec: DictionaryArtifactSpec,
         suffixTable: InflectedSuffixTable?,
         policy: FuzzyEditPolicy,
@@ -128,7 +207,7 @@ internal class SpellCheckerDictionaryLoader(
             spec.formatVersion,
             spec.expectedRawSha256,
         )
-        val index = requireNotNull(
+        return requireNotNull(
             TdictPrefixIndex.open(
                 ByteBuffer.wrap(output.toByteArray()).asReadOnlyBuffer(),
                 identity,
@@ -139,8 +218,6 @@ internal class SpellCheckerDictionaryLoader(
                 autocorrectFloor,
             ),
         )
-        index.setAutocorrectAdviceEnabled(false)
-        return index
     }
 
     private fun loadProperNames(): ProperNameIndex = try {
