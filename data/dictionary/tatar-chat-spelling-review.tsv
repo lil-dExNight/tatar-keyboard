@@ -4964,7 +4964,7 @@ word	decision	target	note
 сугыласын	fold	сугыласың	single standard form, dominant frequency
 сугышасын	fold	сугышасың	single standard form, dominant frequency
 сугыштансын	fold	сугыштансың	single standard form, dominant frequency
-суз	fold	сүз	single standard form, dominant frequency
+суз	keep		native review: imperative of сузу
 сузарсын	fold	сузарсың	single standard form, dominant frequency
 сузгансын	fold	сузгансың	single standard form, dominant frequency
 сузе	fold	сүзе	single standard form, dominant frequency
@@ -5504,7 +5504,7 @@ word	decision	target	note
 томалыйсын	fold	томалыйсың	single standard form, dominant frequency
 томнарынын	fold	томнарының	single standard form, dominant frequency
 тон	keep		noun, fur coat
-топ	fold	төп	single standard form, dominant frequency
+топ	keep		native review: Russian loan топ
 топле	fold	төпле	single standard form, dominant frequency
 топлерәк	fold	төплерәк	single standard form, dominant frequency
 тор	keep		frequency does not separate the two spellings
@@ -7277,7 +7277,7 @@ word	decision	target	note
 элмирага	fold	әлмирага	single standard form, dominant frequency
 эль	keep		at least as frequent as its standard form
 эләгерсен	fold	эләгерсең	single standard form, dominant frequency
-эләгәсен	drop		shared by several standard forms
+эләгәсен	keep		native review: valid Tatar form
 эләккәнсен	fold	эләккәнсең	single standard form, dominant frequency
 эләктерәсен	fold	эләктерәсең	single standard form, dominant frequency
 эләм	fold	әләм	single standard form, dominant frequency
@@ -7684,7 +7684,7 @@ word	decision	target	note
 янару	fold	яңару	single standard form, dominant frequency
 янарып	fold	яңарып	single standard form, dominant frequency
 янасы	fold	яңасы	single standard form, dominant frequency
-янасын	drop		shared by several standard forms
+янасын	keep		native review: valid Tatar form
 янасыннан	fold	яңасыннан	single standard form, dominant frequency
 янасының	fold	яңасының	single standard form, dominant frequency
 янача	fold	яңача	single standard form, dominant frequency
