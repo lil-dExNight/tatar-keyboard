@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.settings
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -56,7 +57,9 @@ import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupExportResult
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupFormat
 import rkr.simplekeyboard.inputmethod.latin.settings.backup.BackupImportResult
 import rkr.simplekeyboard.inputmethod.latin.setup.SetupState
+import rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckerSelection
 import rkr.simplekeyboard.inputmethod.latin.utils.AppLocale
+import rkr.simplekeyboard.inputmethod.latin.utils.ApplicationUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.DialogUtils
 import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
 
@@ -70,6 +73,10 @@ import rkr.simplekeyboard.inputmethod.latin.utils.LocaleResourceUtils
  * Information screen, and [Screen.LANGUAGE_DETAIL] is the one parameterized page
  * ([detailLocale]). Row builders live in SettingsRows.kt, SettingsLanguagesScreens.kt and
  * SettingsKeyPressScreen.kt.
+ *
+ * The system spell-checker list opens [Screen.SPELL_CHECKER] through
+ * [SpellCheckerSettingsActivity], which passes it as [EXTRA_SCREEN]; every other entry opens the
+ * root.
  */
 class SettingsHostActivity : Activity() {
 
@@ -85,6 +92,7 @@ class SettingsHostActivity : Activity() {
         PERSONAL_DICTIONARY(R.string.personal_dictionary),
         PERSONAL_INVENTORY(R.string.personal_inventory_screen),
         INFORMATION(R.string.settings_screen_information),
+        SPELL_CHECKER(R.string.spell_checker_settings_title),
         TEXT_SHORTCUTS(R.string.text_shortcuts_screen)
     }
     companion object {
@@ -97,6 +105,13 @@ class SettingsHostActivity : Activity() {
         private val TAG = SettingsHostActivity::class.java.simpleName
         private const val STATE_SCREEN = "screen"
         private const val STATE_BACK_STACK = "back_stack"
+        // The AOSP spell-checker screen; the public android.settings.SPELL_CHECKER_SETTINGS
+        // action is missing on some releases, so the screen is addressed by component.
+        private const val SYSTEM_SETTINGS_PACKAGE = "com.android.settings"
+        private const val SPELL_CHECKER_SETTINGS_CLASS =
+                "com.android.settings.Settings\$SpellCheckersSettingsActivity"
+        /** Screen name an entry point asks the host to open; see [Screen]. */
+        internal const val EXTRA_SCREEN = "screen_name"
         private const val STATE_DETAIL_LOCALE = "detail_locale"
         // internal, not private: read by the row builders in SettingsRows.kt.
         internal const val DISABLED_ALPHA = 0.4f
@@ -106,6 +121,9 @@ class SettingsHostActivity : Activity() {
         private const val REQUEST_ENCRYPTED_BACKUP_EXPORT = 3
         private const val BACKUP_MIME_TYPE = "application/zip"
         private const val ENCRYPTED_BACKUP_MIME_TYPE = "application/octet-stream"
+        private const val FEEDBACK_EMAIL = "develam.postal629@passmail.com"
+        /** The platform's activity for an implicit intent that no app can handle. */
+        private const val PLATFORM_FALLBACK_PACKAGE = "com.android.fallback"
     }
 
     internal lateinit var prefs: SharedPreferences
@@ -242,8 +260,26 @@ class SettingsHostActivity : Activity() {
         }
         detailLocale = savedInstanceState?.getString(STATE_DETAIL_LOCALE)
         currentScreen = savedInstanceState?.getString(STATE_SCREEN)?.let { screensByName[it] }
+                ?: screenFromExtra(intent)
                 ?: Screen.ROOT
         // The content itself is built in onStart, which follows right after.
+    }
+
+    /**
+     * Reuses a host already in this task for the screen its caller names, dropping the back stack
+     * so system back leaves the settings instead of walking a screen history the user never made.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val screen = screenFromExtra(intent) ?: return
+        backStack.clear()
+        showScreen(screen)
+    }
+
+    private fun screenFromExtra(intent: Intent?): Screen? {
+        val name = intent?.getStringExtra(EXTRA_SCREEN) ?: return null
+        return Screen.values().firstOrNull { it.name == name }
     }
 
     override fun onStart() {
@@ -342,6 +378,7 @@ class SettingsHostActivity : Activity() {
             Screen.PERSONAL_INVENTORY -> buildPersonalInventoryScreen()
             Screen.TEXT_SHORTCUTS -> buildTextShortcutsScreen()
             Screen.INFORMATION -> buildInformationScreen()
+            Screen.SPELL_CHECKER -> buildSpellCheckerScreen()
         }
         scrollView.scrollTo(0, 0)
         playScreenTransition()
@@ -407,11 +444,75 @@ class SettingsHostActivity : Activity() {
             actionRow(R.string.backup_export_action) { startBackupExport() },
             actionRow(R.string.backup_encrypted_export_action) { startEncryptedBackupExport() },
             actionRow(R.string.backup_import_action) { showBackupImportDialog() }))
+        addCard(listOf(
+            linkRow(R.string.send_feedback) { sendFeedback() }))
         addSectionHeader(getString(R.string.settings_screen_legal))
         addCard(listOf(
             linkRow(R.string.privacy_policy) { openUrl(getString(R.string.privacy_policy_url)) },
             linkRow(R.string.license) { openUrl(getString(R.string.license_url)) }),
                 spacedFromPrevious = false)
+    }
+
+    /** Opens a blank message; the user chooses and writes everything sent. */
+    private fun sendFeedback() {
+        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$FEEDBACK_EMAIL"))
+            .putExtra(Intent.EXTRA_SUBJECT, getString(R.string.feedback_email_subject,
+                getString(R.string.english_ime_name), ApplicationUtils.getVersionName(this)))
+        // The platform answers an unroutable implicit intent with its own fallback activity
+        // instead of throwing, so a resolved handler in that package means no mail app exists.
+        val handler = intent.resolveActivity(packageManager)
+        if (handler != null && handler.packageName != PLATFORM_FALLBACK_PACKAGE) {
+            try {
+                startActivity(intent)
+                return
+            } catch (e: ActivityNotFoundException) {
+                // The handler disappeared between resolving and starting: show the address.
+            }
+        }
+        Toast.makeText(this, getString(R.string.feedback_no_email_app, FEEDBACK_EMAIL),
+            Toast.LENGTH_LONG).show()
+    }
+
+    /** The system-selected checker state, the Tatar switch and the way back to system settings. */
+    private fun buildSpellCheckerScreen() {
+        addSectionHeader(getString(R.string.settings_section_spell_checker))
+        addCard(listOf(
+            switchRow(Settings.PREF_TATAR_SPELL_CHECKER, true,
+                R.string.spell_checker_tatar_switch, R.string.spell_checker_tatar_switch_summary),
+            textRow(getString(R.string.spell_checker_languages_note))),
+                spacedFromPrevious = false)
+        addSectionHeader(getString(R.string.spell_checker_section_system))
+        addCard(listOf(
+            textRow(getString(if (SpellCheckerSelection.isSelected(this))
+                R.string.spell_checker_status_selected
+            else
+                R.string.spell_checker_status_not_selected)),
+            actionRow(R.string.spell_checker_open_system_settings) {
+                openSystemSpellCheckerSettings()
+            }))
+        addCard(listOf(linkRow(R.string.personal_dictionary_screen) {
+            navigateTo(Screen.PERSONAL_DICTIONARY)
+        }))
+    }
+
+    /**
+     * Opens the system's spell-checker list. The public android.settings.SPELL_CHECKER_SETTINGS
+     * action is missing on some releases, so the AOSP screen is addressed by component first and
+     * the language-and-input screen is the fallback; a device with neither shows a message.
+     */
+    private fun openSystemSpellCheckerSettings() {
+        val direct = Intent().setComponent(
+                ComponentName(SYSTEM_SETTINGS_PACKAGE, SPELL_CHECKER_SETTINGS_CLASS))
+        val fallback = Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS)
+        for (intent in listOf(direct, fallback)) {
+            try {
+                startActivity(intent)
+                return
+            } catch (e: RuntimeException) {
+                // Missing or unreachable on this build: try the next entry point.
+            }
+        }
+        Toast.makeText(this, R.string.spell_checker_settings_unavailable, Toast.LENGTH_LONG).show()
     }
 
     /** The plaintext create-document picker, pre-filled with the fixed file name. */
@@ -821,6 +922,14 @@ class SettingsHostActivity : Activity() {
         addCard(listOf(actionRow(R.string.clear_recent_emoji) {
             showClearRecentEmojiDialog()
         }))
+        // Tatar spell checking in other apps is a system feature: the keyboard explains it and
+        // opens the system list, but only the system settings can select the checker.
+        addSectionHeader(getString(R.string.settings_section_spell_checker))
+        addCard(listOf(
+            textRow(getString(R.string.spell_checker_guide_body)),
+            actionRow(R.string.spell_checker_open_system_settings) {
+                openSystemSpellCheckerSettings()
+            }), spacedFromPrevious = false)
     }
 
     /**

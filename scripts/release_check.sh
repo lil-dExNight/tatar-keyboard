@@ -751,12 +751,23 @@ COMPONENT_KINDS = ("activity", "activity-alias", "service", "receiver", "provide
 #   activity rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity
 #       exported, no permission guard, no filter: the settings screen, opened by explicit
 #       intents (system IME settings, SetupActivity).
+#   service rkr.simplekeyboard.inputmethod.latin.spellcheck.TatarSpellCheckerService
+#       exported, guarded by BIND_TEXT_SERVICE, filter SpellCheckerService: the system binds it
+#       to spell-check text of other apps, and only the system holds the guard permission.
+#   activity rkr.simplekeyboard.inputmethod.latin.settings.SpellCheckerSettingsActivity
+#       exported, no permission guard, no filter: the system spell-checker list opens it through
+#       the subsystem metadata.
 # Any other exported component, or a changed guard/filter here, is drift and fails.
 GOLDEN_EXPORTED = {
     ("activity", "rkr.simplekeyboard.inputmethod.latin.setup.SetupActivity", "",
      ("android.intent.action.MAIN",), ("android.intent.category.LAUNCHER",)),
     ("activity", "rkr.simplekeyboard.inputmethod.latin.settings.SettingsActivity", "",
      (), ()),
+    ("service", "rkr.simplekeyboard.inputmethod.latin.spellcheck.TatarSpellCheckerService",
+     "android.permission.BIND_TEXT_SERVICE",
+     ("android.service.textservice.SpellCheckerService",), ()),
+    ("activity", "rkr.simplekeyboard.inputmethod.latin.settings.SpellCheckerSettingsActivity",
+     "", (), ()),
 }
 
 IME_SERVICE = "rkr.simplekeyboard.inputmethod.latin.LatinIME"

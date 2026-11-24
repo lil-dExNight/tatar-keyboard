@@ -282,6 +282,9 @@
     <string name="personal_dictionary_no_language">Бу җәемдә шәхси сүзлек юк. Сүзләр татарча яки русча язганда саклана ала.</string>
     <string name="emoji_unavailable">Эмодзилар хәзергә юк. Клавиатураны яңадан җибәрү ярдәм итә ала.</string>
     <string name="no_app_for_link">Бу җиһазда сылтамаларны ача торган кушымта юк.</string>
+    <string name="send_feedback">Фикерегезне җибәрегез</string>
+    <string name="feedback_email_subject">%1$s %2$s</string>
+    <string name="feedback_no_email_app">Почта кушымтасы табылмады. %1$s адресына языгыз.</string>
     <string name="personal_dictionary_empty_ready">Әлегә сакланган сүзләр юк. Сез язган сүзләр монда күренер.</string>
     <string name="personal_dictionary_off_nothing_to_forget">Шәхси сүзлек сүндерелгән. Сүзләрегез истә калсын өчен аны клавиатура көйләүләрендә кабызыгыз.</string>
     <!-- Title of the settings row and screen holding the legal links. -->
@@ -318,6 +321,21 @@
     <string name="backup_import_failed_invalid">Бу файл бу клавиатураның күчермәсе түгел. Бернәрсә дә үзгәрмәде.</string>
     <string name="backup_import_failed_write">Күчермәне кире кайтарып булмады. Кабатлап карагыз.</string>
     <string name="backup_no_app">Бу җиһазда файл сайлый торган кушымта юк.</string>
+    <string name="spell_checker_service_name">Татар орфографиясен тикшерү</string>
+    <string name="spell_checker_subtype_tatar">Татарча</string>
+    <string name="spell_checker_subtype_russian">Русча</string>
+    <string name="spell_checker_subtype_english">Инглизчә</string>
+    <string name="spell_checker_settings_title">Орфографияне тикшерү</string>
+    <string name="settings_section_spell_checker">Орфографияне тикшерү</string>
+    <string name="spell_checker_tatar_switch">Татарча сүзләрне тикшерү</string>
+    <string name="spell_checker_tatar_switch_summary">Сүзлектә булмаган татарча сүзләрнең астына сызу.</string>
+    <string name="spell_checker_languages_note">Бары тик татарча гына тикшерелә. Русча һәм инглизчә сүзләрнең астына сызылмый, шуңа күрә русча сүзләре булган татарча җөмлә билгеләнми.</string>
+    <string name="spell_checker_section_system">Системада</string>
+    <string name="spell_checker_status_selected">Tatar Keyboard орфография тикшерүе сайланган.</string>
+    <string name="spell_checker_status_not_selected">Tatar Keyboard орфография тикшерүе сайланмаган.</string>
+    <string name="spell_checker_open_system_settings">Орфография көйләүләрен ачу</string>
+    <string name="spell_checker_settings_unavailable">Бу җиһазда орфография көйләүләре экраны юк.</string>
+    <string name="spell_checker_guide_body">Tatar Keyboard башка кушымталарда хаталы татарча сүзләрнең астына сыза ала. Тикшерүне кабызу өчен система көйләүләрен ачыгыз: «Көйләүләр» → «Система» → «Телләр һәм кертү» → «Орфографияне тикшерү», аннары Tatar Keyboard сайлагыз. Кайбер җиһазларда бу экран башка урында яки бөтенләй юк.</string>
     <!-- The Tatar policy text itself. -->
     <string name="privacy_policy_url">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.tt.md</string>
 </resources>

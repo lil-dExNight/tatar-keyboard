@@ -470,6 +470,10 @@
     <string name="emoji_unavailable">Emoji are not available right now. Restarting the keyboard may help.</string>
     <!-- Shown when a link row is tapped and no app on the device can open links. -->
     <string name="no_app_for_link">No app on this device can open links.</string>
+    <!-- Opens the user's email app without adding any message content. -->
+    <string name="send_feedback">Send feedback</string>
+    <string name="feedback_email_subject">%1$s %2$s</string>
+    <string name="feedback_no_email_app">No email app is available. Write to %1$s.</string>
     <!-- Shown when nothing has been saved yet AND the personal dictionary is already on, so there is nothing for the person to switch. -->
     <string name="personal_dictionary_empty_ready">No saved words yet. Words you type will appear here.</string>
     <!-- Shown when a long press asks to forget a word while saved words are switched off. Names the switch, because turning it on is the only thing the person can do about it. -->
@@ -520,4 +524,24 @@
     <string name="backup_import_failed_write">Could not restore the backup. Try again.</string>
     <!-- Shown when no app on the device can pick or create a file. -->
     <string name="backup_no_app">No app on this device can pick files.</string>
+
+    <!-- The system spell-checker entry: its name in the system list, its routing subtypes, the
+         screen it opens and the guide that points to the system switch. -->
+    <string name="spell_checker_service_name">Tatar spell checker</string>
+    <string name="spell_checker_subtype_tatar">Tatar</string>
+    <string name="spell_checker_subtype_russian">Russian</string>
+    <string name="spell_checker_subtype_english">English</string>
+    <string name="spell_checker_settings_title">Spell checker</string>
+    <string name="settings_section_spell_checker">Spell checker</string>
+    <string name="spell_checker_tatar_switch">Check Tatar words</string>
+    <string name="spell_checker_tatar_switch_summary">Underline Tatar words the dictionary does not know.</string>
+    <string name="spell_checker_languages_note">Only Tatar is checked. Russian and English words are never underlined, so a Tatar sentence with Russian words is left alone.</string>
+    <string name="spell_checker_section_system">In the system</string>
+    <string name="spell_checker_status_selected">Tatar Keyboard is the selected spell checker.</string>
+    <string name="spell_checker_status_not_selected">Tatar Keyboard is not the selected spell checker.</string>
+    <string name="spell_checker_open_system_settings">Open spell checker settings</string>
+    <!-- Shown when neither the system spell-checker screen nor the language-and-input screen
+         can be opened. -->
+    <string name="spell_checker_settings_unavailable">This device has no spell checker settings screen.</string>
+    <string name="spell_checker_guide_body">Tatar Keyboard can underline misspelled Tatar words in other apps. To turn it on, open the system settings: Settings → System → Languages &amp; input → Spell checker, then choose Tatar Keyboard. Some phone makers move or hide this screen.</string>
 </resources>

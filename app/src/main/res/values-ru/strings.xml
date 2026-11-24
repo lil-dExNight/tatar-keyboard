@@ -325,6 +325,9 @@
     <string name="personal_dictionary_no_language">У этой раскладки нет личного словаря. Слова можно сохранять при наборе на татарском или русском.</string>
     <string name="emoji_unavailable">Эмодзи сейчас недоступны. Может помочь перезапуск клавиатуры.</string>
     <string name="no_app_for_link">На устройстве нет приложения, которое открывает ссылки.</string>
+    <string name="send_feedback">Отправить отзыв</string>
+    <string name="feedback_email_subject">%1$s %2$s</string>
+    <string name="feedback_no_email_app">Нет почтового приложения. Напишите на %1$s.</string>
     <string name="personal_dictionary_empty_ready">Пока ничего не сохранено. Набранные слова будут появляться здесь.</string>
     <string name="personal_dictionary_off_nothing_to_forget">Личный словарь выключен. Включите его в настройках клавиатуры, чтобы она запоминала ваши слова.</string>
     <!-- Title of the settings row and screen holding the legal links. -->
@@ -361,5 +364,20 @@
     <string name="backup_import_failed_invalid">Это не резервная копия этой клавиатуры. Ничего не изменено.</string>
     <string name="backup_import_failed_write">Не удалось восстановить резервную копию. Попробуйте ещё раз.</string>
     <string name="backup_no_app">На устройстве нет приложения для выбора файлов.</string>
+    <string name="spell_checker_service_name">Проверка татарской орфографии</string>
+    <string name="spell_checker_subtype_tatar">Татарский</string>
+    <string name="spell_checker_subtype_russian">Русский</string>
+    <string name="spell_checker_subtype_english">Английский</string>
+    <string name="spell_checker_settings_title">Проверка орфографии</string>
+    <string name="settings_section_spell_checker">Проверка орфографии</string>
+    <string name="spell_checker_tatar_switch">Проверять татарские слова</string>
+    <string name="spell_checker_tatar_switch_summary">Подчёркивать татарские слова, которых нет в словаре.</string>
+    <string name="spell_checker_languages_note">Проверяется только татарский. Русские и английские слова не подчёркиваются, поэтому татарское предложение с русскими словами не помечается.</string>
+    <string name="spell_checker_section_system">В системе</string>
+    <string name="spell_checker_status_selected">Проверка орфографии Tatar Keyboard выбрана.</string>
+    <string name="spell_checker_status_not_selected">Проверка орфографии Tatar Keyboard не выбрана.</string>
+    <string name="spell_checker_open_system_settings">Открыть настройки проверки орфографии</string>
+    <string name="spell_checker_settings_unavailable">На этом устройстве нет экрана настроек проверки орфографии.</string>
+    <string name="spell_checker_guide_body">Tatar Keyboard может подчёркивать татарские слова с ошибками в других приложениях. Чтобы включить проверку, откройте системные настройки: «Настройки» → «Система» → «Языки и ввод» → «Проверка орфографии», затем выберите Tatar Keyboard. На некоторых прошивках этот экран находится в другом месте или скрыт.</string>
     <string name="privacy_policy_url">https://github.com/lil-dExNight/tatar-keyboard/blob/main/PRIVACY.ru.md</string>
 </resources>

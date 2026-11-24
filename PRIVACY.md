@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Version:** 1.15 — 2026-11-18
+**Version:** 1.16 — 2026-11-24
 
 Tatar Keyboard keeps what you type **on your device**.
 
@@ -136,6 +136,10 @@ A single switch (keyboard settings → Preferences → “Pause learning”, off
 - **What pauses.** No new word, pair, learned emoji, refused correction or sentence start is written, and the half-learned hashes of the stores that use them are left untouched: nothing is hashed, nothing expires, and the counters keep their values. The recently used emoji list is not added to either.
 - **What does not pause.** What you already saved keeps working: saved words, learned pairs, learned emoji and sentence starts still appear in suggestions, a remembered refused correction keeps suppressing its correction, text shortcuts keep working, and the “Recent” tab still shows your recent emoji. This is a pause, not a wipe; the personal dictionary switch is the one that hides them.
 - Turning it off resumes learning where it stopped. Nothing typed while it was on is learned afterwards; for the stores, those observations never happened.
+
+## Spell checker
+
+Tatar Keyboard includes a Tatar spell checker for other apps; Android uses it only when you select it in the system settings (Settings → System → Languages & input → Spell checker). While it is selected, Android sends it the text of the field you are editing, and the check runs on your device: the spell checker keeps no copy of the text, stores nothing it checks, learns nothing from it and writes no log.
 
 ## Contact
 

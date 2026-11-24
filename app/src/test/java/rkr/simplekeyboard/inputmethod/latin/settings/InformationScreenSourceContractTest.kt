@@ -17,14 +17,15 @@
 package rkr.simplekeyboard.inputmethod.latin.settings
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The Information screen combines backup actions with the two public documents (privacy policy
- * and license). It has one root row. The corpus attribution ships as `NOTICE.txt` next to the
- * bundled dictionaries — no data-sources screen and no data-sources strings exist any more.
+ * The Information screen combines backup actions, feedback and the two public documents (privacy
+ * policy and license). It has one root row. The corpus attribution ships as `NOTICE.txt` next to
+ * the bundled dictionaries — no data-sources screen and no data-sources strings exist any more.
  * The screen is an `Activity`, so it is pinned by source.
  */
 class InformationScreenSourceContractTest {
@@ -43,6 +44,10 @@ class InformationScreenSourceContractTest {
 
     private val screenBody by lazy {
         bodyOf(host, "private fun buildInformationScreen()", "\n    private fun ")
+    }
+
+    private val feedbackBody by lazy {
+        bodyOf(host, "private fun sendFeedback()", "\n    private fun ")
     }
 
     @Test
@@ -68,6 +73,38 @@ class InformationScreenSourceContractTest {
                 "settings_screen_legal", "privacy_policy", "privacy_policy_url",
                 "license", "license_url")) {
             assertTrue("Information is missing $name", screenBody.contains("R.string.$name"))
+        }
+    }
+
+    @Test
+    fun feedback_opens_only_a_blank_email_with_a_subject() {
+        assertTrue(screenBody.contains("R.string.send_feedback"))
+        assertTrue(screenBody.contains("sendFeedback()"))
+        val compact = feedbackBody.replace(Regex("\\s+"), "")
+        assertTrue(compact.contains(
+            "Intent(Intent.ACTION_SENDTO,Uri.parse(\"mailto:${'$'}FEEDBACK_EMAIL\"))"))
+        assertEquals("the subject is the only intent extra", 1,
+            Regex("\\.putExtra\\(").findAll(feedbackBody).count())
+        assertTrue(compact.contains(".putExtra(Intent.EXTRA_SUBJECT,"))
+        assertTrue(host.contains(
+            "private const val FEEDBACK_EMAIL = \"develam.postal629@passmail.com\""))
+        assertTrue("a resolved platform fallback means no mail app exists",
+            feedbackBody.contains("resolveActivity(packageManager)"))
+        assertTrue(feedbackBody.contains("PLATFORM_FALLBACK_PACKAGE"))
+        assertTrue(feedbackBody.contains("catch (e: ActivityNotFoundException)"))
+        assertTrue(feedbackBody.contains("R.string.feedback_no_email_app"))
+    }
+
+    @Test
+    fun feedback_adds_no_network_permission_and_has_all_translations() {
+        assertFalse(File(sourceRoot(), "AndroidManifest.xml").readText()
+            .contains("android.permission.INTERNET"))
+        for (folder in listOf("values", "values-ru", "values-tt")) {
+            val text = File(sourceRoot(), "res/$folder/strings.xml").readText()
+            for (name in listOf("send_feedback", "feedback_email_subject",
+                    "feedback_no_email_app")) {
+                assertTrue("$folder is missing $name", text.contains("name=\"$name\""))
+            }
         }
     }
 

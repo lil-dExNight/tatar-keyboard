@@ -40,7 +40,10 @@ public class SettingsActivity extends Activity {
         super.onCreate(savedState);
         final Intent host = new Intent(this, SettingsHostActivity.class);
         // Reuse a host instance already in this task (repeated taps on the
-        // keyboard's settings key) instead of stacking a second one.
+        // keyboard's settings key) instead of stacking a second one. The screen
+        // is named so a host left on another screen (the spell-checker entry)
+        // returns to the root instead of staying where it was.
+        host.putExtra(SettingsHostActivity.EXTRA_SCREEN, SettingsHostActivity.Screen.ROOT.name());
         host.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(host);
         finish();

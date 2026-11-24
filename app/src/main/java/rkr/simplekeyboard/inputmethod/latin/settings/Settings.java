@@ -121,6 +121,12 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
      */
     public static final String PREF_STRIP_FOURTH_CELL = "pref_strip_fourth_cell";
     /**
+     * Tatar word checking in the system spell checker: default ON. The key only decides whether
+     * the spell-checker session evaluates a word; the system still selects the checker itself,
+     * and the Russian and English routing subtypes never evaluate anything.
+     */
+    public static final String PREF_TATAR_SPELL_CHECKER = "pref_tatar_spell_checker";
+    /**
      * Pause learning (incognito): while ON, nothing new is learned (no write reaches the personal
      * word store, the learned-pairs store or their pending counters); what is already saved keeps
      * appearing. One toggle for both stores, like {@link #PREF_PERSONAL_DICTIONARY}. Turning it

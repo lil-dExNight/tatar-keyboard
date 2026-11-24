@@ -24,6 +24,7 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, sentence starts, refused corrections, text shortcuts), learning gates, pending counters, quarantine, counts-only inventory and category deletion (`PersonalInventory`), erase-all (`PersonalErasure`, `PersonalEraseAll`) |
 | `latin/glide/` | glide decoder, gesture detector, path and key geometry |
 | `latin/emoji/` | emoji panel, search, skin tones, recents, emoji suggestions |
+| `latin/spellcheck/` | the system spell checker: the service and its per-word session, and the read of the platform's selected-checker setting |
 | `latin/settings/`, `latin/setup/` | settings screens, onboarding |
 | `latin/settings/backup/` | the SAF backup: zip layer, manifest, settings XML, transfer orchestration |
 | `accessibility/`, `compat/` | TalkBack delegates and key descriptions; platform shims (a forked `ExploreByTouchHelper`) |
@@ -717,13 +718,36 @@ directory fsync. A failure before the rename preserves the previous file; a fail
 leaves the list `dirty` for a later hide retry. Only a durable write clears `dirty`. The panel
 opens from the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
 
+## Spell checker
+
+`TatarSpellCheckerService` is the app's system spell checker, guarded by `BIND_TEXT_SERVICE` and
+discovered through `res/xml/spell_checker.xml`. The metadata declares `tt_RU`, `ru_RU` and `en_US`,
+each with a legacy locale and a language tag: the system picks a session by system locale, drops a
+checker with no subtype, and matches nothing for a tag-only subtype, so the Russian and English
+subtypes exist only to route those locales into a session. The subtype never decides the language
+of the text.
+
+The session answers one `SuggestionsInfo` per word with its own offset and length
+(`SpellCheckerWords`), the shape the underlines need on API 31 and newer. Every word is reported
+as correct; the Tatar verdict and its corrections arrive with the engine integration. The service
+is stateless by contract: it loads no dictionary, reads no personal data, writes, learns and logs
+nothing and starts none of the keyboard's machinery, so a binder thread can answer at any time.
+
+The subsystem metadata names `SpellCheckerSettingsActivity`, which opens `Screen.SPELL_CHECKER` in
+the settings host: the Tatar switch, the system-selection state (`SpellCheckerSelection` reads the
+platform's secure settings because no public getter exists) and a link to the saved words. A guide
+card on the Preferences screen explains how to select the checker; both entry points open the AOSP
+spell-checker screen by component (the public `android.settings.SPELL_CHECKER_SETTINGS` action is
+missing on some releases) and fall back to the language-and-input screen.
+
 ## Settings
 
 `SettingsHostActivity` builds every screen from plain Views (no `android.preference`, no Compose)
 with a manual back stack; `SettingsActivity` only forwards to it and keeps the component name used
 by `method.xml`. Preferences include keyboard-behavior switches and the Key press section;
 Appearance holds keyboard height, one-handed mode, emoji-panel height and one dialog with portrait
-and landscape bottom-offset sliders. Information combines backup actions and legal links. Language
+and landscape bottom-offset sliders. Information combines backup actions, the feedback email and
+legal links. Language
 rows open their layouts on tap and offer removal of only that language on long press. The root back
 chevron is hidden once the IME is enabled and selected. Preferences are device-protected
 (`PreferenceManagerCompat`). The stored long-press timeout is clamped at read

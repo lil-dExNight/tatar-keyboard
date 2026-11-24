@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Discovery metadata the system reads for this spell checker. A checker with no <subtype> is
+     dropped from the list, and a subtype that declares only android:languageTag has no legacy
+     locale for the API 24 selection path and for explicit-locale requests, so every subtype
+     carries both forms. The Russian and English subtypes only route sessions; a session never
+     treats the subtype as the language of the text. -->
+<spell-checker xmlns:android="http://schemas.android.com/apk/res/android"
+    android:label="@string/spell_checker_service_name"
+    android:settingsActivity="rkr.simplekeyboard.inputmethod.latin.settings.SpellCheckerSettingsActivity">
+    <subtype
+        android:label="@string/spell_checker_subtype_tatar"
+        android:subtypeLocale="tt_RU"
+        android:languageTag="tt-RU" />
+    <subtype
+        android:label="@string/spell_checker_subtype_russian"
+        android:subtypeLocale="ru_RU"
+        android:languageTag="ru-RU" />
+    <subtype
+        android:label="@string/spell_checker_subtype_english"
+        android:subtypeLocale="en_US"
+        android:languageTag="en-US" />
+</spell-checker>

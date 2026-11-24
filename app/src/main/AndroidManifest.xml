@@ -19,6 +19,17 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- The feedback row asks which app can open a mailto: URI before starting the message, so a
+         device without a mail app gets the address message instead of the platform fallback.
+         Package visibility hides every handler from an app that targets Android 11 and later
+         unless the intent shape is declared here; the declaration grants no capability. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -48,6 +59,22 @@
                 android:resource="@xml/method" />
         </service>
 
+        <!-- The system binds this service to spell-check text; BIND_TEXT_SERVICE is the guard,
+             so exporting it is required and grants no capability to other apps. -->
+        <service
+            android:name=".latin.spellcheck.TatarSpellCheckerService"
+            android:label="@string/spell_checker_service_name"
+            android:exported="true"
+            android:permission="android.permission.BIND_TEXT_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.textservice.SpellCheckerService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.view.textservice.scs"
+                android:resource="@xml/spell_checker" />
+        </service>
+
         <activity
             android:name=".latin.setup.SetupActivity"
             android:label="@string/english_ime_name"
@@ -64,6 +91,14 @@
             android:label="@string/english_ime_name"
             android:exported="true"
             android:theme="@style/platformSettingsTheme" />
+
+        <!-- Opened by the system spell-checker list through the subsystem metadata, so it is
+             exported and reads no extras beyond the forwarded screen. -->
+        <activity
+            android:name=".latin.settings.SpellCheckerSettingsActivity"
+            android:label="@string/spell_checker_settings_title"
+            android:exported="true"
+            android:theme="@style/settingsHostTheme" />
 
         <activity
             android:name=".latin.settings.SettingsHostActivity"
