@@ -10,8 +10,9 @@
     <!-- LockScreenQuickReplyHelper posts its notification from the test package. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- The build injects the regular runner into the first instrumentation element; the second
-         runs the quick reply helper in the test package's own process (QuickReplySelfRunner). -->
+    <!-- The build injects the regular runner into the first instrumentation element; the later
+         self-targeted runners keep helpers out of the keyboard process (QuickReplySelfRunner,
+         SpellCheckPerfSelfRunner). -->
     <instrumentation
         android:name="android.test.InstrumentationTestRunner"
         android:targetPackage="org.tatarkeyboard.ime.debug" />
@@ -19,6 +20,10 @@
         android:name="rkr.simplekeyboard.inputmethod.latin.QuickReplySelfRunner"
         android:targetPackage="${applicationId}"
         android:label="quick reply self runner" />
+    <instrumentation
+        android:name="rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner"
+        android:targetPackage="${applicationId}"
+        android:label="spell check performance self runner" />
 
     <application>
         <uses-library

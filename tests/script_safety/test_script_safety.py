@@ -1391,5 +1391,89 @@ class BackupRuleSectionsTest(unittest.TestCase):
                 )
 
 
+class SpellCheckPerfProbeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.directory = Path(self.temporary_directory.name)
+        self.fixture = self.directory / "fixture-instrumentation.txt"
+
+    def run_probe(
+        self, *, strict: bool, metric: bool = True, first_answer: bool = True
+    ) -> subprocess.CompletedProcess[str]:
+        result_line = (
+            "INSTRUMENTATION_STATUS: tt_perf_result=RESULT|INFO|spellcheck-warm|"
+            "runs=31 budget_ms=100.000 over_budget=true build=debug\n"
+            if metric
+            else ""
+        )
+        marker = "INSTRUMENTATION_STATUS: tt_perf_first_answer=1\n" if first_answer else ""
+        self.fixture.write_text(
+            marker + result_line + "OK (1 test)\nINSTRUMENTATION_CODE: -1\n",
+            encoding="utf-8",
+        )
+        harness = textwrap.dedent(
+            """
+            set -uo pipefail
+            source "$INSTRUMENTATION_VERDICT"
+            STRICT=$1
+            PKG=fixture.package
+            SPELLCHECK_TEST=fixture.Test
+            RESULTS=$2/result.txt
+            : > "$RESULTS"
+            FAILURES=0
+            SHELL() { cat "$SPELLCHECK_FIXTURE"; }
+            keyboard_shown() { return 0; }
+            pss_point() { :; }
+            SHOT() { :; }
+            result() {
+                local line="RESULT|$1|$2|$3"
+                echo "$line"
+                echo "$line" >> "$RESULTS"
+                [ "$1" = "FAIL" ] && FAILURES=$((FAILURES + 1)) || true
+            }
+            """
+        )
+        harness += shell_function(DEVICE_PERF, "run_spellcheck_probe") + "\n"
+        harness += textwrap.dedent(
+            """
+            run_spellcheck_probe testWarmParagraph spellcheck-warm fixture.runner "$2/output.txt"
+            printf 'failures=%s\n' "$FAILURES"
+            """
+        )
+        environment = os.environ.copy()
+        environment["INSTRUMENTATION_VERDICT"] = str(INSTRUMENTATION_VERDICT)
+        environment["SPELLCHECK_FIXTURE"] = str(self.fixture)
+        return run_bash(harness, "1" if strict else "0", str(self.directory), env=environment)
+
+    def test_advisory_probe_keeps_an_over_budget_result_informational(self) -> None:
+        result = self.run_probe(strict=False)
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("RESULT|INFO|spellcheck-warm|", result.stdout)
+        self.assertIn("failures=0", result.stdout)
+
+    def test_strict_probe_fails_an_over_budget_result(self) -> None:
+        result = self.run_probe(strict=True)
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("RESULT|FAIL|spellcheck-warm|", result.stdout)
+        self.assertIn("failures=1", result.stdout)
+
+    def test_a_successful_runner_without_a_measurement_fails(self) -> None:
+        result = self.run_probe(strict=False, metric=False)
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("result_lines=0", result.stdout)
+        self.assertIn("RESULT|FAIL|spellcheck-warm|", result.stdout)
+        self.assertIn("failures=1", result.stdout)
+
+    def test_missing_first_answer_marker_fails_memory_measurement(self) -> None:
+        result = self.run_probe(strict=False, first_answer=False)
+        output = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, output)
+        self.assertIn("RESULT|FAIL|spellcheck-memory|first warm answer marker missing", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

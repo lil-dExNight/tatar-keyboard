@@ -76,6 +76,13 @@
 #      frame commit containing the decoded word. The script streams its two
 #      budgeted RESULT lines into result.txt. This leg needs the debug
 #      androidTest APK; without an installed runner it reports SKIP.
+#   spellcheck) opt-in TextServicesManager measurements in a self-targeted
+#      instrumentation process. With a fresh IME process and its keyboard shown,
+#      PSS is sampled before and after the first warm answer; their delta is held
+#      to the acceptor's resident-memory ceiling. The warm probe checks a
+#      200-word Tatar paragraph after warmups. Before each cold start the ritual
+#      deselects the IME, goes home and kills the process without a force-stop.
+#      Without the androidTest runner this leg reports SKIP.
 #   battery) opt-in, never interleaved with the USB-power perf legs: it
 #      simulates the unplugged state (`dumpsys battery unplug`, restored on
 #      exit). Sub-legs, all joined by --legs battery:
@@ -131,8 +138,8 @@
 #   --pkg <package>   package under test (default org.tatarkeyboard.ime.debug)
 #   --outdir <path>   evidence directory (default build/device-perf-ritual)
 #   --legs <list>     comma-separated subset of cold,pss,frames,warm,touch,suggest,
-#                     first-suggestion,first-glide and the opt-in battery,uimode,
-#                     fontscale (default: the eight non-opt-in legs)
+#                     first-suggestion,first-glide and the opt-in spellcheck,battery,
+#                     uimode,fontscale (default: the eight non-opt-in legs)
 #   --cold-runs <n>   recorded cold-start iterations (default 5)
 #   --cold-warmup <n> discarded cold-start iterations before them (default 1)
 #   --cold-trigger <tap|switch>  cold-start trigger (default: tap for a
@@ -221,6 +228,7 @@ FRAME_BUDGET_MS=16.7
 JANK_BUDGET_PCT=1.0
 PSS_BUDGET_DEBUG_KB=114000
 PSS_BUDGET_RELEASE_KB=69000
+SPELLCHECK_PSS_DELTA_BUDGET_KB=2048
 # Idle-window CPU ceiling of the battery legs: an observability assertion (it
 # catches a stuck worker or a wake loop), not a tuned budget. The debug build
 # gets its own ceiling: it runs the JIT and more GC. The deallocate pass has
@@ -509,13 +517,39 @@ print((m[0]+m[2])//2, (m[1]+m[3])//2)")"
     SHELL input tap "$x" "$y" >/dev/null 2>&1
 }
 
+# tap_setup_field: tap the try-it field above the navigation bar. A field at
+# the bottom of the viewport would otherwise put the tap on HOME.
+tap_setup_field() {
+    local dump bounds x y height="${WH#*x}"
+    height="${height:-1640}"
+    dump=$(dump_ui)
+    bounds=$(echo "$dump" | grep -oP 'setup_test_field[^>]*bounds="\K[^"]*' | head -1)
+    [ -n "$bounds" ] || return 1
+    read -r x y <<<"$(python3 -c "
+import re
+m = [int(v) for v in re.findall(r'\d+', '$bounds')]
+y = min((m[1] + m[3]) // 2, $height - 110)
+y = max(m[1] + 10, min(y, m[3] - 10))
+print((m[0] + m[2]) // 2, y)")"
+    SHELL input tap "$x" "$y" >/dev/null 2>&1
+}
 # raise_keyboard_over_setup: fresh SetupActivity (keyboard down -> try-it field
 # visible), tap the field, wait for the IME window.
 raise_keyboard_over_setup() {
     SHELL am start --activity-clear-task -n "$PKG/$SETUP_ACTIVITY" >/dev/null 2>&1
     sleep 3
-    tap_node setup_test_field || return 1
-    wait_keyboard 10
+    if tap_setup_field && wait_keyboard 10; then
+        return 0
+    fi
+    # A completed setup has a guide card above the try-it field; on shorter
+    # screens the field starts below the viewport and must be scrolled into it.
+    local width="${WH%x*}" height="${WH#*x}"
+    width="${width:-720}"
+    height="${height:-1640}"
+    SHELL input swipe "$((width / 2))" "$((height * 2 / 3))" \
+        "$((width / 2))" "$((height / 4))" 400 >/dev/null 2>&1
+    sleep 1
+    tap_setup_field && wait_keyboard 10
 }
 
 # Text of the try-it field. uiautomator leaves out views covered by the IME
@@ -681,7 +715,8 @@ globe_to() { # globe_to tt|ru|en -> 0 when the wanted layout is active
 
 meminfo_total() { # meminfo_total <label> -> echoes "total_kb swap_kb"; dumps the raw file
     SHELL dumpsys meminfo "$PKG" > "$OUTDIR/meminfo-$1.txt" 2>/dev/null
-    awk '/TOTAL PSS:/ {print $3, $NF; exit}' "$OUTDIR/meminfo-$1.txt"
+    awk '/TOTAL PSS:/ {print $3, $NF; exit} /^[[:space:]]*TOTAL:/ {print $2, $NF; exit}' \
+        "$OUTDIR/meminfo-$1.txt"
 }
 # meminfo_categories <dump> <out>: the per-category PSS lines of the App Summary
 # (evidence file; the plain per-category table has no colons, so these match
@@ -1409,6 +1444,139 @@ if leg_on first-glide; then
         if [ "$instrument_rc" != 0 ] || [ "$cold_results" != 1 ] || [ "$warm_results" != 1 ] \
                 || ! instrumentation_log_succeeded "$OUTDIR/first-glide-instrumentation.txt"; then
             result FAIL first-glide "runner=$runner rc=$instrument_rc cold_results=$cold_results warm_results=$warm_results; see first-glide-instrumentation.txt"
+        fi
+        select_ours
+        hide_keyboard || true
+    fi
+fi
+
+# ── leg: spell-checker latency and PSS delta (opt-in device test) ───────────
+
+# Deselect the IME before killing so its service is not restarted immediately.
+# Debug builds can signal their own process; other builds use the am-kill path.
+kill_spellcheck_app() {
+    if [ "$RUN_AS_OK" = 1 ]; then
+        [ "$(current_ime)" = "$IME_ID" ] && SHELL ime set "$NEUTRAL_IME" >/dev/null 2>&1
+        SHELL input keyevent KEYCODE_HOME >/dev/null 2>&1
+        sleep 1
+        local pid
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        [ -z "$pid" ] && return 0
+        SHELL "run-as $PKG kill -9 $pid" >/dev/null 2>&1
+        sleep 1
+        pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
+        [ -z "$pid" ] && return 0
+    fi
+    kill_app deselect
+}
+
+# run_spellcheck_probe <method> <check> <runner> <output>: stream exactly one
+# budgeted result from the self-targeted client and reject a failed or partial run.
+# The warm arm pauses at its first answer so PSS is sampled before later requests.
+run_spellcheck_probe() {
+    local method="$1" check="$2" runner="$3" output="$4"
+    local instrument_rc status metric metric_results=0
+    local instrument_pid first_answer=0 deadline
+    if [ "$check" = spellcheck-warm ]; then
+        SHELL "rm -f /data/local/tmp/tt-spellcheck-after-pss" >/dev/null 2>&1
+        SHELL am instrument -w -r -e class "$SPELLCHECK_TEST#$method" -e ttPackage "$PKG" "$runner" \
+            > "$output" 2>&1 &
+        instrument_pid=$!
+        deadline=$((SECONDS + 90))
+        while [ $SECONDS -lt $deadline ]; do
+            if grep -q '^INSTRUMENTATION_STATUS: tt_perf_first_answer=1$' "$output"; then
+                first_answer=1
+                break
+            fi
+            kill -0 "$instrument_pid" 2>/dev/null || break
+            sleep 0.2
+        done
+        if [ "$first_answer" = 1 ]; then
+            if keyboard_shown; then
+                pss_point spellcheck-after
+                SHOT spellcheck-after.png
+            else
+                result FAIL spellcheck-memory "keyboard not shown after the first answer; PSS delta invalid"
+            fi
+        else
+            result FAIL spellcheck-memory "first warm answer marker missing; see $output"
+        fi
+        SHELL "echo done > /data/local/tmp/tt-spellcheck-after-pss" >/dev/null 2>&1
+        wait "$instrument_pid"
+        instrument_rc=$?
+    else
+        SHELL am instrument -w -r -e class "$SPELLCHECK_TEST#$method" -e ttPackage "$PKG" "$runner" \
+            > "$output" 2>&1
+        instrument_rc=$?
+    fi
+    while IFS= read -r status; do
+        status="${status%$'\r'}"
+        case "$status" in
+            "INSTRUMENTATION_STATUS: tt_perf_result=RESULT|INFO|$check|"*"budget_ms="*"over_budget="*)
+                metric=${status#*tt_perf_result=}
+                metric_results=$((metric_results + 1))
+                if [ "$STRICT" = 1 ]; then
+                    case "$metric" in
+                        *"over_budget=true"*)
+                            metric=${metric/RESULT|INFO|/RESULT|FAIL|}
+                            FAILURES=$((FAILURES + 1))
+                            ;;
+                    esac
+                fi
+                echo "$metric"
+                echo "$metric" >> "$RESULTS"
+                ;;
+        esac
+    done < "$output"
+    if [ "$instrument_rc" != 0 ] || [ "$metric_results" != 1 ] \
+            || ! instrumentation_log_succeeded "$output"; then
+        result FAIL "$check" "runner=$runner rc=$instrument_rc result_lines=$metric_results; see $output"
+    fi
+}
+
+if leg_on spellcheck; then
+    SPELLCHECK_TEST="rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfDeviceTest"
+    spellcheck_runner_class="rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner"
+    spellcheck_runner=$(SHELL pm list instrumentation 2>/dev/null | tr -d '\r' \
+        | grep -F "instrumentation:$PKG.test/$spellcheck_runner_class " | head -1 \
+        | grep -oP '^instrumentation:\K\S+' || true)
+    if [ -z "$spellcheck_runner" ]; then
+        result SKIP spellcheck "no installed self-targeted spellcheck runner for $PKG; install its androidTest APK"
+    else
+        select_ours
+        hide_keyboard || true
+        if ! kill_spellcheck_app; then
+            result FAIL spellcheck-memory "could not kill $PKG before the IME-only baseline"
+        elif ! select_ours || ! raise_keyboard_over_setup; then
+            result FAIL spellcheck-warm "keyboard did not raise over SetupActivity"
+        else
+            sleep 2
+            pss_point spellcheck-before
+            SHOT spellcheck-before.png
+            spellcheck_before=$(awk '/TOTAL PSS:/ {print $3; exit} /^[[:space:]]*TOTAL:/ {print $2; exit}' \
+                "$OUTDIR/meminfo-spellcheck-before.txt")
+            log "spellcheck: warm paragraph and first answer"
+            run_spellcheck_probe testWarmParagraph spellcheck-warm "$spellcheck_runner" \
+                "$OUTDIR/spellcheck-warm-instrumentation.txt"
+            spellcheck_after=$(awk '/TOTAL PSS:/ {print $3; exit} /^[[:space:]]*TOTAL:/ {print $2; exit}' \
+                "$OUTDIR/meminfo-spellcheck-after.txt" 2>/dev/null)
+            if [[ "$spellcheck_before" =~ ^[0-9]+$ && "$spellcheck_after" =~ ^[0-9]+$ ]]; then
+                spellcheck_delta=$((spellcheck_after - spellcheck_before))
+                result INFO spellcheck-memory "before_kb=$spellcheck_before after_kb=$spellcheck_after delta_kb=$spellcheck_delta budget_kb=$SPELLCHECK_PSS_DELTA_BUDGET_KB over_budget=$(gt "$spellcheck_delta" "$SPELLCHECK_PSS_DELTA_BUDGET_KB") build=$BUILD keyboard_shown=true protocol=pss-delta-first-answer"
+            else
+                result FAIL spellcheck-memory "PSS endpoints unreadable (before='${spellcheck_before:-}' after='${spellcheck_after:-}')"
+            fi
+        fi
+        hide_keyboard || true
+        # Closing the warm session and unbinding the service can finish after the
+        # process kill; wait for that cleanup before asserting a cold process.
+        sleep 3
+        if kill_spellcheck_app; then
+            log "spellcheck: cold session and first answer"
+            run_spellcheck_probe testColdFirstAnswer spellcheck-cold "$spellcheck_runner" \
+                "$OUTDIR/spellcheck-cold-instrumentation.txt"
+        else
+            result FAIL spellcheck-cold "could not kill $PKG before the cold session"
         fi
         select_ours
         hide_keyboard || true
