@@ -401,6 +401,14 @@ override rules, reuses fixed scratch and allocates nothing per lookup. The spell
 for word verdicts and correction filtering; keyboard suggestion, autocorrect, glide and learning
 paths do not call it.
 
+The acceptor also covers negative imperatives, nominal chains on verbal nouns, participles,
+nominalized stems and categorical futures, locative-attributive, similative and terminative cases, and
+the `-дыр`/`-дер` clitic. One verb-derivation layer covers passive, reciprocal, causative,
+frequentative and denominal `-лан`/`-лән` or `-лаш`/`-ләш` stems; a causative `-т` may follow the
+causative `-дыр`/`-дер` suffix. `generate_acceptor_forms` mirrors these chains in Python. Dictionary
+admission continues to use `generate_all`, which emits only the base nominal, finite-verbal and
+derivational paradigms, so the acceptor's larger search space does not expand the asset build.
+
 On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it in
 full (`TdictValidator.validateRaw`, `TatBigrValidator.validateRaw`) and publish it to
 device-protected storage: temp file, fsync, validate, atomic rename, directory fsync. A process

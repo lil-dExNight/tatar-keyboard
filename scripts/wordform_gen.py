@@ -498,6 +498,29 @@ DERIV_PATTERNS = (
 # spelled out per harmony.
 NEG_GERUND = {BACK: "мыйча", FRONT: "мичә"}
 
+# One layer of productive verb derivation. Vowel/consonant branches follow the
+# same alternation as the inflectional patterns; causative -т follows vowels.
+VERB_DERIV_PATTERNS = (
+    ("verb.deriv.passive", "(Iл~л)"),
+    ("verb.deriv.reciprocal", "(Iш~ш)"),
+    ("verb.deriv.causative", "(DIр~т)"),
+    ("verb.deriv.causative_double", "(DIрт~т)"),
+    ("verb.deriv.frequentative", "GAлA"),
+)
+NOUN_VERB_DERIV_PATTERNS = (
+    ("verb.deriv.denominal_n", "лAн"),
+    ("verb.deriv.denominal_nsh", "лAш"),
+)
+
+NOMINALIZED_VERB_BASES = (
+    ("verb.masdar", "verb.masdar"),
+    ("verb.masdar.neg", "verb.masdar.neg"),
+    ("verb.part.gan", "verb.part.gan"),
+    ("verb.part.gan.neg", "verb.rpast.neg.3sg"),
+    ("verb.part.uci", "verb.part.uci"),
+    ("verb.deffut.3sg", "verb.deffut.3sg"),
+)
+
 _VERB_PERSON_TENSES = (
     ("verb.pres", PERSON_TYPE_I),
     ("verb.pres.neg", PERSON_TYPE_I),
@@ -513,7 +536,11 @@ _VERB_PERSON_TENSES = (
 )
 
 VERB_LABELS = (
-    ["verb.imp.2sg", "verb.imp.2pl", "verb.imp.1pl", "verb.imp.3sg", "verb.imp.3pl"]
+    [
+        "verb.imp.2sg", "verb.imp.2pl", "verb.imp.1pl", "verb.imp.3sg", "verb.imp.3pl",
+        "verb.imp.neg.2sg", "verb.imp.neg.2pl", "verb.imp.neg.1pl",
+        "verb.imp.neg.3sg", "verb.imp.neg.3pl",
+    ]
     + [
         f"{tense}.{person}{question}"
         for tense, endings in _VERB_PERSON_TENSES
@@ -529,6 +556,7 @@ VERB_LABELS = (
         "verb.part.uci",
         "verb.part.asi",
         "verb.masdar",
+        "verb.masdar.neg",
         "verb.inf",
         "verb.intent",
     ]
@@ -795,6 +823,29 @@ def generate_noun_forms(
     return _apply_overrides(stem, forms, exceptions)
 
 
+def generate_extended_noun_forms(
+    stem: str, harmony: str, exceptions: Exceptions = EMPTY_EXCEPTIONS
+) -> list[tuple[str, str]]:
+    """Generate the nominal paradigm plus locative-attributive and adverbial cases."""
+    forms = generate_noun_forms(stem, harmony, exceptions)
+    if stem in exceptions.pronouns:
+        return list(forms)
+    extended = list(forms)
+    for label, form in forms:
+        if label == "noun.loc" or label.endswith(".loc"):
+            extended.append((f"{label}.attr", attach(form, "гI")))
+    devoiced_final = stem in exceptions.loanwords and stem[-1] in LOAN_DEVOICING_FINALS
+    for label, pattern in (
+        ("noun.sim", "DAй"),
+        ("noun.term", "GAчA"),
+    ):
+        form = exceptions.overrides.get((stem, label)) or attach(
+            stem, pattern, harmony, devoiced_final
+        )
+        extended.append((label, form))
+    return extended
+
+
 def generate_verb_forms(
     stem: str, harmony: str, exceptions: Exceptions = EMPTY_EXCEPTIONS
 ) -> list[tuple[str, str]]:
@@ -802,6 +853,7 @@ def generate_verb_forms(
     voice_final = stem not in exceptions.loanwords
     devoiced_final = stem in exceptions.loanwords and stem[-1] in LOAN_DEVOICING_FINALS
     forms: list[tuple[str, str]] = [("verb.imp.2sg", stem)]
+    negated = attach(stem, "мA", harmony)
     forms.append(("verb.imp.2pl", attach(stem, "(IгIз~гIз)", harmony)))
     # 1pl -ыйк/-ик (языйк, китик); vowel stems contract the final vowel as in
     # the present (эшлик, укыйк), a bare vowel stem keeps a й glide (юйык).
@@ -815,10 +867,18 @@ def generate_verb_forms(
         forms.append(("verb.imp.1pl", attach(stem, "Yк", harmony)))
     forms.append(("verb.imp.3sg", attach(stem, "сIн", harmony)))
     forms.append(("verb.imp.3pl", attach(stem, "сIннAр", harmony)))
+    forms.append(("verb.imp.neg.2sg", negated))
+    forms.append(("verb.imp.neg.2pl", attach(negated, "(IгIз~гIз)")))
+    if negated[-1] in VOWELS:
+        negative_imp_1pl = negated[:-1] + render_pattern("Yк", negated, harmony)
+    else:
+        negative_imp_1pl = attach(negated, "Yк", harmony)
+    forms.append(("verb.imp.neg.1pl", negative_imp_1pl))
+    forms.append(("verb.imp.neg.3sg", attach(negated, "сIн")))
+    forms.append(("verb.imp.neg.3pl", attach(negated, "сIннAр")))
 
     # Person-bearing bases; an override of the 3sg form re-derives the persons
     # (override бар verb.fut.3sg=барыр → барырмын/барырсың/барырбыз…).
-    negated = attach(stem, "мA", harmony)
     bases = {
         "verb.pres": exceptions.overrides.get((stem, "verb.pres.3sg"))
         or present_base(stem, harmony, voice_final),
@@ -863,11 +923,54 @@ def generate_verb_forms(
             ("verb.part.asi", attach(_vowel_suffix_base(stem, voice_final), "AсI", harmony))
         )
     forms.append(("verb.masdar", masdar_form(stem, harmony, voice_final)))
+    forms.append(("verb.masdar.neg", attach(negated, "U")))
     # The infinitive is exactly the resolved indefinite-future base plus -GA.
     # Lexical future overrides therefore determine it before this attachment.
     forms.append(("verb.inf", attach(bases["verb.fut"], "GA")))
     forms.append(("verb.intent", attach(stem, "мAкчI", harmony)))
     return _apply_overrides(stem, forms, exceptions)
+
+
+def generate_nominalized_verb_forms(
+    stem: str, harmony: str, exceptions: Exceptions = EMPTY_EXCEPTIONS
+) -> list[tuple[str, str]]:
+    """Generate nominal chains from verbal nouns, participles and nominalized stems."""
+    resolved = dict(generate_verb_forms(stem, harmony, exceptions))
+    forms: list[tuple[str, str]] = []
+    for nominal_label, base_label in NOMINALIZED_VERB_BASES:
+        base = resolved[base_label]
+        bases_for_nominal_chains = [base]
+        if nominal_label.startswith("verb.masdar") and base[-1] in "уү":
+            bases_for_nominal_chains.append(base[:-1] + "в")
+        for nominal_base in bases_for_nominal_chains:
+            for noun_label, form in generate_extended_noun_forms(nominal_base, harmony):
+                forms.append((f"{nominal_label}.{noun_label}", form))
+    return forms
+
+
+def generate_derived_verb_forms(
+    stem: str,
+    harmony: str,
+    exceptions: Exceptions = EMPTY_EXCEPTIONS,
+    *,
+    noun_chain: bool,
+    verb_chain: bool,
+) -> list[tuple[str, str]]:
+    """Generate one verb-derivation layer from an enabled noun or verb stem."""
+    devoiced_final = stem in exceptions.loanwords and stem[-1] in LOAN_DEVOICING_FINALS
+    patterns = []
+    if verb_chain:
+        patterns.extend(VERB_DERIV_PATTERNS)
+    if noun_chain:
+        patterns.extend(NOUN_VERB_DERIV_PATTERNS)
+    forms: list[tuple[str, str]] = []
+    for label, pattern in patterns:
+        derived = attach(stem, pattern, harmony, devoiced_final)
+        children = generate_verb_forms(derived, harmony)
+        children += generate_nominalized_verb_forms(derived, harmony)
+        for child_label, form in children:
+            forms.append((f"{label}.{child_label}", form))
+    return forms
 
 
 def generate_deriv_forms(
@@ -885,6 +988,15 @@ def generate_deriv_forms(
         )
         forms.append((label, attach(base, pattern, harmony, devoiced_final)))
     return forms
+
+
+def generate_assumptive_forms(
+    forms: Sequence[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """Add the -дыр/-дер assumptive clitic once to each generated form."""
+    return list(forms) + [
+        (f"{label}.assumptive", attach(form, "DIр")) for label, form in forms
+    ]
 
 
 def generate_all(
@@ -911,6 +1023,43 @@ def generate_all(
                 f"override {label!r} of stem {stem!r} matches no generated form"
             )
     return forms
+
+
+def generate_acceptor_forms(
+    stem: str,
+    exceptions: Exceptions = EMPTY_EXCEPTIONS,
+    *,
+    noun_chain: bool,
+    verb_chain: bool,
+) -> list[tuple[str, str]]:
+    """Generate only the chains licensed by the acceptor's continuation flags."""
+    variants = harmony_variants(stem, exceptions.harmonies.get(stem))
+    if not variants:
+        raise WordformError(f"no Tatar harmony vowel in stem: {stem!r}")
+    forms: list[tuple[str, str]] = []
+    for harmony in variants:
+        if noun_chain:
+            forms.extend(generate_extended_noun_forms(stem, harmony, exceptions))
+            forms.extend(generate_deriv_forms(stem, harmony, exceptions))
+        if verb_chain:
+            forms.extend(generate_verb_forms(stem, harmony, exceptions))
+            forms.extend(generate_nominalized_verb_forms(stem, harmony, exceptions))
+        forms.extend(
+            generate_derived_verb_forms(
+                stem,
+                harmony,
+                exceptions,
+                noun_chain=noun_chain,
+                verb_chain=verb_chain,
+            )
+        )
+    emitted = {label for label, _ in forms}
+    for override_stem, label in exceptions.overrides:
+        if override_stem == stem and label not in emitted:
+            raise WordformError(
+                f"override {label!r} of stem {stem!r} matches no generated form"
+            )
+    return generate_assumptive_forms(forms)
 
 
 # --- Candidate and group builders -------------------------------------------

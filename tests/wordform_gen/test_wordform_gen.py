@@ -471,6 +471,11 @@ class GoldenVerbParadigmTest(unittest.TestCase):
                 ("verb.imp.1pl", "языйк"),
                 ("verb.imp.3sg", "язсын"),
                 ("verb.imp.3pl", "язсыннар"),
+                ("verb.imp.neg.2sg", "язма"),
+                ("verb.imp.neg.2pl", "язмагыз"),
+                ("verb.imp.neg.1pl", "язмыйк"),
+                ("verb.imp.neg.3sg", "язмасын"),
+                ("verb.imp.neg.3pl", "язмасыннар"),
                 ("verb.pres.1sg", "язам"),
                 ("verb.pres.1sg.q", "язаммы"),
                 ("verb.pres.2sg", "язасың"),
@@ -611,6 +616,7 @@ class GoldenVerbParadigmTest(unittest.TestCase):
                 ("verb.part.uci", "язучы"),
                 ("verb.part.asi", "язасы"),
                 ("verb.masdar", "язу"),
+                ("verb.masdar.neg", "язмау"),
                 ("verb.inf", "язарга"),
                 ("verb.intent", "язмакчы"),
             ],
@@ -1201,6 +1207,85 @@ class QuestionCliticTest(unittest.TestCase):
         self.assertEqual(gen.label_family("deriv.ca"), "deriv")
 
 
+class ExtendedNounTest(unittest.TestCase):
+    def test_similative_override_is_applied(self):
+        exc = gen.Exceptions(
+            {}, {}, {}, {("татар", "noun.sim"): "татарча"}
+        )
+        forms = dict(gen.generate_extended_noun_forms("татар", "back", exc))
+        self.assertEqual(forms["noun.sim"], "татарча")
+
+
+class NominalizedVerbTest(unittest.TestCase):
+    def test_masdar_participle_agent_and_future_take_nominal_chains(self):
+        rows = set(gen.generate_nominalized_verb_forms("ела", "back", EXC))
+        self.assertIn(("verb.masdar.noun.p2", "елавың"), rows)
+        self.assertIn(("verb.masdar.noun.p2", "елауың"), rows)
+        rows = set(gen.generate_nominalized_verb_forms("алын", "back", EXC))
+        self.assertIn(("verb.masdar.neg.noun.p2", "алынмавың"), rows)
+        rows = set(gen.generate_nominalized_verb_forms("ышан", "back", EXC))
+        self.assertIn(("verb.part.gan.noun.p2.acc", "ышанганыңны"), rows)
+        rows = set(gen.generate_nominalized_verb_forms("эзлә", "front", EXC))
+        self.assertIn(("verb.part.uci.noun.p3", "эзләүчесе"), rows)
+        rows = set(gen.generate_nominalized_verb_forms("кил", "front", EXC))
+        self.assertIn(("verb.deffut.3sg.noun.abl", "киләчәктән"), rows)
+
+
+class DerivedVerbTest(unittest.TestCase):
+    def test_one_derivation_layer(self):
+        rows = dict(gen.generate_derived_verb_forms(
+            "ат", "back", EXC, noun_chain=False, verb_chain=True
+        ))
+        self.assertEqual(
+            rows["verb.deriv.passive.verb.deffut.1pl"], "атылачакбыз"
+        )
+        rows = dict(gen.generate_derived_verb_forms(
+            "тип", "front", EXC, noun_chain=False, verb_chain=True
+        ))
+        self.assertEqual(rows["verb.deriv.causative.verb.imp.neg.2sg"], "типтермә")
+        rows = dict(gen.generate_derived_verb_forms(
+            "моң", "back", EXC, noun_chain=True, verb_chain=False
+        ))
+        self.assertEqual(rows["verb.deriv.denominal_n.verb.pres.neg.3sg"], "моңланмый")
+
+    def test_causative_chain_does_not_recurse(self):
+        rows = dict(gen.generate_derived_verb_forms(
+            "кис", "front", EXC, noun_chain=False, verb_chain=True
+        ))
+        self.assertEqual(
+            rows["verb.deriv.causative_double.verb.pres.neg.3sg"], "кистертми"
+        )
+        self.assertNotIn("кистерттерми", set(rows.values()))
+
+    def test_denominal_nsh_verb(self):
+        rows = dict(gen.generate_derived_verb_forms(
+            "зомби", "back", EXC, noun_chain=True, verb_chain=False
+        ))
+        self.assertEqual(rows["verb.deriv.denominal_nsh.verb.rpast.3sg"], "зомбилашкан")
+
+
+class AssumptiveCliticTest(unittest.TestCase):
+    def test_clitic_follows_whole_nominal_and_verbal_forms(self):
+        self.assertIn(
+            ("noun.pl.assumptive", "мөселманнардыр"),
+            set(gen.generate_acceptor_forms(
+                "мөселман", EXC, noun_chain=True, verb_chain=True
+            )),
+        )
+        self.assertIn(
+            ("noun.pred.3sg.assumptive", "әсәрдер"),
+            set(gen.generate_acceptor_forms(
+                "әсәр", EXC, noun_chain=True, verb_chain=True
+            )),
+        )
+        self.assertIn(
+            ("verb.part.gan.assumptive", "язгандыр"),
+            set(gen.generate_acceptor_forms(
+                "яз", EXC, noun_chain=True, verb_chain=True
+            )),
+        )
+
+
 class GoldenDerivTest(unittest.TestCase):
     def test_derivational_set(self):
         dus = dict(gen.generate_deriv_forms("дус", "back"))
@@ -1355,7 +1440,7 @@ class CandidatesTest(unittest.TestCase):
                 "noun": 857,
                 "noun.pred": 60,
                 "noun.pred.q": 72,
-                "verb": 1037,
+                "verb": 1115,
                 "verb.q": 858,
             },
         )

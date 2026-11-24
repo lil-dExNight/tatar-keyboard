@@ -33,7 +33,11 @@ private const val NEGATED_SLOT = 14
 private const val TENSE_SLOT = 15
 private const val TENSE_COUNT = 11
 private const val AUX_SLOT = TENSE_SLOT + TENSE_COUNT
-private const val SLOT_COUNT = AUX_SLOT + 1
+private const val ORIGINAL_STEM_SLOT = AUX_SLOT + 1
+private const val DERIVED_STEM_SLOT = ORIGINAL_STEM_SLOT + 1
+private const val NOMINAL_BASE_SLOT = DERIVED_STEM_SLOT + 1
+private const val ASSUMPTIVE_SLOT = NOMINAL_BASE_SLOT + 1
+private const val SLOT_COUNT = ASSUMPTIVE_SLOT + 1
 
 private class PossessiveSpec(
     val caseLabels: Array<String>,
@@ -61,6 +65,7 @@ internal class TatarWordformMatcher {
     private var harmony = HARMONY_FRONT
     private var devoicedFinal = false
     private var voiceFinal = true
+    private var assumptiveCandidate = false
     private var exception: LexicalException? = null
 
     val retainedByteEstimate: Long =
@@ -78,6 +83,10 @@ internal class TatarWordformMatcher {
     ): Boolean {
         query = queryChars
         queryLength = queryCharsLength
+        assumptiveCandidate = queryLength >= 3 &&
+            (query[queryLength - 3] == 'д' || query[queryLength - 3] == 'т') &&
+            (query[queryLength - 2] == 'ы' || query[queryLength - 2] == 'е') &&
+            query[queryLength - 1] == 'р'
         stemLength = length
         exception = lexicalException
         voiceFinal = lexicalException?.loan != true
@@ -88,9 +97,16 @@ internal class TatarWordformMatcher {
             flags and FLAG_BACK != 0 -> HARMONY_BACK
             else -> HARMONY_FRONT
         }
-        copyIntoSlot(STEM_SLOT, stem, length)
+        copyIntoSlot(ORIGINAL_STEM_SLOT, stem, length)
+        selectStem(ORIGINAL_STEM_SLOT)
         if (nounChain && matchNoun()) return true
-        if (verbChain && matchVerb()) return true
+        if (verbChain && matchVerbStem(ORIGINAL_STEM_SLOT)) return true
+        if ((nounChain || verbChain) &&
+            matchDerivedVerbForms(ORIGINAL_STEM_SLOT, nounChain, verbChain)
+        ) {
+            return true
+        }
+        selectStem(ORIGINAL_STEM_SLOT)
         return nounChain && matchDerivations()
     }
 
@@ -159,6 +175,10 @@ internal class TatarWordformMatcher {
             attach(FORM_SLOT, PLURAL_SLOT, CASE_PATTERNS[index], HARMONY_AUTO, false)
             if (matchWithOverride(PLURAL_CASE_LABELS[index])) return true
         }
+        attach(FORM_SLOT, STEM_SLOT, "DAй", harmony, devoicedFinal)
+        if (matchWithOverride("noun.sim")) return true
+        attach(FORM_SLOT, STEM_SLOT, "GAчA", harmony, devoicedFinal)
+        if (matchWithOverride("noun.term")) return true
         for (index in PREDICATIVE_SPECS.indices) {
             val spec = PREDICATIVE_SPECS[index]
             if (spec.pattern == null) copySlot(AUX_SLOT, STEM_SLOT)
@@ -206,6 +226,11 @@ internal class TatarWordformMatcher {
         attach(destination + 4, source, if (full) "IгIз" else "гIз", harmony, false)
     }
 
+    private fun selectStem(slot: Int) {
+        copySlot(STEM_SLOT, slot)
+        stemLength = lengths[slot]
+    }
+
     private fun matchVerb(): Boolean {
         if (!copyOverride(FORM_SLOT, WordformLabels.VERB_IMP_2SG)) copySlot(FORM_SLOT, STEM_SLOT)
         if (matchesQuery(FORM_SLOT)) return true
@@ -219,6 +244,17 @@ internal class TatarWordformMatcher {
         if (matchWithOverride(WordformLabels.VERB_IMP_3PL)) return true
 
         attach(NEGATED_SLOT, STEM_SLOT, "мA", harmony, false)
+        copySlot(FORM_SLOT, NEGATED_SLOT)
+        if (matchWithOverride(WordformLabels.VERB_IMP_NEG_2SG)) return true
+        attach(FORM_SLOT, NEGATED_SLOT, "(IгIз~гIз)", HARMONY_AUTO, false)
+        if (matchWithOverride(WordformLabels.VERB_IMP_NEG_2PL)) return true
+        buildFirstPluralImperative(NEGATED_SLOT, FORM_SLOT)
+        if (matchWithOverride(WordformLabels.VERB_IMP_NEG_1PL)) return true
+        attach(FORM_SLOT, NEGATED_SLOT, "сIн", HARMONY_AUTO, false)
+        if (matchWithOverride(WordformLabels.VERB_IMP_NEG_3SG)) return true
+        attach(FORM_SLOT, NEGATED_SLOT, "сIннAр", HARMONY_AUTO, false)
+        if (matchWithOverride(WordformLabels.VERB_IMP_NEG_3PL)) return true
+
         for (index in TENSE_SPECS.indices) buildTenseBase(index, TENSE_SLOT + index)
         for (index in TENSE_SPECS.indices) {
             val spec = TENSE_SPECS[index]
@@ -260,19 +296,105 @@ internal class TatarWordformMatcher {
         return matchWithOverride(WordformLabels.VERB_INTENT)
     }
 
-    private fun buildFirstPluralImperative() {
-        val last = charAt(STEM_SLOT, stemLength - 1)
+    private fun matchVerbStem(baseSlot: Int): Boolean {
+        selectStem(baseSlot)
+        return matchVerb() || matchNominalizedVerbs(baseSlot)
+    }
+
+    /** Verbal nouns, participles, nominalized stems and categorical futures accept nominal chains. */
+    private fun matchNominalizedVerbs(baseSlot: Int): Boolean {
+        selectStem(baseSlot)
+        if (!copyOverride(AUX_SLOT, WordformLabels.VERB_MASDAR)) buildMasdar(AUX_SLOT)
+        if (matchMasdarNominalBase()) return true
+
+        selectStem(baseSlot)
+        if (!copyOverride(AUX_SLOT, WordformLabels.VERB_MASDAR_NEG)) {
+            attach(AUX_SLOT, STEM_SLOT, "мA", harmony, false)
+            attach(AUX_SLOT, AUX_SLOT, "U", HARMONY_AUTO, false)
+        }
+        if (matchMasdarNominalBase()) return true
+
+        selectStem(baseSlot)
+        if (!copyOverride(AUX_SLOT, WordformLabels.VERB_PART_GAN)) {
+            attach(AUX_SLOT, STEM_SLOT, "GAн", harmony, devoicedFinal)
+        }
+        if (matchNominalBase(AUX_SLOT)) return true
+
+        selectStem(baseSlot)
+        buildTenseBase(RECENT_PAST_NEGATIVE, AUX_SLOT)
+        if (matchNominalBase(AUX_SLOT)) return true
+
+        selectStem(baseSlot)
+        if (!copyOverride(AUX_SLOT, WordformLabels.VERB_PART_UCI)) {
+            attach(AUX_SLOT, STEM_SLOT, "UчI", harmony, false)
+        }
+        if (matchNominalBase(AUX_SLOT)) return true
+
+        selectStem(baseSlot)
+        buildTenseBase(DEFINITE_FUTURE, AUX_SLOT)
+        return matchNominalBase(AUX_SLOT)
+    }
+
+    private fun matchMasdarNominalBase(): Boolean {
+        if (matchNominalBase(AUX_SLOT)) return true
+        val length = lengths[NOMINAL_BASE_SLOT]
+        if (length < 1 || charAt(NOMINAL_BASE_SLOT, length - 1) !in "уү") return false
+        setChar(NOMINAL_BASE_SLOT, length - 1, 'в')
+        return matchNominalBase(NOMINAL_BASE_SLOT)
+    }
+
+    private fun matchNominalBase(baseSlot: Int): Boolean {
+        copySlot(NOMINAL_BASE_SLOT, baseSlot)
+        selectStem(NOMINAL_BASE_SLOT)
+        val lexicalException = exception
+        exception = null
+        return try {
+            matchNoun()
+        } finally {
+            exception = lexicalException
+        }
+    }
+
+    /** One conservative derivation layer; derived stems do not inherit lexical overrides. */
+    private fun matchDerivedVerbForms(baseSlot: Int, nounChain: Boolean, verbChain: Boolean): Boolean {
+        val lexicalException = exception
+        exception = null
+        return try {
+            if (verbChain) {
+                for (pattern in VERB_DERIV_PATTERNS) {
+                    selectStem(baseSlot)
+                    attach(DERIVED_STEM_SLOT, STEM_SLOT, pattern, harmony, devoicedFinal)
+                    if (matchVerbStem(DERIVED_STEM_SLOT)) return true
+                }
+            }
+            if (nounChain) {
+                for (pattern in NOUN_VERB_DERIV_PATTERNS) {
+                    selectStem(baseSlot)
+                    attach(DERIVED_STEM_SLOT, STEM_SLOT, pattern, harmony, false)
+                    if (matchVerbStem(DERIVED_STEM_SLOT)) return true
+                }
+            }
+            false
+        } finally {
+            exception = lexicalException
+        }
+    }
+
+    private fun buildFirstPluralImperative(source: Int = STEM_SLOT, destination: Int = FORM_SLOT) {
+        val length = lengths[source]
+        val last = charAt(source, length - 1)
+        val requestedHarmony = if (source == NEGATED_SLOT) HARMONY_AUTO else harmony
         if (last in VOWELS) {
-            copySlot(FORM_SLOT, STEM_SLOT)
-            if (stemLength > 1) {
-                lengths[FORM_SLOT] = stemLength - 1
-                renderPattern(FORM_SLOT, "Yк", STEM_SLOT, harmony, false)
+            copySlot(destination, source)
+            if (length > 1) {
+                lengths[destination] = length - 1
+                renderPattern(destination, "Yк", source, requestedHarmony, false)
             } else {
-                append(FORM_SLOT, 'й')
-                renderPattern(FORM_SLOT, "Iк", STEM_SLOT, harmony, false)
+                append(destination, 'й')
+                renderPattern(destination, "Iк", source, requestedHarmony, false)
             }
         } else {
-            attach(FORM_SLOT, STEM_SLOT, "Yк", harmony, false)
+            attach(destination, source, "Yк", requestedHarmony, false)
         }
     }
 
@@ -516,10 +638,22 @@ internal class TatarWordformMatcher {
 
     private fun matchWithOverride(label: String): Boolean {
         applyOverride(FORM_SLOT, label)
-        return matchesQuery(FORM_SLOT)
+        if (matchesQuery(FORM_SLOT)) return true
+        if (label == WordformLabels.NOUN_LOC || label.endsWith(".loc")) {
+            attach(AUX_SLOT, FORM_SLOT, "гI", HARMONY_AUTO, false)
+            if (matchesQuery(AUX_SLOT)) return true
+        }
+        return false
     }
 
     private fun matchesQuery(slot: Int): Boolean {
+        if (matchesExactQuery(slot)) return true
+        if (!assumptiveCandidate || slot == ASSUMPTIVE_SLOT) return false
+        attach(ASSUMPTIVE_SLOT, slot, "DIр", HARMONY_AUTO, false)
+        return matchesExactQuery(ASSUMPTIVE_SLOT)
+    }
+
+    private fun matchesExactQuery(slot: Int): Boolean {
         val length = lengths[slot]
         if (length != queryLength) return false
         for (index in 0 until length) if (charAt(slot, index) != query[index]) return false
@@ -679,6 +813,10 @@ internal class TatarWordformMatcher {
                 personLabels("verb.cond.neg")),
         )
         val DERIV_PATTERNS = arrayOf("чA", "лIк", "лI", "сIз", "чI", "DAш", "рAк")
+        val VERB_DERIV_PATTERNS = arrayOf(
+            "(Iл~л)", "(Iш~ш)", "(DIр~т)", "(DIрт~т)", "GAлA",
+        )
+        val NOUN_VERB_DERIV_PATTERNS = arrayOf("лAн", "лAш")
 
         fun personLabels(tense: String): Array<String> = arrayOf(
             "$tense.1sg", "$tense.1sg.q", "$tense.2sg", "$tense.2sg.q",

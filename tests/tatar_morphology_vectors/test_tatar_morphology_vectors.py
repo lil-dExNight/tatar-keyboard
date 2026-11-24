@@ -135,6 +135,23 @@ class GoldenVectorTest(unittest.TestCase):
             reasons,
         )
 
+    def test_extension_families_are_covered(self) -> None:
+        expected = set()
+        sample = vectors.select_sample(self.entries, self.exceptions)
+        for entry in sample:
+            harmony = vectors.resolve_harmony(entry, self.exceptions)
+            base = set(vectors._base_forms(entry, harmony, self.exceptions))
+            expected.update(
+                vectors._extension_family(label)
+                for label, _form in vectors._generated_forms(entry, harmony, self.exceptions)
+                if (label, _form) not in base
+            )
+        actual = {
+            vectors._extension_family(label)
+            for decision, _form, _stem, label in self.rows if decision == "A"
+        }
+        self.assertLessEqual(expected, actual)
+
     def test_reference_finds_exception_forms_without_literal_stem_prefix(self) -> None:
         acceptor = vectors.ReferenceAcceptor(
             (

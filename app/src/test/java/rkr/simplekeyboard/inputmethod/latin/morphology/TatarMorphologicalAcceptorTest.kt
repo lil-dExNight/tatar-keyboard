@@ -287,6 +287,53 @@ class TatarMorphologicalAcceptorTest {
     }
 
     @Test
+    fun negativeImperativesAndNominalizedVerbChainsAreAccepted() {
+        val acceptor = acceptor("көл", "яз", "кызыксын", "ела", "алын", "ышан", "эзлә", "кил")
+        assertAccepted(
+            acceptor,
+            "көлмә", "көлмәгез", "көлмик", "көлмәсен", "көлмәсеннәр",
+            "язма", "язмагыз", "язмыйк", "язмасын", "язмасыннар",
+            "кызыксынмау", "елавың", "елавыңны", "алынмавың", "алынмавыңны",
+            "ышанганың", "ышанганыңны", "эзләүчесе", "эзләүчене", "киләчәктән", "киләчәге",
+        )
+        assertRejected(acceptor, "көлма", "кызыксынмәү", "елавең", "эзләүчесы")
+    }
+
+    @Test
+    fun oneVerbDerivationLayerFeedsTenseAndNominalChains() {
+        val acceptor = acceptor("ат", "иңдер", "күр", "сөйлә", "тип", "тешлә", "моң", "ычкын", "кис")
+        assertAccepted(
+            acceptor,
+            "атыл", "атылачакбыз", "иңдереләчәк", "күрешер", "сөйләш", "сөйләшә",
+            "типтермә", "тешләтмә", "моңланмый", "моңлана", "ычкындырма", "кистертми",
+        )
+        val denominal = MorphologyTestSupport.acceptor(listOf(
+            MorphologyTestSupport.entry("зомби", forceBack = true),
+        ))
+        assertAccepted(denominal, "зомбилашкан")
+        assertRejected(acceptor, "атыләчәкбыз", "моңланмыйды", "типтермәг")
+    }
+
+    @Test
+    fun locativeAttributiveSimilativeAndTerminativeCasesAreAccepted() {
+        val acceptor = MorphologyTestSupport.acceptor(listOf(
+            MorphologyTestSupport.entry("дача"),
+            MorphologyTestSupport.entry("концлагерь", forceBack = true),
+            MorphologyTestSupport.entry("май"),
+            MorphologyTestSupport.entry("картлык"),
+        ))
+        assertAccepted(acceptor, "дачадагы", "концлагерьларындагы", "майдай", "картлыккача")
+        assertRejected(acceptor, "дачадаге", "майдәй", "картлыкгачә")
+    }
+
+    @Test
+    fun assumptiveCliticFollowsTheWholeForm() {
+        val acceptor = acceptor("мөселман", "әсәр", "яз", "канал")
+        assertAccepted(acceptor, "мөселманнардыр", "әсәрдер", "язгандыр", "каналдандыр")
+        assertRejected(acceptor, "мөселманнардер", "әсәрдыр", "язгандар")
+    }
+
+    @Test
     fun malformedOutsideAndOversizedInputIsANonMatch() {
         val acceptor = acceptor("татар", "яз")
         val oversized = "я" + "з".repeat(MAX_QUERY_CODE_POINTS)

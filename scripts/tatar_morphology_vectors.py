@@ -104,11 +104,59 @@ def _generated_forms(
 ) -> list[tuple[str, str]]:
     forms: list[tuple[str, str]] = []
     if entry.flags & pack.FLAG_NOUN_CHAIN:
+        forms.extend(gen.generate_extended_noun_forms(entry.word, harmony, exceptions))
+        forms.extend(gen.generate_deriv_forms(entry.word, harmony, exceptions))
+        forms.extend(
+            gen.generate_derived_verb_forms(
+                entry.word, harmony, exceptions, noun_chain=True, verb_chain=False
+            )
+        )
+    if entry.flags & pack.FLAG_VERB_CHAIN:
+        forms.extend(gen.generate_verb_forms(entry.word, harmony, exceptions))
+        forms.extend(gen.generate_nominalized_verb_forms(entry.word, harmony, exceptions))
+        forms.extend(
+            gen.generate_derived_verb_forms(
+                entry.word, harmony, exceptions, noun_chain=False, verb_chain=True
+            )
+        )
+    return gen.generate_assumptive_forms(forms)
+
+
+def _base_forms(
+    entry: pack.StemEntry, harmony: str, exceptions: gen.Exceptions
+) -> list[tuple[str, str]]:
+    """Forms whose complete paradigms are already practical golden vectors."""
+    forms: list[tuple[str, str]] = []
+    if entry.flags & pack.FLAG_NOUN_CHAIN:
         forms.extend(gen.generate_noun_forms(entry.word, harmony, exceptions))
         forms.extend(gen.generate_deriv_forms(entry.word, harmony, exceptions))
     if entry.flags & pack.FLAG_VERB_CHAIN:
         forms.extend(gen.generate_verb_forms(entry.word, harmony, exceptions))
     return forms
+
+
+def _extension_family(label: str) -> str:
+    if label.endswith(".assumptive"):
+        return "assumptive"
+    if ".loc.attr" in label:
+        return "noun.loc.attr"
+    if label == "noun.sim" or label.endswith(".noun.sim"):
+        return "noun.sim"
+    if label == "noun.term" or label.endswith(".noun.term"):
+        return "noun.term"
+    for prefix in (
+        "verb.masdar.neg",
+        "verb.masdar",
+        "verb.part.gan.neg",
+        "verb.part.gan",
+        "verb.part.uci",
+        "verb.deffut.3sg",
+    ):
+        if label == prefix or label.startswith(prefix + "."):
+            return prefix
+    if label.startswith("verb.deriv."):
+        return ".".join(label.split(".")[:3])
+    return "other"
 
 
 def build_accepted_rows(
@@ -118,8 +166,16 @@ def build_accepted_rows(
     for entry in sample:
         rows.add((entry.word, entry.word, "bare"))
         harmony = resolve_harmony(entry, exceptions)
-        for label, form in _generated_forms(entry, harmony, exceptions):
+        base = set(_base_forms(entry, harmony, exceptions))
+        for label, form in base:
             rows.add((form, entry.word, label))
+        extensions = sorted(set(_generated_forms(entry, harmony, exceptions)) - base)
+        by_family: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        for label, form in extensions:
+            by_family[_extension_family(label)].append((label, form))
+        for family in sorted(by_family):
+            for label, form in by_family[family][:2]:
+                rows.add((form, entry.word, label))
     return tuple(sorted(rows, key=_sort_key))
 
 
