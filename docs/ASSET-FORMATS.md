@@ -454,5 +454,6 @@ in the `NOTICE.txt` in each asset directory.
 | stem lexicon | the same values, stem count, linked dictionary raw SHA-256 and Apertium lexc SHA-256 | `StemLexiconArtifactSpec.TATAR_STEMS_V1`, `storage/StemLexiconStorageContracts.kt` |
 | plain-text assets | SHA-256 and line or record counts | `tests/<packer>/test_*.py` and the JVM asset and emoji tests |
 
-`scripts/rebuild_assets.py` rewrites the storage-contract pins, and its `--check` mode compares
-them with the assets. `scripts/release_check.sh` checks them again against the APK.
+`scripts/rebuild_assets.py` rewrites and checks the content, count and linked-dictionary contract
+pins; `TatStemValidator` checks both stem source identities against the storage contract.
+`scripts/release_check.sh` checks the APK assets again.

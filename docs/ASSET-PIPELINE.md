@@ -32,7 +32,7 @@ candidate is selected.
 |---|---|---|
 | `dictionaries/*.tdict.zlib` | `scripts/rebuild_assets.py` (runs `dict_accept.py pack`) | release 1.8.4 baseline dictionaries, `data/dictionary/dict-accept/`, Tatar word forms |
 | `dictionaries/*_companion_v1.tcomp.zlib` | `scripts/rebuild_assets.py` (runs `companion_list_pack.py build`) | the committed dictionary of the same language |
-| `dictionaries/tatar_stems_v1.tstem.zlib` | `scripts/rebuild_assets.py` (runs `stem_lexicon_pack.py build`) | pinned Apertium-tat lexc, the rebuilt Tatar dictionary, word-form groups and review lemmas |
+| `dictionaries/tatar_stems_v1.tstem.zlib` | `scripts/rebuild_assets.py` (runs `stem_lexicon_pack.py build`) | pinned Apertium-tat lexc, the rebuilt Tatar dictionary, review-table lemmas and `scripts/wordform_exceptions_tat.tsv` for word-form grouping |
 | `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the conversational training files, the bundled dictionary |
 | `dictionaries/tatar_proper_names_v1.txt` | `scripts/rebuild_assets.py` (runs `proper_name_pack.py`) | `data/dictionary/tatar-proper-name-review.tsv`, `data/dictionary/tatar-compound-review.tsv` |
 | `emoji/emoji_set_v1.txt`, `emoji_skin_v1.txt` | `scripts/emoji_pack.py`, `scripts/emoji_skin_pack.py` | Unicode Emoji 15.1 `emoji-test.txt` |
@@ -323,8 +323,8 @@ corpus files of the selected languages with `data/corpus-manifest.json` (size fi
 SHA-256) and stops with exit code 1, before writing anything, if one differs. Then it runs:
 
 1. **Tatar word forms.** `wordform_gen.py` generates forms for every stem in the baseline plus
-   the accepted words. A form is admitted when it occurs in the frequency sources (the two
-   Leipzig `*-words.txt` files plus `conv-freq-tt.tsv`), and its count becomes its frequency.
+   the accepted words. A form is admitted when its total count in the selected
+   `WORDFORM_FREQUENCY_SOURCES` plus `conv-freq-tt.tsv` is positive; that count becomes its frequency.
    The result is written to `<work-dir>/wordforms-admitted-tt.tsv`, with a JSON report next to
    it. The rebuild then reads the complete `operator-widened` approvals from
    `tatar-wordform-review.tsv`, merges their evidence-backed frequencies, and writes their words
@@ -356,12 +356,14 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    and is not a budget.
    The Tatar composition then passes the Russian-letter spelling rule of
    `scripts/chat_spelling_fold.py` before the cutoff. A word that another composition word
-   produces by replacing some of ә ө ү җ ң һ with э о у ж н х is a chat spelling: it is folded
-   into its only standard form when that form is at least four times more frequent, dropped when
-   several standard forms could claim it, and kept when no standard form dominates it — that case
-   is a word of its own, such as `монда` against `моңда`. Each removal needs a reviewed row in
-   `data/dictionary/tatar-chat-spelling-review.tsv`; a word the rule would remove without a row
-   stops the packer, and a required or preserved word the rule removes fails closed. `dict_accept.py
+   produces by replacing some of ә ө ү җ ң һ with э о у ж н х is a chat spelling.
+   `chat_spelling_fold.flagged` supplies the proposal defaults: keep when the variant is at least
+   as frequent as its best standard form; otherwise fold for one standard form at least four
+   times as frequent, drop for several standard forms, and keep when a single standard form is
+   below that threshold. The active operation comes from the reviewed `fold`, `drop` or `keep`
+   row in `data/dictionary/tatar-chat-spelling-review.tsv`. An unreviewed fold or drop proposal
+   stops the packer. A required drop stops it too; a required fold is reported and its count moves
+   to the target. Preservation never reintroduces a reviewed fold or drop. `dict_accept.py
    pack --dump-composition FILE` writes the composition before the rule; `python3
    scripts/chat_spelling_fold.py propose --composition FILE` pre-fills the table from it for
    review and keeps the decisions already recorded. Rows whose variant is not flagged in the active
@@ -393,11 +395,13 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    path. Apertium's `-RUS` continuation forces back harmony. Entries are sorted, front-coded in
    blocks, linked to the dictionary's raw SHA-256 and the lexc SHA-256, and zlib-compressed. The
    build parses the complete image back before atomically replacing the asset.
-5. **Pins.** Each asset is measured, and its pins are rewritten in
-   `DictionaryStorageContracts.kt`, `BigramStorageContracts.kt`,
+5. **Pins.** Each asset is measured, and its rebuild-managed content, count and linked-dictionary
+   pins are rewritten in `DictionaryStorageContracts.kt`, `BigramStorageContracts.kt`,
    `CompanionListStorageContracts.kt` and `StemLexiconStorageContracts.kt`, between the
-   `// <generated pins>` marker pairs of each
-   spec block. There is one atomic write per file, and the values are read back afterwards.
+   `// <generated pins>` marker pairs of each spec block. The rebuild leaves
+   `expectedApertiumLexiconSha256` unchanged: the Apertium hash is pinned separately in
+   `stem_lexicon_pack.py` and that contract field. There is one atomic write per file, and the
+   values are read back afterwards.
 6. **Calibration pins.** The typo-recovery and glide calibration sets are deterministic
    functions of the Tatar dictionary, so their identities change with it. The rebuild
    regenerates the sets and rewrites the pinned identities in `tests/typo_pack/`,
@@ -441,9 +445,11 @@ This mode rebuilds and writes nothing, and needs no corpora. It checks that:
   (the top heads by frequency plus the extra heads);
 - the words of each cold-companion list equal the top words the packer would select from the
   current dictionary;
-- the stem lexicon matches its contract, names the current Tatar dictionary and pinned Apertium
-  source, and gives every bundled dictionary form in the image at least one Apertium chain flag.
-  The lexc file itself is not needed.
+- the stem lexicon matches its rebuild-managed contract pins, embeds the current Tatar dictionary
+  identity and the Apertium hash pinned in `stem_lexicon_pack.py`, and gives every bundled
+  dictionary form in the image at least one Apertium chain flag. `TatStemValidator` checks both
+  embedded source identities against the storage contract when the asset loads. The lexc file
+  itself is not needed.
 
 Each asset gets a verdict: `ok`, `mismatch`, `missing`, `drift`, `known-drift` or
 `stale-known-drift`. The corpus section gets `not-checked` (no `--corpus-dir`), `ok`, `missing`
@@ -587,7 +593,8 @@ python3 scripts/stem_lexicon_pack.py build \
     --report build/stem-lexicon/build-report.json
 ```
 
-The direct build reads the committed dictionary and review tables and writes the asset named in
+The direct build reads the committed Tatar dictionary, `data/dictionary/tatar-wordform-review.tsv`
+and `scripts/wordform_exceptions_tat.tsv`, and writes the asset named in
 `StemLexiconArtifactSpec`. Its JSON report records source, category and continuation counts and
 the compressed/raw identities.
 

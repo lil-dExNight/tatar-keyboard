@@ -1,7 +1,7 @@
 # Architecture
 
 Tatar Keyboard is an Android input method forked from Simple Keyboard, which is derived from AOSP
-LatinIME. The keyboard core is the inherited Java code; suggestions, dictionaries, personal stores,
+LatinIME. The keyboard core is the inherited Java code; suggestions, dictionaries, personal data,
 glide typing and the emoji panel are Kotlin. The application id is `org.tatarkeyboard.ime`, the
 code namespace `rkr.simplekeyboard.inputmethod`. There are no runtime dependencies beyond the SDK.
 
@@ -166,10 +166,10 @@ the shared learning gates) leads, then the static table (`SentStartIndex`,
 The strip is one Canvas view, `SuggestionStripView`, with up to four cells
 (`SuggestionStripState.CELL_COUNT`): three are visible by default, the fourth-cell setting widens
 the strip to all four (`SuggestionStripState.visibleCellCount`; the engines always compose four
-candidates and the controller truncates the band). Cells fill the keyboard's dock content
-rectangle. A right dock mirrors only ranked bands across the visible grid, putting the leading
-candidate nearest the right thumb; undo, recent-clip and emoji-only offers keep their documented
-order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry. Each
+candidates and the controller truncates the candidate list). Cells fill the keyboard's dock content
+rectangle. A right dock mirrors only the ranked suggestions across the visible grid, putting the
+leading candidate nearest the right thumb; undo, recent-clip and emoji-only offers keep their
+documented order. Drawing, hit testing and accessibility use `SuggestionStripState`'s shared geometry. Each
 published cell carries an explicit kind (`SuggestionCellKind`), so a non-letter word candidate is
 never mistaken for an emoji cell and triggers no emoji-tail handling, recent-emoji insertion,
 learned-emoji events or spoken emoji labels.
@@ -218,19 +218,19 @@ a word of at least four code points; the boost's suffix table `TatarSuffixRules`
 case, possessive and tense suffixes — the present-tense 1pl `-абыз`/`-әбез` included — plus the
 interrogative clitic `-мы`/`-ме` and the derivational set, mirrored by the Python chain), then the rest. With exact candidates the personal word
 takes the second cell (`[exact0, personal, exact1, exact2]`). It takes the cell after the
-keep-typed one when the exact pass is empty (see below), or the first cell when it is promoted:
+typed-word cell when the exact pass is empty (see below), or the first cell when it is promoted:
 its usage is at least `CompositePrefixComputer.PROMOTION_MIN_USAGE` and the dictionary's top
 exact candidate is below `PROMOTION_TOP_FREQUENCY_GATE`. A personal word that duplicates a
 dictionary candidate only changes how that cell is spelled.
 
 An empty exact pass means no bundled dictionary holds the typed word. The strip then leads with
-the typed word itself, the keep-typed cell: the shown form is the typed form verbatim, a tap
+the typed word itself, the typed-word cell: the shown form is the typed form verbatim, a tap
 commits exactly that form (the ordinary accepted-suggestion commit, auto-space included), and
 the personal word and the typo-recovery candidates fill the cells after it, without repeating
 the shown form. The cell is only painted — showing it learns nothing and saves nothing — and an
 empty answer with no candidates at all still leaves this one tappable cell. A strip whose exact
 pass found candidates keeps its cells, and so does every special strip: a shortcut expansion, the
-exact-correction preview and the autocorrect preview all own the whole band, and the preview
+exact-correction preview and the autocorrect preview all own the whole strip, and the preview
 already shows the typed word first, where a tap refuses the coming correction instead of
 committing.
 
@@ -267,8 +267,8 @@ layout (`KeyNeighborTable` derives the adjacency from the key rectangles, center
 normalized per axis by the keys' half-extents) ranks before a non-neighbor substitution at the
 same length tier.
 
-Chat-spelling recovery (`EDIT_CLASS_CHAT_SUBSTITUTION`) is Tatar-only and shares the tier's
-empty-exact, four-code-point domain. `TatarChatSpellingRules` replaces the Russian partner
+Chat-spelling recovery (edit class 5, `EDIT_CLASS_CHAT_SUBSTITUTION`) is Tatar-only and shares
+the tier's empty-exact, four-code-point domain. `TatarChatSpellingRules` replaces the Russian partner
 letters with the Tatar letters; a variant needs at least two such positions, every subset up to
 six positions is probed, and a longer word gets its all-substituted form only. Candidates are
 bundled dictionary words or forms the Tatar morphological acceptor admits; accepted-only forms
@@ -307,8 +307,8 @@ what the active language left. A companion engine is never prepared for this, so
 for a language already used since the keyboard started. For PREFIX the companion is asked after
 the active answer, when that answer's exact pass was empty or cells are free. Its candidates fill
 the free cells from the end of the active ones, or from the first free cell after an empty active
-answer — the first cell, unless the keep-typed cell holds it. After an empty active exact pass
-the lead rule is armed: a non-empty companion exact pass takes the cells after the keep-typed
+answer — the first cell, unless the typed-word cell holds it. After an empty active exact pass
+the lead rule is armed: a non-empty companion exact pass takes the cells after the typed-word
 cell and the active typo-recovery candidates fill the cells it leaves; an empty one only fills
 free cells. For NEXT_WORD the companion is asked when cells are free and its words go before the
 emoji cell. Companion PREFIX cells take the typed casing, duplicates are dropped by shown form,
@@ -771,7 +771,7 @@ preserve the user's casing; mixed case yields no replacements. Building the layo
 keyboard view.
 
 `onGetSentenceSuggestionsMultiple` classifies each submitted `TextInfo` independently. A sentence
-is Tatar when any word contains one of `ә ө ү җ ң һ`, case-folded. Otherwise it is Tatar when most
+is Tatar when any non-exempt word contains one of `ә ө ү җ ң һ`, case-folded. Otherwise it is Tatar when most
 known words are Tatar dictionary, acceptor, reviewed-proper-name or Tatar personal-dictionary
 words. Known words are those accepted by one of those Tatar sources or by the Russian bundled or
 personal dictionary; unknown words do not enter the denominator. In a Tatar sentence, a word
@@ -787,10 +787,15 @@ is accepted as unknown: a word-only request does not provide enough evidence to 
 
 The Tatar spell-checker switch is read from device-protected shared preferences on every request
 and defaults to on. When it is off, every word returns `RESULT_ATTR_IN_THE_DICTIONARY` with no
-suggestions and no dictionary is loaded. The service is `directBootAware`; an unavailable
-`UserManager.isUserUnlocked` answer means locked. Before the first unlock it uses the bundled
-dictionaries and acceptor only and never opens the personal dictionary. After that unlock,
-personal snapshots are read-only.
+suggestions and the request schedules no source load; an already scheduled or running load is not
+cancelled, and a loaded source stays resident. The service is `directBootAware`; an unavailable
+`UserManager.isUserUnlocked` answer means locked.
+Before the first unlock it uses device-protected or bundled dictionaries, reviewed proper names
+and the acceptor, and never opens the personal dictionary. After that unlock, personal snapshots
+are read-only and are used only while `Settings.readPersonalDictionaryEnabled`, read live from
+device-protected preferences on every request, is on. When it is off, neither Tatar nor Russian
+personal words can affect a verdict or correction, and cached snapshots are not consulted. Pause
+learning remains write-only and does not gate these reads.
 
 For each language, the loader first uses the existing catalog's read-only activation path. An
 active-generation published file that passes the catalog's validation is mapped read-only with
@@ -803,17 +808,20 @@ missing, unreadable or invalid published file affects only that language: the lo
 to inflating the pinned APK asset into a read-only heap buffer.
 Published files live in device-protected storage and are usable during Direct Boot; asset fallback
 also covers first run before publication and a published file rejected by the catalog. The service
-never calls publication, cleanup or quarantine APIs; the IME is the only catalog writer. A
-successful source load does this I/O once, not on later requests, and repeated mappings of one
-file share its clean file-backed pages.
+never calls publication, cleanup or quarantine APIs; the IME is the only catalog writer. Source
+publication reuses the dictionary mappings and proper-name table on later requests, and repeated
+mappings of one file share its clean file-backed pages. While the personal dictionary is enabled,
+personal snapshots are cached per language and reloaded when the file's path, length or
+modification time changes.
 
 Binder threads may call concurrently: a monitor serializes membership and lookup calls through
-each index's mutable scratch, while the acceptor and personal snapshots are immutable and
-thread-safe. The acceptor is the same process-wide instance used by the IME; an acceptor load
-failure leaves dictionary checking available. Service creation overlaps layout building,
-dictionary loading and acceptor warming on background workers. The source is published only after
-all three finish; requests made before publication are accepted from the ready state, and later
-requests use the loaded source.
+each index's mutable scratch; the acceptor's `@Synchronized` methods serialize access to its fixed
+scratch, and personal snapshots are immutable and thread-safe. The acceptor is the same
+process-wide instance used by the IME; an acceptor load failure leaves dictionary checking
+available. Service creation overlaps layout building, dictionary loading and acceptor warming on
+background workers. The source is published only after all three finish; requests before
+publication return accepted verdicts without corrections. Later lookups run on caller/Binder
+threads; personal snapshots are read and cached under their own lock.
 
 The service retains no submitted text or per-word verdict beyond the call and performs no
 logging, storage writes, learning or input caching. It starts no editor, keyboard-view or learning
@@ -826,7 +834,7 @@ the settings host: the Tatar switch, the system-selection state (`SpellCheckerSe
 platform's secure settings because no public getter exists) and a link to the saved words. A guide
 card on the Preferences screen explains how to select the checker; both entry points open the AOSP
 spell-checker screen by component (the public `android.settings.SPELL_CHECKER_SETTINGS` action is
-missing on some releases) and fall back to the language-and-input screen.
+missing on some releases) and fall back to `Settings.ACTION_INPUT_METHOD_SETTINGS`.
 
 ## Settings
 
@@ -835,7 +843,10 @@ with a manual back stack; `SettingsActivity` only forwards to it and keeps the c
 by `method.xml`. Preferences include keyboard-behavior switches and the Key press section;
 Appearance holds keyboard height, one-handed mode, emoji-panel height and one dialog with portrait
 and landscape bottom-offset sliders. Information combines backup actions, the feedback email and
-legal links. Language
+legal links. Send feedback starts a resolved `ACTION_SENDTO` mail handler with the fixed feedback
+address and an app-name/version subject; it supplies no body or attachments. If no suitable handler
+exists or the launch raises `ActivityNotFoundException`, the settings screen shows the address
+instead. Language
 rows open their layouts on tap and offer removal of only that language on long press. The root back
 chevron is hidden once the IME is enabled and selected. Preferences are device-protected
 (`PreferenceManagerCompat`). The stored long-press timeout is clamped at read
