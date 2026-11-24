@@ -16,6 +16,7 @@
 
 package rkr.simplekeyboard.inputmethod.latin.spellcheck
 
+import java.util.concurrent.Executor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 
@@ -45,21 +46,43 @@ internal interface SpellCheckerWordSource {
 internal class SpellCheckerEngine(
     private val enabled: () -> Boolean,
     private val loadSource: () -> SpellCheckerWordSource?,
+    private val loadExecutor: Executor = Executor { command -> command.run() },
 ) {
     @Volatile
     private var source: SpellCheckerWordSource? = null
     private val sourceLock = Any()
+    private var sourceLoading = false
+
+    /** Schedules one source load when enabled; a null or failed load can be retried later. */
+    fun prepare() {
+        if (source != null || !enabled()) return
+        synchronized(sourceLock) {
+            if (source != null || sourceLoading) return
+            sourceLoading = true
+        }
+        try {
+            loadExecutor.execute { loadAndPublishSource() }
+        } catch (_: Exception) {
+            synchronized(sourceLock) { sourceLoading = false }
+        }
+    }
+
+    private fun loadAndPublishSource() {
+        val loaded = try {
+            loadSource()
+        } catch (_: Exception) {
+            null
+        }
+        synchronized(sourceLock) {
+            if (loaded != null) source = loaded
+            sourceLoading = false
+        }
+    }
 
     private fun activeSource(): SpellCheckerWordSource? {
         source?.let { return it }
-        return synchronized(sourceLock) {
-            source?.let { return@synchronized it }
-            try {
-                loadSource()?.also { source = it }
-            } catch (_: Exception) {
-                null
-            }
-        }
+        prepare()
+        return source
     }
 
     /** The word-only rule: a word needs a Tatar-specific letter to be flagged without support. */

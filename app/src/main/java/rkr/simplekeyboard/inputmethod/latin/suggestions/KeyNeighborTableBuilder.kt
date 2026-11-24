@@ -65,7 +65,7 @@ object KeyNeighborTableBuilder {
 
     /**
      * Builds the table from the shipped Tatar alphabet layout without creating a keyboard view.
-     * The caller runs this on the main thread, where the layout builder's process cache is safe.
+     * KeyboardLayoutSet serializes its process cache, so this is safe off the main thread.
      */
     @JvmStatic
     fun fromTatarLayout(context: Context): KeyNeighborTable {

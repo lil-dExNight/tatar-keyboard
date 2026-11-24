@@ -21,6 +21,7 @@ import android.content.res.AssetManager
 import android.os.UserManager
 import java.io.File
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
@@ -72,7 +73,7 @@ internal class AndroidSpellCheckerDictionaryLeaseSource(
     }
 }
 
-/** The process-wide spell-checker engine and its lazily loaded language data. */
+/** The process-wide spell-checker engine; its layout and source loads run on one worker. */
 internal object SharedSpellCheckerEngine {
     @Volatile
     private var engine: SpellCheckerEngine? = null
@@ -86,19 +87,30 @@ internal object SharedSpellCheckerEngine {
         false,
         emptyList(),
     )
+    private val loadExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "spell-checker").apply { isDaemon = true }
+    }
 
-    /** Prepares the layout model on the service's main-thread creation callback. */
+    /** Queues layout construction and source preparation so binder callbacks never block. */
     fun prepare(context: Context) {
-        if (neighbors != null) return
-        val built = try {
-            KeyNeighborTableBuilder.fromTatarLayout(context.applicationContext)
-        } catch (_: Exception) {
-            null
-        }
-        if (built != null) {
-            synchronized(lock) {
-                if (neighbors == null) neighbors = built
+        val personalContext = context.applicationContext
+        try {
+            loadExecutor.execute {
+                if (neighbors == null) {
+                    val built = try {
+                        KeyNeighborTableBuilder.fromTatarLayout(personalContext)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (built != null) {
+                        synchronized(lock) {
+                            if (neighbors == null) neighbors = built
+                        }
+                    }
+                }
+                get(personalContext).prepare()
             }
+        } catch (_: Exception) {
         }
     }
 
@@ -111,6 +123,7 @@ internal object SharedSpellCheckerEngine {
             return SpellCheckerEngine(
                 enabled = { readEnabled(deviceContext) },
                 loadSource = { load(deviceContext, personalContext) },
+                loadExecutor = loadExecutor,
             ).also { engine = it }
         }
     }
@@ -124,18 +137,23 @@ internal object SharedSpellCheckerEngine {
         true
     }
 
-    private fun load(deviceContext: Context, personalContext: Context): SpellCheckerWordSource? = try {
-        val opener = SpellCheckerAssetOpener { path ->
-            deviceContext.assets.open(path, AssetManager.ACCESS_STREAMING)
+    private fun load(deviceContext: Context, personalContext: Context): SpellCheckerWordSource? =
+        try {
+            val opener = SpellCheckerAssetOpener { path ->
+                deviceContext.assets.open(path, AssetManager.ACCESS_STREAMING)
+            }
+            val loaded = SpellCheckerDictionaryLoader(
+                opener,
+                { SharedTatarMorphology.getIfLoaded() },
+                AndroidPersonalDictionarySource.create(personalContext),
+                neighbors ?: emptyNeighbors,
+                AndroidSpellCheckerDictionaryLeaseSource(deviceContext),
+            ).load()
+            // Warming stays behind the dictionaries: the acceptor asset is read on this worker,
+            // never inside a binder call.
+            if (loaded != null) SharedTatarMorphology.get(personalContext)
+            loaded
+        } catch (_: Exception) {
+            null
         }
-        SpellCheckerDictionaryLoader(
-            opener,
-            { SharedTatarMorphology.get(personalContext) },
-            AndroidPersonalDictionarySource.create(personalContext),
-            neighbors ?: emptyNeighbors,
-            AndroidSpellCheckerDictionaryLeaseSource(deviceContext),
-        ).load()
-    } catch (_: Exception) {
-        null
-    }
 }

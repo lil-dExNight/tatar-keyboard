@@ -121,9 +121,11 @@ public final class KeyboardLayoutSet {
     }
 
     private static void clearKeyboardCache() {
-        sKeyboardCache.clear();
-        sUniqueKeysCache.clear();
-        Arrays.fill(sForcibleKeyboardCache, null);
+        synchronized (sKeyboardCache) {
+            sKeyboardCache.clear();
+            sUniqueKeysCache.clear();
+            Arrays.fill(sForcibleKeyboardCache, null);
+        }
     }
 
     KeyboardLayoutSet(final Context context, final Params params) {
@@ -132,6 +134,12 @@ public final class KeyboardLayoutSet {
     }
 
     public Keyboard getKeyboard(final int baseKeyboardLayoutSetElementId) {
+        synchronized (sKeyboardCache) {
+            return getKeyboardLocked(baseKeyboardLayoutSetElementId);
+        }
+    }
+
+    private Keyboard getKeyboardLocked(final int baseKeyboardLayoutSetElementId) {
         final int keyboardLayoutSetElementId;
         switch (mParams.mMode) {
         case KeyboardId.MODE_PHONE:

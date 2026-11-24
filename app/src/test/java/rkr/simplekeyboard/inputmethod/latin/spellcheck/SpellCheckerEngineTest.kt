@@ -66,6 +66,31 @@ class SpellCheckerEngineTest {
     }
 
     @Test
+    fun prepareQueuesOneSourceLoadAndRequestsAnswerFromTheReadyState() {
+        val queue = ArrayDeque<Runnable>()
+        val source = FakeSource(tatarWords = setOf("сәлам"),
+            candidates = SpellCheckerTypoCandidates(listOf("сәлам"), 0))
+        var loads = 0
+        val engine = SpellCheckerEngine({ true }, { loads++; source }) { task ->
+            queue.addLast(task)
+        }
+        engine.prepare()
+
+        assertEquals(1, queue.size)
+        assertEquals(0, loads)
+
+        assertAccepted(engine.checkWord("сәламм", 4))
+        assertEquals(0, loads)
+        assertEquals(1, queue.size)
+
+        queue.removeFirst().run()
+        assertEquals(1, loads)
+        assertEquals(listOf("сәлам"), engine.checkWord("сәламм", 4).suggestions)
+        assertEquals(1, loads)
+        assertTrue(queue.isEmpty())
+    }
+
+    @Test
     fun failedSourceLoadIsRetriedOnTheNextRequest() {
         val source = FakeSource(tatarWords = setOf("сәлам"),
             candidates = SpellCheckerTypoCandidates(listOf("сәлам"), 0))

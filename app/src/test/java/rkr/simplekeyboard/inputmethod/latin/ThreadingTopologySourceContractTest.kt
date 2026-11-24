@@ -159,6 +159,14 @@ class ThreadingTopologySourceContractTest {
         )
     }
 
+    @Test
+    fun keyboardLayoutCacheSerializesBackgroundLayoutBuilding() {
+        val layoutSet = source("rkr/simplekeyboard/inputmethod/keyboard/KeyboardLayoutSet.java")
+        assertTrue(layoutSet.contains("synchronized (sKeyboardCache)"))
+        assertTrue(layoutSet.contains("return getKeyboardLocked(baseKeyboardLayoutSetElementId)"))
+        assertTrue(layoutSet.contains("private Keyboard getKeyboardLocked("))
+    }
+
     // --- Personal stores -------------------------------------------------------------------------
 
     @Test

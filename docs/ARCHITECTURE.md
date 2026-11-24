@@ -799,7 +799,9 @@ file share its clean file-backed pages.
 Binder threads may call concurrently: a monitor serializes membership and lookup calls through
 each index's mutable scratch, while the acceptor and personal snapshots are immutable and
 thread-safe. The acceptor is the same process-wide instance used by the IME; an acceptor load
-failure leaves dictionary checking available.
+failure leaves dictionary checking available. Service creation schedules layout building and
+the first source load on one background worker, and requests made before that load finishes are
+accepted from the ready state; later requests use the loaded source.
 
 The service retains no submitted text or per-word verdict beyond the call and performs no
 logging, storage writes, learning or input caching. It starts no editor, keyboard-view or learning
