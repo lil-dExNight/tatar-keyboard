@@ -42,6 +42,11 @@ class SpellCheckerManifestSourceContractTest {
             "java/rkr/simplekeyboard/inputmethod/latin/spellcheck/TatarSpellCheckerService.kt")
     }
 
+    private val answerFile by lazy {
+        File(sourceRoot(),
+            "java/rkr/simplekeyboard/inputmethod/latin/spellcheck/SpellCheckerAnswer.kt")
+    }
+
     private val scsFile by lazy { File(sourceRoot(), "res/xml/spell_checker.xml") }
 
     private fun startTag(tag: String, marker: String): String {
@@ -76,6 +81,7 @@ class SpellCheckerManifestSourceContractTest {
         assertTrue(service.contains(
             """android:permission="android.permission.BIND_TEXT_SERVICE""""))
         assertTrue(service.contains("""android:exported="true""""))
+        assertTrue(service.contains("""android:directBootAware="true""""))
         assertTrue(service.contains(
             """<action android:name="android.service.textservice.SpellCheckerService" />"""))
         assertTrue(service.contains("""android:name="android.view.textservice.scs""""))
@@ -104,11 +110,12 @@ class SpellCheckerManifestSourceContractTest {
     }
 
     @Test
-    fun the_session_accepts_every_word_and_feeds_no_typo_mark() {
-        val service = serviceFile.readText()
-        assertTrue(service.contains("SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY"))
-        assertFalse(service.contains("RESULT_ATTR_LOOKS_LIKE_TYPO"))
-        assertFalse(service.contains("RESULT_ATTR_HAS_RECOMMENDED_SUGGESTIONS"))
+    fun the_session_carries_dictionary_typo_and_recommendation_flags() {
+        val answer = answerFile.readText()
+        assertTrue(answer.contains("SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY"))
+        assertTrue(answer.contains("RESULT_ATTR_LOOKS_LIKE_TYPO"))
+        assertTrue(answer.contains("RESULT_ATTR_HAS_RECOMMENDED_SUGGESTIONS"))
+        assertTrue(serviceFile.readText().contains("SpellCheckerSession"))
     }
 
     @Test

@@ -40,4 +40,22 @@ class SpellCheckerWordsTest {
         assertEquals(emptyList<Pair<Int, Int>>(), spans("..."))
         assertEquals(listOf(0 to 3, 4 to 3), spans("сүз көн"))
     }
+
+    @Test
+    fun urlsEmailsAndEmojiTokensStayWhole() {
+        val tokens = listOf("https://мәктәп.татар,", "кирешмә@мәктәп.татар", "сәлам😀дөнья")
+        val text = tokens.joinToString(" ")
+
+        assertEquals(tokens, SpellCheckerWords.wordSpans(text).map {
+            text.substring(it.start, it.start + it.length)
+        })
+        assertEquals(emptyList<Pair<Int, Int>>(), spans("😀"))
+    }
+
+    @Test
+    fun compoundsAndCombiningMarksKeepOneSpan() {
+        assertEquals(listOf(0 to 10), spans("азык-төлек"))
+        val decomposed = "и\u0306ем"
+        assertEquals(listOf(0 to decomposed.length), spans(decomposed))
+    }
 }

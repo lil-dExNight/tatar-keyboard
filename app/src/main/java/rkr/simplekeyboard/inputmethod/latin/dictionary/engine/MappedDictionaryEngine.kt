@@ -22,7 +22,7 @@ fun interface DictionaryMapper {
     fun mapReadOnly(file: File, size: Long): ByteBuffer
 }
 
-/** Loads and validates one engine-owned morphology image. */
+/** Loads the shared validated morphology image. */
 fun interface MorphologicalAcceptorLoader {
     @Throws(Exception::class)
     fun load(): TatarMorphologicalAcceptor
@@ -264,9 +264,10 @@ class MappedDictionaryEngine private constructor(
     private class AttachRacedDestroy : Exception()
 
     /**
-     * Owns the dictionary lease and mapping, the optional bigram resources, and the morphology
-     * image. [release] frees them exactly once; [attachBigram], [adoptMorphologicalAcceptor] and
-     * [release] share [lock], so racing publication and teardown cannot leak or double-close.
+     * Owns the dictionary lease, mapping and optional bigram resources, and publishes the shared
+     * morphology reference. [release] frees owned resources exactly once; [attachBigram],
+     * [adoptMorphologicalAcceptor] and [release] share [lock], so racing publication and teardown
+     * cannot leak or double-close.
      */
     private class Resources(
         private var lease: DictionaryFileLease?,

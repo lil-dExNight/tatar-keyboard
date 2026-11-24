@@ -139,7 +139,7 @@ A single switch (keyboard settings → Preferences → “Pause learning”, off
 
 ## Spell checker
 
-Tatar Keyboard includes a Tatar spell checker for other apps; Android uses it only when you select it in the system settings (Settings → System → Languages & input → Spell checker). While it is selected, Android sends it the text of the field you are editing, and the check runs on your device: the spell checker keeps no copy of the text, stores nothing it checks, learns nothing from it and writes no log.
+Tatar Keyboard includes a Tatar spell checker for other apps; Android uses it only when you select it in the system settings (Settings → System → Languages & input → Spell checker). While it is selected, Android sends it the text of the field you are editing, and the check runs on your device. To check words and offer corrections, the spell checker reads the bundled Tatar dictionary and, after you unlock your device for the first time following a restart, your personal dictionary read-only. Before that first unlock, it does not read your personal dictionary. The spell checker keeps no copy of the checked text, stores nothing it checks, learns nothing from it and writes no log.
 
 ## Contact
 

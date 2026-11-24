@@ -383,22 +383,23 @@ Each language has a dictionary (`*.tdict.zlib`, TATDICT schema 2) and a bigram t
 SHA-256 in its header, so it opens only against its own dictionary. Formats:
 [ASSET-FORMATS.md](ASSET-FORMATS.md); build: [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
 
-The Tatar engine also owns one morphological acceptor, built from the pinned stem lexicon
-(`dictionaries/tatar_stems_v1.tstem.zlib`, TATSTEM schema 1). After the dictionary mapping opens,
-one tokenless initialization on that engine's worker inflates the APK asset and validates the
-image with `TatStemValidator.inflateAsset`; the loader then checks that the lexicon's linked
-dictionary SHA-256 is the active dictionary generation. The acceptor stays resident for the
-engine's lifetime and is exposed through the engine and suggestions controller. An absent,
-still-loading, corrupt or generation-mismatched lexicon publishes no acceptor: unavailable is
-not a negative verdict, and the dictionary engine is unaffected. The image is not published to a
-device file, so there is no quarantined copy to restore; every load starts from the pinned APK
-asset. `TatarMorphologicalAcceptor.accepts` accepts a bare listed stem, and otherwise only a
-suffix chain licensed by the stem's Apertium continuation flags. The lexicon also retains
-Apertium stems whose bare forms already ship in the dictionary, so those chains are available
-without duplicating dictionary admission. Non-Apertium inferred and review stems stay
-bare-only. The acceptor applies the word-form generator's vowel harmony, forced-back harmony,
-consonant assimilation, final voicing, possessive, suppletive and override rules, reuses fixed
-scratch and allocates nothing per lookup. No suggestion, autocorrect, glide or learning path calls it yet.
+`SharedTatarMorphology` owns one process-wide morphological acceptor, built from the pinned stem
+lexicon (`dictionaries/tatar_stems_v1.tstem.zlib`, TATSTEM schema 1) and shared by the Tatar IME
+engine and the spell checker. Its thread-safe lazy loader inflates the APK asset and validates
+the image with `TatStemValidator.inflateAsset`. The IME engine checks the lexicon's linked
+dictionary SHA-256 against its active dictionary generation before using it; the spell checker
+uses the same pinned image. An absent, still-loading or corrupt lexicon publishes no acceptor:
+unavailable is not a negative verdict, and dictionary lookup remains available in both
+consumers. The image is not published to a device file, so there is no quarantined copy to
+restore; every load starts from the pinned APK asset. `TatarMorphologicalAcceptor.accepts`
+accepts a bare listed stem, and otherwise only a suffix chain licensed by the stem's Apertium
+continuation flags. The lexicon also retains Apertium stems whose bare forms already ship in the
+dictionary, so those chains are available without duplicating dictionary admission. Non-Apertium
+inferred and review stems stay bare-only. The acceptor applies the word-form generator's vowel
+harmony, forced-back harmony, consonant assimilation, final voicing, possessive, suppletive and
+override rules, reuses fixed scratch and allocates nothing per lookup. The spell checker uses it
+for word verdicts and correction filtering; keyboard suggestion, autocorrect, glide and learning
+paths do not call it.
 
 On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it in
 full (`TdictValidator.validateRaw`, `TatBigrValidator.validateRaw`) and publish it to
@@ -722,18 +723,66 @@ opens from the emoji key (`Constants.CODE_EMOJI`) or a long press on comma.
 
 ## Spell checker
 
-`TatarSpellCheckerService` is the app's system spell checker, guarded by `BIND_TEXT_SERVICE` and
-discovered through `res/xml/spell_checker.xml`. The metadata declares `tt_RU`, `ru_RU` and `en_US`,
-each with a legacy locale and a language tag: the system picks a session by system locale, drops a
-checker with no subtype, and matches nothing for a tag-only subtype, so the Russian and English
-subtypes exist only to route those locales into a session. The subtype never decides the language
-of the text.
+`TatarSpellCheckerService` is the app's exported system spell checker, guarded by
+`BIND_TEXT_SERVICE` and discovered through `res/xml/spell_checker.xml`. The metadata declares
+`tt_RU`, `ru_RU` and `en_US`, each with a legacy locale and a language tag: the system picks a
+session by system locale, drops a checker with no subtype, and matches nothing for a tag-only
+subtype. The Russian and English subtypes exist only to route those locales into a session; the
+subtype never decides the language of the text.
 
-The session answers one `SuggestionsInfo` per word with its own offset and length
-(`SpellCheckerWords`), the shape the underlines need on API 31 and newer. Every word is reported
-as correct; the Tatar verdict and its corrections arrive with the engine integration. The service
-is stateless by contract: it loads no dictionary, reads no personal data, writes, learns and logs
-nothing and starts none of the keyboard's machinery, so a binder thread can answer at any time.
+For a Tatar verdict, the service normalizes a word with `TatarWordUtils.normalizeForLookup` and
+accepts it when the bundled Tatar dictionary, the shared morphological acceptor, a read-only
+personal-dictionary snapshot or the reviewed proper-name table accepts it. Words containing
+digits, URLs, e-mail addresses, emoji, mixed scripts or any Latin letter are never flagged. Valid
+words return `RESULT_ATTR_IN_THE_DICTIONARY`; a word valid in none of the accepted sources returns
+`RESULT_ATTR_LOOKS_LIKE_TYPO`, with `RESULT_ATTR_HAS_RECOMMENDED_SUGGESTIONS` only when corrections
+are present.
+
+Corrections use the existing `TdictPrefixIndex.lookup` with `FuzzyEditPolicy.TATAR` and
+`TatarSuffixRules`, not a separate typo generator. Edit class #1 supplies long-press-partner
+substitutions, and the DL-1 tier supplies its substitution, deletion, insertion and transposition
+candidates on the same domains as in the keyboard. A `KeyNeighborTable` built from the Tatar
+layout gives the same geometry-neighbor bonus and engine ranking as the keyboard; autocorrect
+advice is disabled. The service drops exact-prefix candidates and the typed word, keeps the
+remaining typo-recovery candidates in engine order, filters them through the Tatar verdict,
+de-duplicates them and applies the requested limit. Initial-capital and all-capital corrections
+preserve the user's casing; mixed case yields no replacements. Building the layout model starts no
+keyboard view.
+
+`onGetSentenceSuggestionsMultiple` classifies each submitted `TextInfo` independently. A sentence
+is Tatar when any word contains one of `ә ө ү җ ң һ`, case-folded. Otherwise it is Tatar when most
+known words are Tatar dictionary, acceptor, reviewed-proper-name or Tatar personal-dictionary
+words. Known words are those accepted by one of those Tatar sources or by the Russian bundled or
+personal dictionary; unknown words do not enter the denominator. In a Tatar sentence, a word
+valid in either language is accepted, including a word known only to the Russian personal
+dictionary. Only a word valid in neither language is flagged, and its corrections come from the
+Tatar engine. A sentence not classified as Tatar is not checked, so Russian sentences have no
+flags. English and other Latin text are never checked.
+
+The word-only `onGetSuggestions` path has no sentence evidence. It accepts valid Tatar, Russian
+and personal-dictionary words and the non-word forms above. An otherwise invalid word containing
+a Tatar-specific letter is a typo with Tatar corrections. An otherwise invalid word without one
+is accepted as unknown: a word-only request does not provide enough evidence to flag Russian.
+
+The Tatar spell-checker switch is read from device-protected shared preferences on every request
+and defaults to on. When it is off, every word returns `RESULT_ATTR_IN_THE_DICTIONARY` with no
+suggestions and no dictionary is loaded. The service is `directBootAware`; an unavailable
+`UserManager.isUserUnlocked` answer means locked. Before the first unlock it uses the bundled
+dictionaries and acceptor only and never opens the personal dictionary. After that unlock,
+personal snapshots are read-only.
+
+The Tatar and Russian prefix indexes load lazily from the bundled assets through the full
+validator into read-only buffers, without publishing storage-catalog files. Binder threads may
+call concurrently: a monitor serializes membership and lookup calls through each index's mutable
+scratch, while the acceptor and personal snapshots are immutable and thread-safe. The acceptor is
+the same process-wide instance used by the IME; an acceptor load failure leaves dictionary
+checking available.
+
+The service retains no submitted text or per-word verdict beyond the call and performs no
+logging, storage writes, learning or input caching. It starts no editor, keyboard-view or learning
+machinery. Every submitted word receives its own `SuggestionsInfo` with its offset and length
+(`SpellCheckerWords`), the shape underlines need on API 31 and newer, and request cookies and
+sequence numbers are preserved.
 
 The subsystem metadata names `SpellCheckerSettingsActivity`, which opens `Screen.SPELL_CHECKER` in
 the settings host: the Tatar switch, the system-selection state (`SpellCheckerSelection` reads the

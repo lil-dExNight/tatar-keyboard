@@ -16,8 +16,19 @@
 
 package rkr.simplekeyboard.inputmethod.latin.suggestions
 
+import android.content.Context
+import android.view.ContextThemeWrapper
+import rkr.simplekeyboard.inputmethod.R
+import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.keyboard.Keyboard
+import rkr.simplekeyboard.inputmethod.keyboard.KeyboardId
+import rkr.simplekeyboard.inputmethod.keyboard.KeyboardLayoutSet
+import rkr.simplekeyboard.inputmethod.keyboard.KeyboardTheme
+import rkr.simplekeyboard.inputmethod.latin.Subtype
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
+import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
+import rkr.simplekeyboard.inputmethod.latin.utils.ResourceUtils
+import rkr.simplekeyboard.inputmethod.latin.utils.SubtypeLocaleUtils
 
 /**
  * Adapts a live [Keyboard] into a [KeyNeighborTable]. This is the single place the layout data
@@ -50,5 +61,41 @@ object KeyNeighborTableBuilder {
             )
         }
         return KeyNeighborTable.build(subtypeId, true, raw)
+    }
+
+    /**
+     * Builds the table from the shipped Tatar alphabet layout without creating a keyboard view.
+     * The caller runs this on the main thread, where the layout builder's process cache is safe.
+     */
+    @JvmStatic
+    fun fromTatarLayout(context: Context): KeyNeighborTable {
+        val themedContext = ContextThemeWrapper(
+            PreferenceManagerCompat.getDeviceContext(context),
+            R.style.KeyboardTheme_Tatar,
+        )
+        val resources = themedContext.resources
+        val subtype = Subtype(
+            PersonalSubtypes.TATAR_RU,
+            SubtypeLocaleUtils.LAYOUT_TATAR,
+            0,
+            false,
+            resources,
+        )
+        val metrics = resources.displayMetrics
+        val layoutSet = KeyboardLayoutSet.Builder(themedContext, null)
+            .setKeyboardTheme(KeyboardTheme.THEME_ID_TATAR)
+            .setKeyboardGeometry(
+                metrics.widthPixels,
+                ResourceUtils.getDefaultKeyboardHeight(resources),
+                0,
+            )
+            .setSubtype(subtype)
+            .setLanguageSwitchKeyEnabled(false)
+            .setShowSpecialChars(true)
+            .setShowNumberRow(false)
+            .setShowEmojiKey(false)
+            .build()
+        return fromKeyboard(layoutSet.getKeyboard(KeyboardId.ELEMENT_ALPHABET),
+            PersonalSubtypes.TATAR_RU)
     }
 }

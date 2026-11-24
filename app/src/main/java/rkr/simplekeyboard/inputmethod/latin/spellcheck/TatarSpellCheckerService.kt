@@ -22,56 +22,53 @@ import android.view.textservice.SuggestionsInfo
 import android.view.textservice.TextInfo
 
 /**
- * The system spell-checker entry point. Every word is reported as correct: the Tatar verdict and
- * its corrections arrive with the engine integration. The Russian and English subtypes exist for
- * routing only, so their sessions never evaluate a word.
- *
- * Stateless by design: it loads no dictionary, reads no personal data, writes and logs nothing
- * and starts none of the keyboard's machinery, so any binder thread may call it.
+ * The system spell-checker entry point. Its verdicts are computed by [SpellCheckerEngine]; the
+ * Russian and English subtypes exist for routing only and never decide the text's language.
+ * Dictionary and personal data are read-only, no input is logged or stored, and no keyboard view
+ * or learning machinery is started.
  */
 class TatarSpellCheckerService : SpellCheckerService() {
 
-    override fun createSession(): Session = AcceptingSession()
+    override fun onCreate() {
+        super.onCreate()
+        SharedSpellCheckerEngine.prepare(applicationContext)
+    }
 
-    /** One instance per framework session, created and called on binder threads. */
-    private inner class AcceptingSession : Session() {
+    override fun createSession(): Session = CheckingSession()
+
+    /** One framework session; the process-wide engine is safe for concurrent binder calls. */
+    private inner class CheckingSession : Session() {
+        private val core = SpellCheckerSession(
+            SharedSpellCheckerEngine.get(this@TatarSpellCheckerService),
+        )
 
         override fun onCreate() {}
 
         override fun onGetSuggestions(textInfo: TextInfo, suggestionsLimit: Int): SuggestionsInfo =
-                accepted(textInfo.text ?: "", textInfo)
+            core.suggestions(textInfo.request(), suggestionsLimit).platformInfo()
 
         /**
          * One answer per word with its own offset and length: a single answer spanning the whole
          * sentence is not rendered as underlines on newer releases.
          */
-        override fun onGetSentenceSuggestionsMultiple(textInfos: Array<TextInfo>,
-                suggestionsLimit: Int): Array<SentenceSuggestionsInfo> {
-            return Array(textInfos.size) { index ->
-                val textInfo = textInfos[index]
-                val text = textInfo.text ?: ""
-                val spans = SpellCheckerWords.wordSpans(text)
-                SentenceSuggestionsInfo(
-                        Array(spans.size) { spanIndex ->
-                            val span = spans[spanIndex]
-                            accepted(text.substring(span.start, span.start + span.length),
-                                    textInfo)
-                        },
-                        IntArray(spans.size) { spans[it].start },
-                        IntArray(spans.size) { spans[it].length })
+        override fun onGetSentenceSuggestionsMultiple(
+            textInfos: Array<TextInfo>,
+            suggestionsLimit: Int,
+        ): Array<SentenceSuggestionsInfo> = Array(textInfos.size) { index ->
+            val response = core.sentence(textInfos[index].request(), suggestionsLimit)
+            SentenceSuggestionsInfo(
+                Array(response.words.size) { response.words[it].platformInfo() },
+                IntArray(response.words.size) { response.words[it].span.start },
+                IntArray(response.words.size) { response.words[it].span.length },
+            )
+        }
+
+        private fun TextInfo.request(): SpellCheckerRequest =
+            SpellCheckerRequest(text ?: "", cookie, sequence)
+
+        private fun SpellCheckerWordResponse.platformInfo(): SuggestionsInfo =
+            SuggestionsInfo(answer.attributes, answer.suggestions.toTypedArray()).also { info ->
+                info.setCookieAndSequence(cookie, sequence)
             }
-        }
-
-        private fun accepted(word: String, textInfo: TextInfo): SuggestionsInfo {
-            val info = SuggestionsInfo(SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY,
-                    NO_SUGGESTIONS)
-            info.setCookieAndSequence(textInfo.cookie, textInfo.sequence)
-            return info
-        }
-    }
-
-    private companion object {
-        /** Nothing is a typo yet, so no answer carries a replacement. */
-        val NO_SUGGESTIONS = arrayOf<String>()
     }
 }
