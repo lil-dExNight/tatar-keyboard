@@ -31,7 +31,7 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun loadFollowsDictionaryOpenOnTheWorkerAndPublishesOneStableInstance() {
+    fun loadRunsOnItsOwnThreadAndPublishesOneStableInstance() {
         val dictionary = dictionaryFixture("worker")
         val expected = acceptor(dictionary.rawSha256)
         val events = Collections.synchronizedList(mutableListOf<String>())
@@ -62,10 +62,15 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
                 },
             )
             assertTrue(initialized.await(5, TimeUnit.SECONDS))
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (engine.wordformAcceptor == null && System.nanoTime() < deadline) {
+                Thread.sleep(10)
+            }
 
             assertEquals(listOf("map", "load"), events)
             assertNotSame(mappingThread.get(), loadingThread.get())
-            assertSame(loadingThread.get(), probeThread.get())
+            assertNotSame(Thread.currentThread(), loadingThread.get())
+            assertNotSame(loadingThread.get(), probeThread.get())
             assertEquals(1, loadCount.get())
             assertSame(expected, engine.wordformAcceptor)
             assertSame(expected, engine.wordformAcceptor)
@@ -81,31 +86,86 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
     }
 
     @Test
+    fun firstLookupDoesNotWaitForAcceptorAndLateLoadPublishesIt() {
+        val dictionary = dictionaryFixture("independent-loader")
+        val expected = acceptor(dictionary.rawSha256)
+        val loaderStarted = CountDownLatch(1)
+        val finishLoader = CountDownLatch(1)
+        val resultReady = CountDownLatch(1)
+        val published = mutableListOf<LookupResult>()
+        val engine = start(
+            dictionary,
+            resultHandoff = ResultHandoff {
+                published += it
+                resultReady.countDown()
+            },
+            wordformAcceptorLoader = MorphologicalAcceptorLoader {
+                loaderStarted.countDown()
+                finishLoader.await(5, TimeUnit.SECONDS)
+                expected
+            },
+        )
+        try {
+            engine.request(1, "tt", utf8("аб"))
+            assertTrue(loaderStarted.await(5, TimeUnit.SECONDS))
+            val answeredBeforeLoadFinished = resultReady.await(500, TimeUnit.MILLISECONDS)
+            finishLoader.countDown()
+
+            assertTrue("the first lookup must not queue behind morphology", answeredBeforeLoadFinished)
+            assertEquals(listOf("аба"), published.single().suggestions)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (engine.wordformAcceptor == null && System.nanoTime() < deadline) {
+                Thread.sleep(10)
+            }
+            assertSame(expected, engine.wordformAcceptor)
+        } finally {
+            finishLoader.countDown()
+            assertTrue(engine.destroy(5, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
     fun corruptOrThrowingLoaderPublishesNullAndLeavesPrefixLookupUsable() {
         val corruptArtifact = StemLexiconTestFixtures.artifact(
             StemLexiconTestFixtures.defaultEntries(8),
         )
-        val loaders = listOf(
-            MorphologicalAcceptorLoader {
-                TatarMorphologicalAcceptor.open(
-                    ByteArrayInputStream(byteArrayOf(1, 2, 3)), corruptArtifact.spec,
-                )
+        val loaderFactories = listOf<(CountDownLatch) -> MorphologicalAcceptorLoader>(
+            { finished ->
+                MorphologicalAcceptorLoader {
+                    try {
+                        TatarMorphologicalAcceptor.open(
+                            ByteArrayInputStream(byteArrayOf(1, 2, 3)), corruptArtifact.spec,
+                        )
+                    } finally {
+                        finished.countDown()
+                    }
+                }
             },
-            MorphologicalAcceptorLoader { throw IOException("asset open failed") },
+            { finished ->
+                MorphologicalAcceptorLoader {
+                    try {
+                        throw IOException("asset open failed")
+                    } finally {
+                        finished.countDown()
+                    }
+                }
+            },
         )
-        for ((index, loader) in loaders.withIndex()) {
+        for ((index, loaderFactory) in loaderFactories.withIndex()) {
+            val loaderFinished = CountDownLatch(1)
             val executor = ManualEngineExecutor()
             val published = mutableListOf<LookupResult>()
             val engine = start(
                 dictionaryFixture("failure-$index"),
                 executorFactory = { executor },
                 resultHandoff = ResultHandoff { published += it },
-                wordformAcceptorLoader = loader,
+                wordformAcceptorLoader = loaderFactory(loaderFinished),
             )
-            assertEquals(1, executor.queueDepth)
+            assertEquals(0, executor.queueDepth)
             engine.request(1, "tt", utf8("аб"))
 
             executor.runAll()
+            assertTrue(loaderFinished.await(5, TimeUnit.SECONDS))
 
             assertNull(engine.wordformAcceptor)
             assertEquals(listOf("аба"), published.single().suggestions)
@@ -117,17 +177,23 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
     fun dictionaryShaMismatchRejectsTheAcceptorWithoutAffectingLookup() {
         val executor = ManualEngineExecutor()
         val published = mutableListOf<LookupResult>()
+        val loaderFinished = CountDownLatch(1)
         val engine = start(
             dictionaryFixture("mismatch"),
             executorFactory = { executor },
             resultHandoff = ResultHandoff { published += it },
             wordformAcceptorLoader = MorphologicalAcceptorLoader {
-                acceptor("0".repeat(64))
+                try {
+                    acceptor("0".repeat(64))
+                } finally {
+                    loaderFinished.countDown()
+                }
             },
         )
         engine.request(1, "tt", utf8("аб"))
 
         executor.runAll()
+        assertTrue(loaderFinished.await(5, TimeUnit.SECONDS))
 
         assertNull(engine.wordformAcceptor)
         assertEquals(listOf("аба"), published.single().suggestions)
@@ -135,45 +201,38 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
     }
 
     @Test
-    fun destroyWaitsForRunningLoaderAndItsLateResultCannotPublish() {
-        val executor = ManualEngineExecutor()
+    fun destroyDoesNotWaitForTheLoaderAndItsLateResultCannotPublish() {
         val loaderStarted = CountDownLatch(1)
         val finishLoader = CountDownLatch(1)
-        val released = AtomicBoolean()
+        val loadingThread = AtomicReference<Thread>()
         val loaderReleaseObserved = AtomicBoolean()
         val loadCount = AtomicInteger()
+        val released = AtomicBoolean()
         val dictionary = dictionaryFixture("destroy")
         val expected = acceptor(dictionary.rawSha256)
         val engine = start(
             dictionary,
-            executorFactory = { executor },
             leaseReleased = { released.set(true) },
             wordformAcceptorLoader = MorphologicalAcceptorLoader {
                 loadCount.incrementAndGet()
+                loadingThread.set(Thread.currentThread())
                 loaderStarted.countDown()
                 loaderReleaseObserved.set(finishLoader.await(5, TimeUnit.SECONDS))
                 expected
             },
         )
-        val worker = Thread { executor.runNext() }
-        worker.start()
         assertTrue(loaderStarted.await(5, TimeUnit.SECONDS))
 
-        try {
-            assertFalse(engine.destroy(0, TimeUnit.MILLISECONDS))
-            assertFalse(released.get())
-        } finally {
-            finishLoader.countDown()
-        }
-        worker.join(5_000)
-
-        assertFalse(worker.isAlive)
-        assertTrue(loaderReleaseObserved.get())
-        assertEquals(1, loadCount.get())
-        assertNull(engine.wordformAcceptor)
-        assertFalse(released.get())
+        // The blocked loader is on its own thread, so teardown neither waits for it nor fails.
         assertTrue(engine.destroy(1, TimeUnit.SECONDS))
         assertTrue(released.get())
+        assertFalse(loaderReleaseObserved.get())
+
+        finishLoader.countDown()
+        loadingThread.get().join(TimeUnit.SECONDS.toMillis(5))
+        assertFalse(loadingThread.get().isAlive)
+        assertEquals(1, loadCount.get())
+        // The late result reaches an already-released engine and must not publish.
         assertNull(engine.wordformAcceptor)
     }
 

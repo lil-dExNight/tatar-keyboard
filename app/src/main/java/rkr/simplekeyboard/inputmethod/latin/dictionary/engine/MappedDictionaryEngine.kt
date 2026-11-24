@@ -386,7 +386,8 @@ class MappedDictionaryEngine private constructor(
          *  - [glideConstants]: the glide decoder's per-language scoring constants;
          *  - [autocorrectMinCandidateFrequency]: the autocorrect candidate floor of this engine's
          *    language, from [AutocorrectPolicy];
-         *  - [wordformAcceptorLoader]: one worker-loaded morphology image; null means none.
+         *  - [wordformAcceptorLoader]: one morphology image loaded on its own background thread
+         *    at startup; null means none.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -499,17 +500,23 @@ class MappedDictionaryEngine private constructor(
                     identity, engine, computer, resources, mapper,
                 )
                 if (wordformAcceptorLoader != null) {
-                    engine.dispatchWorkerInitialization {
-                        try {
-                            val acceptor = wordformAcceptorLoader.load()
-                            if (acceptor.dictionaryRawSha256 == identity.rawSha256 &&
-                                engine.isActiveForWorkerInitialization()
-                            ) {
-                                resources.adoptMorphologicalAcceptor(acceptor)
+                    // The load runs on its own one-shot daemon thread, so it never queues behind
+                    // or ahead of a lookup: the first lookup completes while the load is still
+                    // running. adoptMorphologicalAcceptor publishes only while the engine owns
+                    // its resources, which also drops a result that finishes after destroy.
+                    try {
+                        Thread({
+                            try {
+                                val acceptor = wordformAcceptorLoader.load()
+                                if (acceptor.dictionaryRawSha256 == identity.rawSha256) {
+                                    resources.adoptMorphologicalAcceptor(acceptor)
+                                }
+                            } catch (_: Throwable) {
+                                // Dictionary lookup remains available without morphology.
                             }
-                        } catch (_: Throwable) {
-                            // Dictionary lookup remains available without morphology.
-                        }
+                        }, "morphology-load").apply { isDaemon = true }.start()
+                    } catch (_: Throwable) {
+                        // A load that cannot even start leaves the dictionary without morphology.
                     }
                 }
                 return mappedEngine

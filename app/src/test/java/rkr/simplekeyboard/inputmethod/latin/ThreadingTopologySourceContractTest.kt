@@ -297,8 +297,8 @@ class ThreadingTopologySourceContractTest {
         val ALLOWED_SITES = mapOf(
             // The production default of the controller's injected executorFactory.
             "$SUGGESTIONS/SuggestionsController.kt" to mapOf("Executors." to 1),
-            // ExecutorServiceEngineExecutor.singleThread: one worker per engine start.
-            "$ENGINE/MappedDictionaryEngine.kt" to mapOf("Executors." to 1),
+            // ExecutorServiceEngineExecutor.singleThread, plus the one-shot morphology thread.
+            "$ENGINE/MappedDictionaryEngine.kt" to mapOf("Executors." to 1, "Thread(" to 1),
             // The personal stores' one shared daemon worker, thread factory included.
             "$PERSONALSTORE/PersonalDictionaries.kt" to mapOf("Executors." to 1, "Thread(" to 1),
         )

@@ -403,29 +403,6 @@ class LatestOnlyPrefixEngine internal constructor(
     }
 
     /**
-     * Dispatches one tokenless initialization task without changing lookup ordering or generation.
-     * The worker rechecks liveness before running it; shutdown still waits for a running task.
-     */
-    internal fun dispatchWorkerInitialization(task: () -> Unit) {
-        if (!isActiveForWorkerInitialization()) return
-        try {
-            executor.execute {
-                if (!isActiveForWorkerInitialization()) return@execute
-                try {
-                    task()
-                } catch (_: Throwable) {
-                    // Optional initialization never affects dictionary lookup.
-                }
-            }
-        } catch (_: Throwable) {
-            // Rejected or already-stopping engines simply leave initialization unavailable.
-        }
-    }
-
-    internal fun isActiveForWorkerInitialization(): Boolean =
-        synchronized(lock) { state == State.ACTIVE }
-
-    /**
      * Prepares the glide word index after a gesture arms. This tokenless worker task never
      * changes the current lookup generation and emits no result; a later decode remains
      * authoritative if preparation fails.

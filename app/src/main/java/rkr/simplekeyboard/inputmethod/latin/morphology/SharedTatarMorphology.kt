@@ -42,6 +42,9 @@ internal class SharedMorphologyLoader<T : Any>(private val load: () -> T) {
             }
         }
     }
+
+    /** The published value, or null before a load succeeds; never loads or blocks. */
+    fun getIfLoaded(): T? = value
 }
 
 /**
@@ -76,4 +79,8 @@ object SharedTatarMorphology {
         }
         return shared.get()
     }
+
+    /** The already-published acceptor, or null before a load finishes; never loads or blocks. */
+    @JvmStatic
+    fun getIfLoaded(): TatarMorphologicalAcceptor? = loader?.getIfLoaded()
 }

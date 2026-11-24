@@ -46,6 +46,22 @@ class SharedTatarMorphologyTest {
     }
 
     @Test
+    fun getIfLoadedIsNullBeforePublicationAndReturnsThePublishedInstance() {
+        val acceptor = MorphologyTestSupport.realAcceptor()
+        var calls = 0
+        val loader = SharedMorphologyLoader {
+            calls++
+            acceptor
+        }
+
+        assertNull(loader.getIfLoaded())
+        assertEquals(0, calls)
+        assertSame(acceptor, loader.get())
+        assertSame(acceptor, loader.getIfLoaded())
+        assertEquals(1, calls)
+    }
+
+    @Test
     fun concurrentCallersShareOneSuccessfulLoad() {
         val acceptor = MorphologyTestSupport.realAcceptor()
         var calls = 0

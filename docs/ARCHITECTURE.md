@@ -386,8 +386,10 @@ SHA-256 in its header, so it opens only against its own dictionary. Formats:
 `SharedTatarMorphology` owns one process-wide morphological acceptor, built from the pinned stem
 lexicon (`dictionaries/tatar_stems_v1.tstem.zlib`, TATSTEM schema 1) and shared by the Tatar IME
 engine and the spell checker. Its thread-safe lazy loader inflates the APK asset and validates
-the image with `TatStemValidator.inflateAsset`. The IME engine checks the lexicon's linked
-dictionary SHA-256 against its active dictionary generation before using it; the spell checker
+the image with `TatStemValidator.inflateAsset`. The Tatar engine starts that load on its own
+one-shot background thread at engine startup, so the first lookup does not queue behind it;
+until the load publishes, the engine runs without morphology. The IME engine checks the lexicon's
+linked dictionary SHA-256 against its active dictionary generation before using it; the spell checker
 uses the same pinned image. An absent, still-loading or corrupt lexicon publishes no acceptor:
 unavailable is not a negative verdict, and dictionary lookup remains available in both
 consumers. The image is not published to a device file, so there is no quarantined copy to
