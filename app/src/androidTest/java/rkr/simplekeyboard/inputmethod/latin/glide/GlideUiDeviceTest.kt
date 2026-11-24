@@ -171,9 +171,28 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         assertNotNull("the try-it field must exist", field)
         // Focus the field with ONE tap (a second tap could land on the keyboard the first tap
         // opened), then wait passively for the IME window (adjustResize moves the field).
+        // Tap near the field's TOP edge: with the keyboard down the field extends behind the
+        // navigation bar, and a tap on its center is rejected as targeting another uid's window.
+        // startActivitySync also returns before the first layout, so re-read the bounds on every
+        // attempt and retry a rejected tap while the window settles.
         val fieldLocation = IntArray(2)
-        field.getLocationOnScreen(fieldLocation)
-        tap(instrumentation, fieldLocation[0] + field.width / 2f, fieldLocation[1] + field.height / 2f)
+        var lastRejection: IllegalArgumentException? = null
+        for (attempt in 0 until 20) {
+            field.getLocationOnScreen(fieldLocation)
+            if (field.width > 0 && field.height > 0) {
+                try {
+                    tap(instrumentation, fieldLocation[0] + field.width / 2f, fieldLocation[1] + 20f)
+                    lastRejection = null
+                    break
+                } catch (e: IllegalArgumentException) {
+                    Log.i(TAG, "field tap rejected at ${fieldLocation[0]},${fieldLocation[1]} " +
+                        "size ${field.width}x${field.height}: ${e.message}")
+                    lastRejection = e
+                }
+            }
+            Thread.sleep(250)
+        }
+        if (lastRejection != null) throw lastRejection
         val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
             as android.view.inputmethod.InputMethodManager
         var immUp = false
@@ -191,7 +210,8 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         var probes = 0
         while (probes < 10) {
             field.getLocationOnScreen(fieldLocation)
-            tap(instrumentation, fieldLocation[0] + field.width / 2f, fieldLocation[1] + field.height / 2f)
+            // Same top-edge tap as the initial focus: the center can sit over the navigation bar.
+            tap(instrumentation, fieldLocation[0] + field.width / 2f, fieldLocation[1] + 20f)
             Thread.sleep(700)
             // The keyboard window may lag the field focus; an unreadable key is retried like
             // a missed tap.
@@ -272,7 +292,8 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
     private fun showKeyboard(field: EditText) {
         val location = IntArray(2)
         field.getLocationOnScreen(location)
-        tap(instrumentation, location[0] + field.width / 2f, location[1] + field.height / 2f)
+        // Same top-edge tap as in prepareField: the center can sit over the navigation bar.
+        tap(instrumentation, location[0] + field.width / 2f, location[1] + 20f)
         val imm = field.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
             as android.view.inputmethod.InputMethodManager
         var shown = false
