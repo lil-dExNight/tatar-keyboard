@@ -37,8 +37,8 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
         val events = Collections.synchronizedList(mutableListOf<String>())
         val mappingThread = AtomicReference<Thread>()
         val loadingThread = AtomicReference<Thread>()
-        val probeThread = AtomicReference<Thread>()
         val loadCount = AtomicInteger()
+        val lookupReady = CountDownLatch(1)
         val engine = start(
             dictionary,
             mapper = DictionaryMapper { file, _ ->
@@ -46,6 +46,7 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
                 events += "map"
                 ByteBuffer.wrap(file.readBytes())
             },
+            resultHandoff = ResultHandoff { lookupReady.countDown() },
             wordformAcceptorLoader = MorphologicalAcceptorLoader {
                 loadingThread.set(Thread.currentThread())
                 events += "load"
@@ -54,14 +55,9 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
             },
         )
         try {
-            val initialized = CountDownLatch(1)
-            assertTrue(
-                engine.requestEmptyPrefixProbe("аб") {
-                    probeThread.set(Thread.currentThread())
-                    initialized.countDown()
-                },
-            )
-            assertTrue(initialized.await(5, TimeUnit.SECONDS))
+            assertEquals(0, loadCount.get())
+            engine.request(1, "tt", utf8("аб"))
+            assertTrue(lookupReady.await(5, TimeUnit.SECONDS))
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
             while (engine.wordformAcceptor == null && System.nanoTime() < deadline) {
                 Thread.sleep(10)
@@ -70,7 +66,6 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
             assertEquals(listOf("map", "load"), events)
             assertNotSame(mappingThread.get(), loadingThread.get())
             assertNotSame(Thread.currentThread(), loadingThread.get())
-            assertNotSame(loadingThread.get(), probeThread.get())
             assertEquals(1, loadCount.get())
             assertSame(expected, engine.wordformAcceptor)
             assertSame(expected, engine.wordformAcceptor)
@@ -221,6 +216,7 @@ class MappedDictionaryEngineMorphologyIntegrationTest {
                 expected
             },
         )
+        assertTrue(engine.request(1, "tt", utf8("аб")) != null)
         assertTrue(loaderStarted.await(5, TimeUnit.SECONDS))
 
         // The blocked loader is on its own thread, so teardown neither waits for it nor fails.

@@ -397,7 +397,8 @@ SHA-256 in its header, so it opens only against its own dictionary. Formats:
 lexicon (`dictionaries/tatar_stems_v1.tstem.zlib`, TATSTEM schema 1) and shared by the Tatar IME
 engine and the spell checker. Its thread-safe lazy loader inflates the APK asset and validates
 the image with `TatStemValidator.inflateAsset`. The Tatar engine starts that load on its own
-one-shot background thread at engine startup, so the first lookup does not queue behind it;
+one-shot background thread after the first lookup result is delivered, so no asset work overlaps
+that lookup; background priority keeps that load from starving later keystroke work;
 until the load publishes, the engine runs without morphology. The IME engine checks the lexicon's
 linked dictionary SHA-256 against its active dictionary generation before using it; the spell checker
 uses the same pinned image. An absent, still-loading or corrupt lexicon publishes no acceptor:

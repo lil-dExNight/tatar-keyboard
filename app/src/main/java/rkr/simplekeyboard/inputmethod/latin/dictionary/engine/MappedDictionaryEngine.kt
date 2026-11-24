@@ -1,9 +1,11 @@
 package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
+import android.os.Process
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
+import rkr.simplekeyboard.inputmethod.latin.suggestions.glideTrace
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import rkr.simplekeyboard.inputmethod.latin.morphology.TatarMorphologicalAcceptor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramTableLease
@@ -495,38 +497,50 @@ class MappedDictionaryEngine private constructor(
                         glideConstants,
                     ),
                 )
+                val morphologyStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+                val startMorphologyLoad = {
+                    if (wordformAcceptorLoader != null && morphologyStarted.compareAndSet(false, true)) {
+                        // Start after the first lookup result is delivered, so no asset work
+                        // overlaps that lookup. adoptMorphologicalAcceptor publishes only while the engine
+                        // owns its resources, so a result that finishes after destroy is dropped.
+                        try {
+                            Thread({
+                                try {
+                                    try {
+                                        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+                                    } catch (_: Throwable) {
+                                        // Without a priority change (plain JVM) the load still runs.
+                                    }
+                                    val acceptor = glideTrace("TT#morphLoad") {
+                                        wordformAcceptorLoader.load()
+                                    }
+                                    if (acceptor.dictionaryRawSha256 == identity.rawSha256) {
+                                        resources.adoptMorphologicalAcceptor(acceptor)
+                                    }
+                                } catch (_: Throwable) {
+                                    // Dictionary lookup remains available without morphology.
+                                }
+                            }, "morphology-load").apply { isDaemon = true }.start()
+                        } catch (_: Throwable) {
+                            // A load that cannot even start leaves the dictionary without morphology.
+                        }
+                    }
+                }
                 val engine = LatestOnlyPrefixEngine(
                     identity,
                     computer,
                     executor,
-                    resultHandoff,
+                    ResultHandoff { result ->
+                        try {
+                            resultHandoff.handOff(result)
+                        } finally {
+                            startMorphologyLoad()
+                        }
+                    },
                     resources::release,
                     traceHook,
                 )
-                val mappedEngine = MappedDictionaryEngine(
-                    identity, engine, computer, resources, mapper,
-                )
-                if (wordformAcceptorLoader != null) {
-                    // The load runs on its own one-shot daemon thread, so it never queues behind
-                    // or ahead of a lookup: the first lookup completes while the load is still
-                    // running. adoptMorphologicalAcceptor publishes only while the engine owns
-                    // its resources, which also drops a result that finishes after destroy.
-                    try {
-                        Thread({
-                            try {
-                                val acceptor = wordformAcceptorLoader.load()
-                                if (acceptor.dictionaryRawSha256 == identity.rawSha256) {
-                                    resources.adoptMorphologicalAcceptor(acceptor)
-                                }
-                            } catch (_: Throwable) {
-                                // Dictionary lookup remains available without morphology.
-                            }
-                        }, "morphology-load").apply { isDaemon = true }.start()
-                    } catch (_: Throwable) {
-                        // A load that cannot even start leaves the dictionary without morphology.
-                    }
-                }
-                return mappedEngine
+                return MappedDictionaryEngine(identity, engine, computer, resources, mapper)
             } catch (_: Throwable) {
                 mapped = null
                 try {
