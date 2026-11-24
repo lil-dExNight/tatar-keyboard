@@ -1,0 +1,444 @@
+<!doctype html>
+<!--
+  Text donation page: native speakers donate their own Tatar messages for the keyboard's
+  evaluation set. The donor pastes text, reviews what the scrubber replaced, marks further
+  names by tapping words, chooses whether the text may be published, and downloads one JSONL
+  file to send by email.
+
+  Privacy design:
+  - the page makes no network requests and loads no framework, font or analytics;
+  - nothing is stored in the browser: closing the tab discards everything not downloaded;
+  - the scrubber replaces links, email addresses, @handles, phone numbers and numbers of five
+    or more digits with placeholders before anything can be exported; capitalized words inside
+    a sentence are highlighted as probable names, and a tap on any word toggles a <NAME>
+    placeholder;
+  - the export holds a random donor id, the publication choice, optional region and age band,
+    the date (no time), and the scrubbed texts with their source kind.
+
+  Record format (one JSON object per line), validated by scripts/native_text_ingest.py:
+    {"schema": "tt-text-donation/1", "kind": "donor", "donor_id": "d-<8 hex>",
+     "publish_ok": bool, "region": str, "age_band": str, "date": "YYYY-MM-DD"}
+    {"kind": "text", "id": int, "source": "messenger|social|email|other", "text": str}
+  Placeholders: <URL> <EMAIL> <USER> <PHONE> <NUM> <NAME>.
+-->
+<html lang="tt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Татар клавиатурасы: текст бүләк итү</title>
+<style>
+  body { font: 16px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0;
+         color: #1a1a1a; background: #fafafa; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 12px 16px 40px; }
+  h1 { font-size: 21px; margin: 10px 0; }
+  h2 { font-size: 17px; margin: 18px 0 6px; }
+  button { font: inherit; padding: 9px 14px; border: 1px solid #888; border-radius: 8px;
+           background: #fff; cursor: pointer; }
+  button.primary { background: #185abc; color: #fff; border-color: #185abc; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.current { background: #e8f0fe; border-color: #185abc; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 140px; font: inherit;
+             padding: 8px; border: 1px solid #9aa0a6; border-radius: 8px; }
+  select { font: inherit; padding: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  .muted { color: #5f6368; font-size: 14px; }
+  .card { background: #fff; border: 1px solid #dadce0; border-radius: 10px; padding: 12px;
+          margin: 10px 0; }
+  .review span.w { cursor: pointer; border-radius: 4px; padding: 0 1px; }
+  .review span.name-hint { background: #fff3c4; }
+  .review span.ph { background: #e6f4ea; color: #137333; font-family: monospace;
+                    font-size: 14px; padding: 0 3px; }
+  .review span.ph.user { background: #fce8e6; color: #b00020; }
+  .item { border-top: 1px solid #eee; padding: 8px 0; }
+  .item:first-child { border-top: 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <button id="ui-tt" class="current">Татарча</button>
+    <button id="ui-ru">Русский</button>
+  </div>
+  <h1 data-t="title"></h1>
+
+  <section id="consent" class="card">
+    <p data-t="intro"></p>
+    <p data-t="what"></p>
+    <p data-t="privacy"></p>
+    <p data-t="own"></p>
+    <label class="row"><input type="checkbox" id="publish">
+      <span data-t="publish"></span></label>
+    <div class="row">
+      <button id="agree" class="primary" data-t="agree"></button>
+    </div>
+  </section>
+
+  <section id="donate" hidden>
+    <div class="card">
+      <h2 data-t="add_title"></h2>
+      <p class="muted" data-t="add_hint"></p>
+      <div class="row">
+        <label><span data-t="source"></span>
+          <select id="source">
+            <option value="messenger" data-t="src_messenger"></option>
+            <option value="social" data-t="src_social"></option>
+            <option value="email" data-t="src_email"></option>
+            <option value="other" data-t="src_other"></option>
+          </select></label>
+      </div>
+      <textarea id="paste"></textarea>
+      <div class="row">
+        <button id="scrub" class="primary" data-t="scrub"></button>
+      </div>
+    </div>
+
+    <div class="card" id="review-card" hidden>
+      <h2 data-t="review_title"></h2>
+      <p class="muted" data-t="review_hint"></p>
+      <div id="review" class="review"></div>
+      <div class="row">
+        <button id="keep" class="primary" data-t="keep"></button>
+        <button id="drop" data-t="drop"></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-t="kept_title"></h2>
+      <div id="kept"></div>
+      <p class="muted" id="kept-count"></p>
+    </div>
+
+    <div class="card">
+      <h2 data-t="about_title"></h2>
+      <div class="row">
+        <label><span data-t="region"></span>
+          <select id="region">
+            <option value="" data-t="not_said"></option>
+            <option value="kazan" data-t="r_kazan"></option>
+            <option value="tatarstan" data-t="r_tatarstan"></option>
+            <option value="bashkortostan" data-t="r_bashkortostan"></option>
+            <option value="russia_other" data-t="r_russia_other"></option>
+            <option value="abroad" data-t="r_abroad"></option>
+          </select></label>
+        <label><span data-t="age"></span>
+          <select id="age">
+            <option value="" data-t="not_said"></option>
+            <option value="under18">&lt; 18</option>
+            <option value="18-29">18–29</option>
+            <option value="30-44">30–44</option>
+            <option value="45-59">45–59</option>
+            <option value="60plus">60+</option>
+          </select></label>
+      </div>
+      <div class="row">
+        <button id="export" class="primary" data-t="export"></button>
+      </div>
+      <p class="muted" data-t="send"></p>
+      <p class="muted"><span data-t="donor_id"></span> <code id="donor"></code></p>
+    </div>
+  </section>
+</div>
+
+<script>
+'use strict';
+
+// Address donors send their exported file to.
+var CONTACT_EMAIL = 'develam.postal629@passmail.com';
+
+var T = {
+  tt: {
+    title: 'Татар клавиатурасы өчен текст бүләк итү',
+    intro: 'Без телефон өчен татар клавиатурасы ясыйбыз. Ул сүз тәкъдимнәрен дөрес итеп ' +
+      'чынлыкта ничек язылганга карап үлчәргә тиеш. Моның өчен безгә кешеләрнең көндәлек ' +
+      'татарча язган хәбәрләре кирәк.',
+    what: 'Сез үзегез язган хәбәрләрне (мессенджерда, социаль челтәрдә, хатларда) монда ' +
+      'куясыз. Бит сылтамаларны, электрон почта адресларын, телефон номерларын, @исемнәрне ' +
+      'һәм озын саннарны үзе алыштыра. Исемнәрне сүзгә басып яшерә аласыз.',
+    privacy: 'Бит интернетка бернәрсә дә җибәрми һәм бернәрсә дә сакламый: сез файлны ' +
+      'йөкләп алып, аны үзегез почта аша җибәрәсез. Тәкъдимнәрнең сыйфатын үлчәү өчен ' +
+      'генә кулланыла.',
+    own: 'Бары тик үзегез язган текстны гына куегыз, башка кешеләрнең хәбәрләрен түгел.',
+    publish: 'Пакьләнгән текстымны ачык репозиторийда бастырырга рөхсәт итәм (тамгаламасагыз, ' +
+      'текст бары тик эчке үлчәүдә генә кулланыла).',
+    agree: 'Ризамын, башларга',
+    add_title: 'Текст өстәү',
+    add_hint: 'Берничә хәбәр куегыз. Хаталарны төзәтмәгез: ничек язылган, шулай калсын.',
+    source: 'Кайдан: ',
+    src_messenger: 'мессенджер', src_social: 'социаль челтәр', src_email: 'хат',
+    src_other: 'башка',
+    scrub: 'Тикшерү',
+    review_title: 'Карап чыгыгыз',
+    review_hint: 'Яшел — алыштырылган. Сары — исем булырга мөмкин. Сүзгә бассагыз, ул ' +
+      '<NAME> белән алыштырыла (кире басу — кире кайтара).',
+    keep: 'Саклап калу', drop: 'Ташлау',
+    kept_title: 'Файлга керәчәк',
+    about_title: 'Үзегез турында (теләсәгез)',
+    region: 'Төбәк: ', age: 'Яшь: ', not_said: 'әйтмим',
+    r_kazan: 'Казан', r_tatarstan: 'Татарстан (Казаннан тыш)', r_bashkortostan: 'Башкортстан',
+    r_russia_other: 'Россиянең башка төбәге', r_abroad: 'чит ил',
+    export: 'Файлны йөкләп алу',
+    send: 'Файлны почта аша җибәрегез: ',
+    donor_id: 'Сезнең очраклы номерыгыз:',
+    count: function (n, w) { return 'Хәбәрләр: ' + n + ', сүзләр: ' + w; },
+    nothing: 'Тикшерергә текст юк.',
+    remove: 'бетерү'
+  },
+  ru: {
+    title: 'Пожертвовать текст для татарской клавиатуры',
+    intro: 'Мы делаем татарскую клавиатуру для телефона. Чтобы честно измерять её подсказки, ' +
+      'нужны настоящие сообщения, которые люди каждый день пишут по-татарски.',
+    what: 'Вы вставляете сюда сообщения, которые написали сами (в мессенджере, соцсетях, ' +
+      'письмах). Страница сама заменяет ссылки, адреса почты, телефоны, @имена и длинные ' +
+      'числа. Имена можно скрыть нажатием на слово.',
+    privacy: 'Страница ничего не отправляет в интернет и ничего не хранит: вы скачиваете файл ' +
+      'и сами отправляете его по почте. Текст используется только для измерения качества ' +
+      'подсказок.',
+    own: 'Вставляйте только свой собственный текст, не сообщения других людей.',
+    publish: 'Разрешаю опубликовать мой очищенный текст в открытом репозитории (без отметки ' +
+      'текст используется только во внутренних измерениях).',
+    agree: 'Согласен, начать',
+    add_title: 'Добавить текст',
+    add_hint: 'Вставьте несколько сообщений. Ошибки не исправляйте: пусть останется как ' +
+      'написано.',
+    source: 'Откуда: ',
+    src_messenger: 'мессенджер', src_social: 'соцсеть', src_email: 'письмо',
+    src_other: 'другое',
+    scrub: 'Проверить',
+    review_title: 'Проверьте',
+    review_hint: 'Зелёным — заменённое. Жёлтым — возможное имя. Нажатие на слово заменяет его ' +
+      'на <NAME> (повторное нажатие возвращает).',
+    keep: 'Оставить', drop: 'Отбросить',
+    kept_title: 'Войдёт в файл',
+    about_title: 'О себе (по желанию)',
+    region: 'Регион: ', age: 'Возраст: ', not_said: 'не скажу',
+    r_kazan: 'Казань', r_tatarstan: 'Татарстан (кроме Казани)', r_bashkortostan: 'Башкортостан',
+    r_russia_other: 'другой регион России', r_abroad: 'за рубежом',
+    export: 'Скачать файл',
+    send: 'Отправьте файл по почте: ',
+    donor_id: 'Ваш случайный номер:',
+    count: function (n, w) { return 'Сообщений: ' + n + ', слов: ' + w; },
+    nothing: 'Нет текста для проверки.',
+    remove: 'удалить'
+  }
+};
+
+var state = {
+  ui: 'tt',
+  donorId: randomId(),
+  kept: [],        // [{source, text}]
+  pending: null    // {source, tokens: [{t, kind}]}
+};
+
+function randomId() {
+  var bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  return 'd-' + Array.prototype.map.call(bytes, function (b) {
+    return ('0' + b.toString(16)).slice(-2);
+  }).join('');
+}
+
+function t(key) { return T[state.ui][key]; }
+
+function applyUi() {
+  document.documentElement.lang = state.ui;
+  document.title = t('title');
+  Array.prototype.forEach.call(document.querySelectorAll('[data-t]'), function (el) {
+    var v = t(el.getAttribute('data-t'));
+    if (typeof v === 'string') el.textContent = v;
+  });
+  var send = document.querySelector('[data-t="send"]');
+  send.textContent = t('send') + (CONTACT_EMAIL || '—');
+  document.getElementById('ui-tt').className = state.ui === 'tt' ? 'current' : '';
+  document.getElementById('ui-ru').className = state.ui === 'ru' ? 'current' : '';
+  renderKept();
+}
+
+/* ---------------------------------------------------------------------------
+ * Scrubber. Order matters: URLs and emails before handles, phones before plain
+ * numbers. scripts/native_text_ingest.py applies the same patterns again as a
+ * safety net, so a change here must be mirrored there.
+ * ------------------------------------------------------------------------- */
+var RULES = [
+  ['URL', /(?:https?:\/\/|www\.)[^\s]+/gi],
+  ['EMAIL', /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g],
+  ['USER', /(^|[^A-Za-z0-9_])@[A-Za-z0-9_]{3,}/g],
+  ['PHONE', /\+?\d[\d\s().-]{6,}\d/g],
+  ['NUM', /\d{5,}/g]
+];
+
+function scrubText(text) {
+  var out = text;
+  RULES.forEach(function (rule) {
+    var name = rule[0], re = rule[1];
+    out = out.replace(re, function (m, lead) {
+      if (name === 'USER') return (lead || '') + '<USER>';
+      return '<' + name + '>';
+    });
+  });
+  return out;
+}
+
+var PLACEHOLDER = /^<(URL|EMAIL|USER|PHONE|NUM|NAME)>$/;
+var HAS_PLACEHOLDER = /<(URL|EMAIL|USER|PHONE|NUM|NAME)>/;
+var SENTENCE_END = /[.!?…]$/;
+
+function tokenize(text) {
+  // Keep whitespace tokens so the reviewed text keeps its line breaks and spacing.
+  var parts = text.split(/(\s+)/);
+  var tokens = [];
+  var sentenceStart = true;
+  parts.forEach(function (p) {
+    if (p === '') return;
+    if (/^\s+$/.test(p)) {
+      tokens.push({ t: p, kind: 'space' });
+      if (/\n/.test(p)) sentenceStart = true;
+      return;
+    }
+    if (HAS_PLACEHOLDER.test(p)) {
+      tokens.push({ t: p, kind: 'ph' });
+      sentenceStart = false;
+      return;
+    }
+    var core = p.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
+    var capital = core.length > 1 && core[0] !== core[0].toLowerCase()
+      && core.slice(1) === core.slice(1).toLowerCase();
+    tokens.push({ t: p, kind: 'word', hint: capital && !sentenceStart, orig: p });
+    sentenceStart = SENTENCE_END.test(p);
+  });
+  return tokens;
+}
+
+function renderReview() {
+  var box = document.getElementById('review');
+  box.textContent = '';
+  state.pending.tokens.forEach(function (tok) {
+    if (tok.kind === 'space') {
+      box.appendChild(document.createTextNode(tok.t));
+      return;
+    }
+    var span = document.createElement('span');
+    span.textContent = tok.t;
+    if (tok.kind === 'ph') {
+      span.className = 'ph';
+    } else if (tok.kind === 'name') {
+      span.className = 'w ph user';
+    } else {
+      span.className = 'w' + (tok.hint ? ' name-hint' : '');
+    }
+    if (tok.kind === 'word' || tok.kind === 'name') {
+      span.addEventListener('click', function () {
+        if (tok.kind === 'word') {
+          // Keep surrounding punctuation outside the placeholder.
+          var m = tok.orig.match(/^([^\p{L}]*)(.*?)([^\p{L}]*)$/u);
+          tok.kind = 'name';
+          tok.t = m[1] + '<NAME>' + m[3];
+        } else {
+          tok.kind = 'word';
+          tok.t = tok.orig;
+        }
+        renderReview();
+      });
+    }
+    box.appendChild(span);
+  });
+}
+
+function wordCount(text) {
+  return text.split(/\s+/).filter(function (w) {
+    return /\p{L}/u.test(w) && !HAS_PLACEHOLDER.test(w);
+  }).length;
+}
+
+function renderKept() {
+  var box = document.getElementById('kept');
+  box.textContent = '';
+  var words = 0;
+  state.kept.forEach(function (item, index) {
+    words += wordCount(item.text);
+    var div = document.createElement('div');
+    div.className = 'item';
+    var pre = document.createElement('div');
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.textContent = item.text;
+    var btn = document.createElement('button');
+    btn.textContent = t('remove');
+    btn.addEventListener('click', function () {
+      state.kept.splice(index, 1);
+      renderKept();
+    });
+    div.appendChild(pre);
+    div.appendChild(btn);
+    box.appendChild(div);
+  });
+  document.getElementById('kept-count').textContent = t('count')(state.kept.length, words);
+  document.getElementById('export').disabled = state.kept.length === 0;
+}
+
+function todayIso() {
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
+    ('0' + d.getDate()).slice(-2);
+}
+
+document.getElementById('ui-tt').addEventListener('click', function () {
+  state.ui = 'tt'; applyUi();
+});
+document.getElementById('ui-ru').addEventListener('click', function () {
+  state.ui = 'ru'; applyUi();
+});
+document.getElementById('agree').addEventListener('click', function () {
+  document.getElementById('consent').hidden = true;
+  document.getElementById('donate').hidden = false;
+});
+document.getElementById('scrub').addEventListener('click', function () {
+  var raw = document.getElementById('paste').value.trim();
+  if (!raw) { alert(t('nothing')); return; }
+  state.pending = {
+    source: document.getElementById('source').value,
+    tokens: tokenize(scrubText(raw))
+  };
+  document.getElementById('review-card').hidden = false;
+  renderReview();
+});
+document.getElementById('keep').addEventListener('click', function () {
+  if (!state.pending) return;
+  var text = state.pending.tokens.map(function (tok) { return tok.t; }).join('');
+  state.kept.push({ source: state.pending.source, text: scrubText(text) });
+  state.pending = null;
+  document.getElementById('paste').value = '';
+  document.getElementById('review-card').hidden = true;
+  renderKept();
+});
+document.getElementById('drop').addEventListener('click', function () {
+  state.pending = null;
+  document.getElementById('review-card').hidden = true;
+});
+document.getElementById('export').addEventListener('click', function () {
+  var lines = [JSON.stringify({
+    schema: 'tt-text-donation/1',
+    kind: 'donor',
+    donor_id: state.donorId,
+    publish_ok: document.getElementById('publish').checked,
+    region: document.getElementById('region').value,
+    age_band: document.getElementById('age').value,
+    date: todayIso()
+  })];
+  state.kept.forEach(function (item, index) {
+    lines.push(JSON.stringify({ kind: 'text', id: index + 1, source: item.source,
+                                text: item.text }));
+  });
+  var blob = new Blob([lines.join('\n') + '\n'], { type: 'application/x-ndjson' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tatar-text-' + state.donorId + '.jsonl';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+});
+
+document.getElementById('donor').textContent = state.donorId;
+applyUi();
+</script>
+</body>
+</html>

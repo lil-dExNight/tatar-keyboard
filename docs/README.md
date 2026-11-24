@@ -29,4 +29,6 @@ All documents are in English except the root `README.md`, which is bilingual, an
 - `research/corpus/` holds the corpus measurement scripts named in ASSET-PIPELINE.md; corpus
   data is not committed. `research/corpus-sources/` fetches and compares the licensed Tatar
   source candidates (TatSC, Common Voice); `research/glide-evaluation/` holds the gesture
-  benchmark protocol, frozen manifests and reports.
+  benchmark protocol, frozen manifests and reports; `research/text-donation/` is the offline
+  page native speakers use to donate their own text for the evaluation set, read by
+  `scripts/native_text_ingest.py`.

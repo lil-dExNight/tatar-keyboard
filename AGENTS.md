@@ -158,4 +158,5 @@ Sources are under `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
   `research/corpus/`: corpus measurement scripts and manifests (OPUS data is not committed for
   licensing reasons). `research/corpus-sources/`: licensed-corpus fetch and comparison tooling;
   `research/glide-evaluation/`: the gesture collection protocol, frozen benchmark manifests and
-  reports.
+  reports; `research/text-donation/`: the offline text donation page for the native evaluation
+  set.
