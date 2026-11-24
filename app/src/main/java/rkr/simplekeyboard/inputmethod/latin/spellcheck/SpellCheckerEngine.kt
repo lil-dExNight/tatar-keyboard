@@ -47,6 +47,7 @@ internal interface SpellCheckerWordSource {
 internal class SpellCheckerEngine(
     private val enabled: () -> Boolean,
     private val loadSource: () -> SpellCheckerWordSource?,
+    private val personalDictionaryEnabled: () -> Boolean = { true },
     private val loadExecutor: Executor = Executor { command -> command.run() },
 ) {
     @Volatile
@@ -93,20 +94,21 @@ internal class SpellCheckerEngine(
     /** The word-only rule: a word needs a Tatar-specific letter to be flagged without support. */
     fun checkWord(word: String, suggestionsLimit: Int): SpellCheckerAnswer {
         if (!enabled()) return SpellCheckerAnswer.ACCEPTED
+        val personalEnabled = personalDictionaryEnabled()
         val normalized = TatarWordUtils.normalizeForLookup(word)
         if (normalized.isEmpty() || isExempt(word, normalized)) return SpellCheckerAnswer.ACCEPTED
         val active = activeSource() ?: return SpellCheckerAnswer.ACCEPTED
-        val tatar = acceptsTatar(active, normalized)
+        val tatar = acceptsTatar(active, normalized, personalEnabled)
         if (tatar) return SpellCheckerAnswer.ACCEPTED
         val russian = active.russianBaseWord(normalized) ||
-            active.personalWord(PersonalSubtypes.RUSSIAN, normalized)
+            (personalEnabled && active.personalWord(PersonalSubtypes.RUSSIAN, normalized))
         if (russian) return SpellCheckerAnswer.ACCEPTED
         if (!hasTatarSpecificLetter(normalized)) {
             // Without a Tatar-only letter the evidence is too weak to call an unknown word a typo,
             // so Russian text is never flagged by the word-only callback.
             return SpellCheckerAnswer.ACCEPTED
         }
-        return typoAnswer(active, normalized, word, suggestionsLimit)
+        return typoAnswer(active, normalized, word, suggestionsLimit, personalEnabled)
     }
 
     /** One verdict per word of [text], with the offsets the framework underlines. */
@@ -116,6 +118,7 @@ internal class SpellCheckerEngine(
         if (!enabled()) {
             return SpellCheckerSentence(spans, List(spans.size) { SpellCheckerAnswer.ACCEPTED })
         }
+        val personalEnabled = personalDictionaryEnabled()
         val active = activeSource()
         if (active == null) {
             return SpellCheckerSentence(spans, List(spans.size) { SpellCheckerAnswer.ACCEPTED })
@@ -123,7 +126,7 @@ internal class SpellCheckerEngine(
 
         val facts = Array(spans.size) { index ->
             val word = text.substring(spans[index].start, spans[index].start + spans[index].length)
-            wordFacts(active, word)
+            wordFacts(active, word, personalEnabled)
         }
         var known = 0
         var tatarKnown = 0
@@ -144,13 +147,19 @@ internal class SpellCheckerEngine(
                 if (fact.exempt || fact.tatarKnown || fact.russianKnown) {
                     SpellCheckerAnswer.ACCEPTED
                 } else {
-                    typoAnswer(active, fact.normalized, fact.rawWord, suggestionsLimit)
+                    typoAnswer(
+                        active, fact.normalized, fact.rawWord, suggestionsLimit, personalEnabled,
+                    )
                 }
             },
         )
     }
 
-    private fun wordFacts(active: SpellCheckerWordSource, word: String): WordFacts {
+    private fun wordFacts(
+        active: SpellCheckerWordSource,
+        word: String,
+        personalEnabled: Boolean,
+    ): WordFacts {
         val normalized = TatarWordUtils.normalizeForLookup(word)
         if (normalized.isEmpty()) {
             return WordFacts("", word, exempt = true, tatarKnown = false, russianKnown = false,
@@ -160,26 +169,31 @@ internal class SpellCheckerEngine(
             return WordFacts(normalized, word, exempt = true, tatarKnown = false,
                 russianKnown = false, tatarSpecific = hasTatarSpecificLetter(normalized))
         }
-        val tatar = acceptsTatar(active, normalized)
+        val tatar = acceptsTatar(active, normalized, personalEnabled)
         if (tatar) {
             return WordFacts(normalized, word, exempt = false, tatarKnown = true,
                 russianKnown = false, tatarSpecific = hasTatarSpecificLetter(normalized))
         }
         val russian = active.russianBaseWord(normalized) ||
-            active.personalWord(PersonalSubtypes.RUSSIAN, normalized)
+            (personalEnabled && active.personalWord(PersonalSubtypes.RUSSIAN, normalized))
         return WordFacts(normalized, word, exempt = false, tatarKnown = false,
             russianKnown = russian, tatarSpecific = hasTatarSpecificLetter(normalized))
     }
 
-    private fun acceptsTatar(active: SpellCheckerWordSource, normalized: String): Boolean =
+    private fun acceptsTatar(
+        active: SpellCheckerWordSource,
+        normalized: String,
+        personalEnabled: Boolean,
+    ): Boolean =
         active.tatarBaseWord(normalized) ||
-            active.personalWord(PersonalSubtypes.TATAR_RU, normalized)
+            (personalEnabled && active.personalWord(PersonalSubtypes.TATAR_RU, normalized))
 
     private fun typoAnswer(
         active: SpellCheckerWordSource,
         normalized: String,
         rawWord: String,
         suggestionsLimit: Int,
+        personalEnabled: Boolean,
     ): SpellCheckerAnswer {
         val limit = suggestionsLimit.coerceAtLeast(0)
         if (limit == 0) return SpellCheckerAnswer.typo(emptyList())
@@ -203,7 +217,7 @@ internal class SpellCheckerEngine(
             val candidateNormalized = TatarWordUtils.normalizeForLookup(candidate)
             if (candidateNormalized == normalized || !seen.add(candidateNormalized)) continue
             val valid = try {
-                acceptsTatar(active, candidateNormalized)
+                acceptsTatar(active, candidateNormalized, personalEnabled)
             } catch (_: Exception) {
                 false
             }

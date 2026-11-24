@@ -154,6 +154,7 @@ internal object SharedSpellCheckerEngine {
                 enabled = { readEnabled(deviceContext) },
                 loadSource = { load(deviceContext, personalContext) },
                 loadExecutor = loadExecutor,
+                personalDictionaryEnabled = { readPersonalDictionaryEnabled(deviceContext) },
             ).also { engine = it }
         }
     }
@@ -179,6 +180,14 @@ internal object SharedSpellCheckerEngine {
             }
         }
         return neighbors ?: emptyNeighbors
+    }
+
+    private fun readPersonalDictionaryEnabled(context: Context): Boolean = try {
+        Settings.readPersonalDictionaryEnabled(
+            PreferenceManagerCompat.getDeviceSharedPreferences(context),
+        )
+    } catch (_: Exception) {
+        Settings.PERSONAL_DICTIONARY_DEFAULT
     }
 
     private fun load(deviceContext: Context, personalContext: Context): SpellCheckerWordSource? =

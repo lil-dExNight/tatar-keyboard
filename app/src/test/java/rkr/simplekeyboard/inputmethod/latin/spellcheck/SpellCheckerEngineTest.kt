@@ -250,6 +250,58 @@ class SpellCheckerEngineTest {
     }
 
     @Test
+    fun personalDictionarySwitchControlsTatarWordsAndCorrections() {
+        var personalEnabled = false
+        val source = FakeSource(
+            personalTatar = setOf("шәһәр"),
+            candidates = SpellCheckerTypoCandidates(listOf("шәһәр"), 0),
+        )
+        val engine = SpellCheckerEngine(
+            enabled = { true },
+            loadSource = { source },
+            personalDictionaryEnabled = { personalEnabled },
+        )
+
+        assertTypo(engine.checkWord("шәһәр", 4))
+        val correction = engine.checkWord("шәһәрр", 4)
+        assertTypo(correction)
+        assertTrue(correction.suggestions.isEmpty())
+        assertEquals(0, source.personalTatarLookups)
+
+        personalEnabled = true
+        assertAccepted(engine.checkWord("шәһәр", 4))
+        assertEquals(listOf("шәһәр"), engine.checkWord("шәһәрр", 4).suggestions)
+        assertTrue(source.personalTatarLookups > 0)
+    }
+
+    @Test
+    fun personalDictionarySwitchControlsRussianWordsInTatarSentence() {
+        var personalEnabled = false
+        val source = FakeSource(
+            tatarWords = setOf("бүген"),
+            personalRussian = setOf("привет"),
+        )
+        val engine = SpellCheckerEngine(
+            enabled = { true },
+            loadSource = { source },
+            personalDictionaryEnabled = { personalEnabled },
+        )
+
+        val disabled = engine.checkSentence("бүген привет фыва", 4)
+        assertAccepted(disabled.answers[0])
+        assertTypo(disabled.answers[1])
+        assertTypo(disabled.answers[2])
+        assertEquals(0, source.personalRussianLookups)
+
+        personalEnabled = true
+        val enabled = engine.checkSentence("бүген привет фыва", 4)
+        assertAccepted(enabled.answers[0])
+        assertAccepted(enabled.answers[1])
+        assertTypo(enabled.answers[2])
+        assertTrue(source.personalRussianLookups > 0)
+    }
+
+    @Test
     fun settingsOffAcceptsEveryWordWithoutLoadingDictionaries() {
         var enabled = false
         var loads = 0
@@ -351,6 +403,8 @@ class SpellCheckerEngineTest {
             private set
         var personalRussianLookups = 0
             private set
+        var personalTatarLookups = 0
+            private set
 
         override fun tatarBaseWord(normalizedWord: String): Boolean = normalizedWord in tatarWords
 
@@ -361,7 +415,10 @@ class SpellCheckerEngineTest {
 
         override fun personalWord(subtypeId: String, normalizedWord: String): Boolean =
             when (subtypeId) {
-                PersonalSubtypes.TATAR_RU -> normalizedWord in personalTatar
+                PersonalSubtypes.TATAR_RU -> {
+                    personalTatarLookups++
+                    normalizedWord in personalTatar
+                }
                 PersonalSubtypes.RUSSIAN -> {
                     personalRussianLookups++
                     normalizedWord in personalRussian
