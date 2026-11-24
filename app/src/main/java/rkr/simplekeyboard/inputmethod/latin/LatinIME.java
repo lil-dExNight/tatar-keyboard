@@ -33,6 +33,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.RestrictionsManager;
 import android.content.SharedPreferences;
+import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.graphics.Rect;
 import android.inputmethodservice.InputMethodService;
@@ -60,6 +61,7 @@ import android.view.inputmethod.InlineSuggestionsRequest;
 import android.view.inputmethod.InlineSuggestionsResponse;
 
 import java.io.FileDescriptor;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -86,6 +88,7 @@ import rkr.simplekeyboard.inputmethod.latin.common.Constants;
 import rkr.simplekeyboard.inputmethod.latin.inputlogic.InputLogic;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedDictionaryCatalog;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.StemLexiconArtifactSpec;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalEmojiSource;
@@ -130,6 +133,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FallbackWordsFacto
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.GlobalTopFrequencyFallbackFactory;
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable;
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.MorphologicalAcceptorLoader;
+import rkr.simplekeyboard.inputmethod.latin.morphology.TatarMorphologicalAcceptor;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.GlideKeyGeometryBuilder;
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder;
@@ -866,9 +871,19 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final long autocorrectFloor = tatarEngine
                     ? AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT
                     : AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU;
+            final MorphologicalAcceptorLoader wordformAcceptorLoader = tatarEngine
+                    ? () -> {
+                        try (InputStream source = getAssets().open(
+                                StemLexiconArtifactSpec.TATAR_STEMS_V1.getAssetPath(),
+                                AssetManager.ACCESS_STREAMING)) {
+                            return TatarMorphologicalAcceptor.open(source,
+                                    StemLexiconArtifactSpec.TATAR_STEMS_V1);
+                        }
+                    }
+                    : null;
             return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
                     fuzzyEditPolicy, fallbackWordsFactory, personalBigrams, glideConstants,
-                    autocorrectFloor);
+                    autocorrectFloor, wordformAcceptorLoader);
         };
 
         mSuggestionsController = new SuggestionsController(

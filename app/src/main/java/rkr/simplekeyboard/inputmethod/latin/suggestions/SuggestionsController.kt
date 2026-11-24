@@ -49,6 +49,7 @@ import rkr.simplekeyboard.inputmethod.latin.emoji.LearnedEmojiDrawabilityObserve
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideGestureSink
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
+import rkr.simplekeyboard.inputmethod.latin.morphology.TatarMorphologicalAcceptor
 import rkr.simplekeyboard.inputmethod.latin.settings.OneHandedMode
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -1424,6 +1425,10 @@ class SuggestionsController internal constructor(
      */
     fun engineContainsWord(subtypeId: String, normalizedWord: String): Boolean =
         slots[subtypeId]?.engine?.containsWord(normalizedWord) == true
+
+    /** The subtype engine's live morphology image, or null when cold, unavailable, or released. */
+    fun engineWordformAcceptor(subtypeId: String): TatarMorphologicalAcceptor? =
+        slots[subtypeId]?.engine?.wordformAcceptor()
 
     /**
      * Releases every live engine's glide word index while idle; called from LatinIME's

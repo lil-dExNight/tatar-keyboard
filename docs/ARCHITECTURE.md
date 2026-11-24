@@ -18,6 +18,7 @@ Paths are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/`.
 | `latin/inputlogic/` | `InputLogic`: what a key press does to the text |
 | `latin/suggestions/` | `SuggestionsController`, `SuggestionStripView`, `SuggestionStripState`, the recent-clip cell (`RecentClipCell`), the inline-autofill host (`InlineAutofillStripView`, `InlineAutofillBinder`, `InlineStripSpecs`), Tatar word utilities and suffix rules |
 | `latin/dictionary/engine/` | `LatestOnlyPrefixEngine`, `MappedDictionaryEngine`, `CompositePrefixComputer`, `TdictPrefixIndex`, `TatBigrPrefixIndex`, typo recovery |
+| `latin/morphology/` | the Tatar morphological acceptor and its suffix-chain rules |
 | `latin/dictionary/storage/` | asset publishing (`AtomicDictionaryStore`, `AtomicBigramStore`), validators, artifact specs and pins |
 | `latin/dictionary/personal/` | personal file formats (`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TcutFormat`, `TrefFormat`), validators, snapshots, the versioned migration registry (`PersonalFormatMigrations`) |
 | `latin/dictionary/personalstore/` | stores that own the personal files (words, pairs, emoji, sentence starts, refused corrections, text shortcuts), learning gates, pending counters, quarantine, counts-only inventory and category deletion (`PersonalInventory`), erase-all (`PersonalErasure`, `PersonalEraseAll`) |
@@ -380,6 +381,21 @@ Each language has a dictionary (`*.tdict.zlib`, TATDICT schema 2) and a bigram t
 `app/src/main/assets/`. The table stores dictionary word indices and names the dictionary's raw
 SHA-256 in its header, so it opens only against its own dictionary. Formats:
 [ASSET-FORMATS.md](ASSET-FORMATS.md); build: [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
+
+The Tatar engine also owns one morphological acceptor, built from the pinned stem lexicon
+(`dictionaries/tatar_stems_v1.tstem.zlib`, TATSTEM schema 1). After the dictionary mapping opens,
+one tokenless initialization on that engine's worker inflates the APK asset and validates the
+image with `TatStemValidator.inflateAsset`; the loader then checks that the lexicon's linked
+dictionary SHA-256 is the active dictionary generation. The acceptor stays resident for the
+engine's lifetime and is exposed through the engine and suggestions controller. An absent,
+still-loading, corrupt or generation-mismatched lexicon publishes no acceptor: unavailable is
+not a negative verdict, and the dictionary engine is unaffected. The image is not published to a
+device file, so there is no quarantined copy to restore; every load starts from the pinned APK
+asset. `TatarMorphologicalAcceptor.accepts` accepts a bare listed stem, and otherwise only a
+suffix chain licensed by the stem's Apertium continuation flags. It applies the word-form
+generator's vowel harmony, forced-back harmony, consonant assimilation, final voicing,
+possessive, suppletive and override rules, reuses fixed scratch and allocates nothing per
+lookup. No suggestion, autocorrect, glide or learning path calls it yet.
 
 On first use `AtomicDictionaryStore` and `AtomicBigramStore` inflate the asset, validate it in
 full (`TdictValidator.validateRaw`, `TatBigrValidator.validateRaw`) and publish it to

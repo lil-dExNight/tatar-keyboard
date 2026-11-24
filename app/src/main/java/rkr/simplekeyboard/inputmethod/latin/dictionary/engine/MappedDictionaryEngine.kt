@@ -5,6 +5,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidat
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideDecoder
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
+import rkr.simplekeyboard.inputmethod.latin.morphology.TatarMorphologicalAcceptor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramTableLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PublishedBigramTableCatalog
@@ -19,6 +20,12 @@ import java.util.concurrent.TimeUnit
 
 fun interface DictionaryMapper {
     fun mapReadOnly(file: File, size: Long): ByteBuffer
+}
+
+/** Loads and validates one engine-owned morphology image. */
+fun interface MorphologicalAcceptorLoader {
+    @Throws(Exception::class)
+    fun load(): TatarMorphologicalAcceptor
 }
 
 class ExecutorServiceEngineExecutor private constructor(
@@ -44,6 +51,10 @@ class MappedDictionaryEngine private constructor(
     private val resources: Resources,
     private val mapper: DictionaryMapper,
 ) {
+    /** The validated morphology image, or null when it is unavailable or not loaded yet. */
+    val wordformAcceptor: TatarMorphologicalAcceptor?
+        get() = resources.wordformAcceptor
+
     /**
      * [normalizedContextWordUtf8] is the normalized previous committed word (the exact pass's
      * context boost condition); empty at a sentence start, which keeps the pre-boost ranking.
@@ -253,10 +264,9 @@ class MappedDictionaryEngine private constructor(
     private class AttachRacedDestroy : Exception()
 
     /**
-     * Owns the dictionary lease and mapping from construction and, after a successful
-     * [attachBigram], the bigram lease and mapping too. [release] frees both exactly once;
-     * [attachBigram] and [release] share [lock], so a racing [attachBigramSource] and [destroy]
-     * neither leak nor double-close a lease.
+     * Owns the dictionary lease and mapping, the optional bigram resources, and the morphology
+     * image. [release] frees them exactly once; [attachBigram], [adoptMorphologicalAcceptor] and
+     * [release] share [lock], so racing publication and teardown cannot leak or double-close.
      */
     private class Resources(
         private var lease: DictionaryFileLease?,
@@ -271,6 +281,10 @@ class MappedDictionaryEngine private constructor(
         @Volatile
         var index: TdictPrefixIndex? = index
 
+        @Volatile
+        var wordformAcceptor: TatarMorphologicalAcceptor? = null
+            private set
+
         private val lock = Any()
         private var released = false
         private var bigramLease: BigramTableLease? = null
@@ -279,6 +293,13 @@ class MappedDictionaryEngine private constructor(
             private set
         var bigramIndex: TatBigrPrefixIndex? = null
             private set
+
+        /** Publishes the original image only while this engine still owns its resources. */
+        fun adoptMorphologicalAcceptor(acceptor: TatarMorphologicalAcceptor) {
+            synchronized(lock) {
+                if (!released) wordformAcceptor = acceptor
+            }
+        }
 
         /** False once released; the caller then still owns [lease] and must close it. */
         fun attachBigram(
@@ -304,6 +325,7 @@ class MappedDictionaryEngine private constructor(
             synchronized(lock) {
                 if (released) return
                 released = true
+                wordformAcceptor = null
                 heldBigramLease = bigramLease
                 heldBigramCatalog = bigramCatalog
                 bigramLease = null
@@ -362,7 +384,8 @@ class MappedDictionaryEngine private constructor(
          *    the fallback; [PersonalBigramSource.EMPTY] means none;
          *  - [glideConstants]: the glide decoder's per-language scoring constants;
          *  - [autocorrectMinCandidateFrequency]: the autocorrect candidate floor of this engine's
-         *    language, from [AutocorrectPolicy].
+         *    language, from [AutocorrectPolicy];
+         *  - [wordformAcceptorLoader]: one worker-loaded morphology image; null means none.
          */
         fun start(
             catalog: PublishedDictionaryCatalog,
@@ -378,6 +401,7 @@ class MappedDictionaryEngine private constructor(
             glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
             autocorrectMinCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
             traceHook: LookupTraceHook = LookupTraceHook.NONE,
+            wordformAcceptorLoader: MorphologicalAcceptorLoader? = null,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -388,6 +412,7 @@ class MappedDictionaryEngine private constructor(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
                 suffixTable, fuzzyEditPolicy, fallbackWordsFactory,
                 personalBigrams, glideConstants, autocorrectMinCandidateFrequency, traceHook,
+                wordformAcceptorLoader,
             )
         }
 
@@ -405,6 +430,7 @@ class MappedDictionaryEngine private constructor(
             glideConstants: GlideDecoder.GlideConstants,
             autocorrectMinCandidateFrequency: Long,
             traceHook: LookupTraceHook,
+            wordformAcceptorLoader: MorphologicalAcceptorLoader?,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -468,7 +494,24 @@ class MappedDictionaryEngine private constructor(
                     resources::release,
                     traceHook,
                 )
-                return MappedDictionaryEngine(identity, engine, computer, resources, mapper)
+                val mappedEngine = MappedDictionaryEngine(
+                    identity, engine, computer, resources, mapper,
+                )
+                if (wordformAcceptorLoader != null) {
+                    engine.dispatchWorkerInitialization {
+                        try {
+                            val acceptor = wordformAcceptorLoader.load()
+                            if (acceptor.dictionaryRawSha256 == identity.rawSha256 &&
+                                engine.isActiveForWorkerInitialization()
+                            ) {
+                                resources.adoptMorphologicalAcceptor(acceptor)
+                            }
+                        } catch (_: Throwable) {
+                            // Dictionary lookup remains available without morphology.
+                        }
+                    }
+                }
+                return mappedEngine
             } catch (_: Throwable) {
                 mapped = null
                 try {

@@ -25,6 +25,8 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupKind
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.LookupToken
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.MappedDictionaryEngine
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.MorphologicalAcceptorLoader
+import rkr.simplekeyboard.inputmethod.latin.morphology.TatarMorphologicalAcceptor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ResultHandoff
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalBigramSource
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalCandidateSource
@@ -184,6 +186,9 @@ interface EngineHandle {
      */
     fun containsWord(normalizedWord: String): Boolean = false
 
+    /** The live validated morphology image, or null when unavailable. Never a verdict. */
+    fun wordformAcceptor(): TatarMorphologicalAcceptor? = null
+
     /**
      * Enqueues glide index preparation on the engine worker after a gesture arms. This has no
      * lookup token and emits no result. Default no-op: a fake handle has no index.
@@ -273,6 +278,8 @@ class MappedEngineHandle private constructor(
 
     override fun containsWord(normalizedWord: String): Boolean = engine.containsWord(normalizedWord)
 
+    override fun wordformAcceptor(): TatarMorphologicalAcceptor? = engine.wordformAcceptor
+
     override fun prewarmGlideIndex() = engine.prewarmGlideIndex()
 
     override fun releaseGlideIndex() = engine.releaseGlideIndex()
@@ -317,6 +324,7 @@ class MappedEngineHandle private constructor(
             personalBigrams: PersonalBigramSource = PersonalBigramSource.EMPTY,
             glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
             autocorrectMinCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+            wordformAcceptorLoader: MorphologicalAcceptorLoader? = null,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
@@ -332,6 +340,7 @@ class MappedEngineHandle private constructor(
                 autocorrectMinCandidateFrequency = autocorrectMinCandidateFrequency,
                 // The worker half of the round trip's slices; below API 29 this is DISABLED.
                 traceHook = LookupTracer.ATRACE,
+                wordformAcceptorLoader = wordformAcceptorLoader,
             ) ?: return null
             return MappedEngineHandle(engine)
         }
