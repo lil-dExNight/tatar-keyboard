@@ -285,6 +285,45 @@ class BackupTransferTest {
     }
 
     @Test
+    fun aFreshInstallKeepsLearningOnWhenTheArchiveHasItOn() {
+        // A fresh install never stored the switch, so it is on by default; an archive that keeps
+        // it on must not turn it off through a missing-key-means-off reading.
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["pref_personal_dictionary"] = true
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences.remove("pref_personal_dictionary")
+
+        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
+        assertEquals(true, destination.preferences["pref_personal_dictionary"])
+    }
+
+    @Test
+    fun aFreshInstallTakesLearningOffFromAnArchiveThatHadItOff() {
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences["pref_personal_dictionary"] = false
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences.remove("pref_personal_dictionary")
+
+        assertEquals(BackupImportResult.IMPORTED_PRIVACY_CHANGED,
+            BackupTransfer.import(destination, archive))
+        assertEquals(false, destination.preferences["pref_personal_dictionary"])
+    }
+
+    @Test
+    fun anArchiveWithoutTheSwitchNeverTurnsOnLearningTheDeviceHadOff() {
+        val source = StoreBackedTarget(temporaryFolder.newFolder("source"))
+        source.preferences.remove("pref_personal_dictionary")
+        val archive = BackupTransfer.export(source)!!
+        val destination = StoreBackedTarget(temporaryFolder.newFolder("destination"))
+        destination.preferences["pref_personal_dictionary"] = false
+
+        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(destination, archive))
+        assertEquals(false, destination.preferences["pref_personal_dictionary"])
+    }
+
+    @Test
     fun importKeepsAnArchivePauseEvenWhenTheDeviceWasNotPaused() {
         // Archive paused (true), device not paused (false): effective = true || false = paused.
         // The archive's privacy choice is honored and surfaced.

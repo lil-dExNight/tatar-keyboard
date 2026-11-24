@@ -1346,8 +1346,8 @@ fi
 #     never reaches the try-it field, while a missed tap lands on the panel grid (an emoji
 #     appears in the field) or on the letter keyboard (a composing letter does);
 #   - the probe's prefs are seeded via run-as like the suggestions pref, but only here:
-#     personal dictionary ON (default off) + emoji suggestions ON (default on, seeded so a
-#     reused AVD with it off still works), so every earlier probe runs with unchanged prefs.
+#     personal dictionary ON + emoji suggestions ON (both default on, seeded so a reused
+#     AVD with either off still works), so every earlier probe runs with unchanged prefs.
 if [ "$PREFS_ACCESS" != 1 ]; then
     result SKIP learned-emoji-tt "prefs cannot be seeded via run-as"
 else

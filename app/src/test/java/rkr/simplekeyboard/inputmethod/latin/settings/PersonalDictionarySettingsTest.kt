@@ -114,16 +114,18 @@ class PersonalDictionarySettingsTest {
         assertFalse("fail-capable", restrictionsXml.contains("android:key=\"pref_no_such_key\""))
     }
 
-    // --- One toggle, default OFF, and off does not erase ------------------------------------
+    // --- One toggle, default ON, and off does not erase -------------------------------------
 
     @Test
-    fun thereIsExactlyOneToggleAndItDefaultsToOff() {
+    fun thereIsExactlyOneToggleAndItDefaultsToOn() {
         assertTrue("the single key",
             settingsSource.contains("PREF_PERSONAL_DICTIONARY = \"pref_personal_dictionary\""))
-        assertTrue("default OFF",
-            settingsSource.contains("readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, false)"))
-        assertFalse("default must not be true", settingsSource
-            .contains("readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, true)"))
+        assertTrue("one named default", settingsSource
+            .contains("public static final boolean PERSONAL_DICTIONARY_DEFAULT = true;"))
+        assertTrue("the reader uses it", settingsSource.contains(
+            "readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, PERSONAL_DICTIONARY_DEFAULT)"))
+        assertTrue("the settings row shows the same default", hostSource.contains(
+            "switchRow(Settings.PREF_PERSONAL_DICTIONARY, Settings.PERSONAL_DICTIONARY_DEFAULT,"))
 
         // No second "remember typed words" switch anywhere: one toggle governs read AND write.
         val forbidden = listOf("pref_remember_typed_words", "pref_learn_words",
@@ -137,7 +139,7 @@ class PersonalDictionarySettingsTest {
     @Test
     fun theSettingsRowFollowsTheSuggestionsSwitchAndIsGreyedOnlyByARestriction() {
         assertTrue("the row exists on the Preferences screen",
-            hostSource.contains("switchRow(Settings.PREF_PERSONAL_DICTIONARY, false,"))
+            hostSource.contains("switchRow(Settings.PREF_PERSONAL_DICTIONARY, "))
         assertTrue("it is disabled while Tatar suggestions are off", hostSource.contains(
             "Settings.readTatarSuggestionsEnabled(prefs)\n" +
                 "                        && !isRestricted(Settings.PREF_PERSONAL_DICTIONARY)"))
@@ -155,7 +157,7 @@ class PersonalDictionarySettingsTest {
         // The contract: switching off keeps what is already saved; erasing lives on the screen.
         // Nothing in the settings code may call an erase path from the toggle.
         val toggleNeighbourhood = hostSource
-            .substringAfter("switchRow(Settings.PREF_PERSONAL_DICTIONARY, false,")
+            .substringAfter("switchRow(Settings.PREF_PERSONAL_DICTIONARY, ")
             .take(400)
         listOf("clearAll", "erase", "delete").forEach { verb ->
             assertFalse("the toggle must not erase anything: $verb",

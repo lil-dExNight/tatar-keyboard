@@ -136,8 +136,9 @@ permission (`VIBRATE`).
   physical-access attacker is accepted, and `PRIVACY.md` says so.
 - No `IME_FLAG_NO_PERSONALIZED_LEARNING` on Android 7.0/7.1. The flag exists from API 26; on
   API 24/25 no app can set it, so those fields are protected only by the other `mayLearn`
-  conditions (password and private field types, postal addresses, the personal dictionary being
-  off by default). Disclosed in `PRIVACY.md`; the gap closes with `minSdk` 26.
+  conditions (password and private field types, postal addresses, the personal dictionary
+  switch). The personal dictionary is on by default on every API level. Disclosed in
+  `PRIVACY.md`; the gap closes with `minSdk` 26.
 - Backup encryption is optional. Plaintext remains an explicit user choice for carrying the file
   between devices and apps; the settings screen says before export that the file holds learned
   words and that anyone who can open a plaintext backup can read them. Encrypted export uses a

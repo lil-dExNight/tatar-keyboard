@@ -183,7 +183,7 @@ class IncognitoModeTest {
                 callback.contains("R.string.row_needs_suggestions"))
         val prefs = host.substringAfter("private fun buildPreferencesScreen()")
             .substringBefore("private fun buildPersonalDictionaryScreen()")
-        val personalIndex = prefs.indexOf("Settings.PREF_PERSONAL_DICTIONARY, false,")
+        val personalIndex = prefs.indexOf("Settings.PREF_PERSONAL_DICTIONARY, Settings.PERSONAL_DICTIONARY_DEFAULT,")
         val incognitoIndex = prefs.indexOf("Settings.PREF_INCOGNITO_MODE, false,")
         assertTrue("incognito comes right after the personal dictionary row",
             personalIndex in 1 until incognitoIndex)

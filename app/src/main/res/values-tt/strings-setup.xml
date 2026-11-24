@@ -34,7 +34,7 @@
     <string name="setup_guide_title">Татар раскладкасы һәм жестлар</string>
     <string name="setup_guide_layout">Өске рәт: ә ө ү җ ң һ ё ъ — һәр татар хәрефенең үз төймәсе бар</string>
     <string name="setup_guide_long_press">Төймәгә озак басу башка хәрефләрне ача: е → ё, ь → ъ, а/э → ә, о → ө, у → ү, ж → җ, н → ң, г һәм х → һ</string>
-    <string name="setup_guide_save_word">Үз сүзләрегез: сүз тәкъдимнәре полосасындагы сүзгә озак басыгыз һәм аны шәхси сүзлеккә өстәгез</string>
+    <string name="setup_guide_save_word">Шәхси сүзлек: клавиатура сез язган сүзләрне истә калдыра һәм аларны бары тик шушы җайланмада саклый. Өйрәнүне туктатып торырга яки сакланганның барысын да бетерергә көйләүләрдә мөмкин. Сүзне үзегез өстәү өчен сүз тәкъдимнәре полосасындагы сүзгә озак басыгыз</string>
 
     <!-- One line per gesture in the done-block guide: gesture name first, then the effect,
          in the same order as the Preferences "Gestures" card. -->

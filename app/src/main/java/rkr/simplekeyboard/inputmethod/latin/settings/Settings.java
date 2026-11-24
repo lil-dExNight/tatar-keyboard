@@ -95,7 +95,7 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
     public static final String PREF_GLIDE_TYPING = "pref_glide_typing";
     public static final String PREF_TATAR_SUGGESTIONS = "pref_tatar_suggestions";
     /**
-     * The personal dictionary: one toggle for both reading and writing, default OFF. There is no
+     * The personal dictionary: one toggle for both reading and writing, default ON. There is no
      * separate "remember typed words" switch: two toggles would give four states, only three of
      * them meaningful.
      *
@@ -431,12 +431,15 @@ public final class Settings extends BroadcastReceiver implements SharedPreferenc
         return readBooleanTolerant(prefs, PREF_TATAR_SUGGESTIONS, true);
     }
 
+    /** Default of {@link #PREF_PERSONAL_DICTIONARY} while the user has never set it. */
+    public static final boolean PERSONAL_DICTIONARY_DEFAULT = true;
+
     /**
-     * The personal dictionary is opt-in: default OFF. This one reader governs both showing
-     * personal words and saving them.
+     * The personal dictionary is on by default and can be switched off. This one reader governs
+     * both showing personal words and saving them; the learning gates still apply.
      */
     public static boolean readPersonalDictionaryEnabled(final SharedPreferences prefs) {
-        return readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, false);
+        return readBooleanTolerant(prefs, PREF_PERSONAL_DICTIONARY, PERSONAL_DICTIONARY_DEFAULT);
     }
 
     /**

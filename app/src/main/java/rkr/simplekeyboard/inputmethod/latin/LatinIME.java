@@ -1373,7 +1373,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
      */
     private void onStripWordLongPress(final String shownWord) {
         if (!Settings.readPersonalDictionaryEnabled(mDevicePrefs)) {
-            // The personal dictionary is off by default, so tell the user how to turn it on
+            // The user switched the personal dictionary off, so tell them how to turn it on
             // instead of ignoring the long press.
             showPersonalDictionaryOffDialog();
             return;

@@ -120,18 +120,18 @@ language is forced to English.
 ## Suggestions
 
 Suggestions for Tatar and Russian are on by default for new installs
-(`Settings.PREF_TATAR_SUGGESTIONS`; the personal dictionary and autocorrection stay off until
-enabled) and never run in password fields, in fields that disallow suggestions or personalized
-learning, before the first user unlock, or while the keyguard is shown (also after the first
-unlock). Field start and window show refresh the lock snapshot; learning, autocorrect, text
-shortcuts, suggestion commits and glide re-check both lock states at their event and write
-boundaries, so a mid-session lock invalidates pending work and locked-period typing is not learned
-after unlock. Learning reads both states live; manual personal-store writes and clipboard access
-force a fresh read before the action. The other checks reuse one answer, which screen and unlock
-broadcasts, field start and window show drop. Once it is older than
+(`Settings.PREF_TATAR_SUGGESTIONS`; the personal dictionary is on by default too, while
+autocorrection stays off until enabled) and never run in password fields, in fields that disallow
+suggestions or personalized learning, before the first user unlock, or while the keyguard is shown
+(also after the first unlock). Field start and window show refresh the lock snapshot; learning,
+autocorrect, text shortcuts, suggestion commits and glide re-check both lock states at their event
+and write boundaries, so a mid-session lock invalidates pending work and locked-period typing is
+not learned after unlock. Learning reads both states live; manual personal-store writes and
+clipboard access force a fresh read before the action. The other checks reuse one answer, which
+screen and unlock broadcasts, field start and window show drop. Once it is older than
 `LatinIME.PRIVACY_LOCK_CACHE_MS` a worker re-reads it while the old answer is still served; past
-twice that age the check reads on the UI thread. A lock without a screen change (lockdown from
-the power menu) is therefore seen within twice that time by the cached checks.
+twice that age the check reads on the UI thread. A lock without a screen change (lockdown from the
+power menu) is therefore seen within twice that time by the cached checks.
 
 Threads: `SuggestionsController` owns all strip state and runs on the UI thread only. Each
 language has a `LanguageSlot` with one engine, and each engine runs lookups on its own single
@@ -410,7 +410,8 @@ has no bundled successors (see next-word prediction above).
 
 ## Personal dictionary
 
-Opt-in (`PREF_PERSONAL_DICTIONARY`). The per-language stores share one worker thread
+On by default (`PREF_PERSONAL_DICTIONARY`, `Settings.PERSONAL_DICTIONARY_DEFAULT`); the learning
+gates below still apply. The per-language stores share one worker thread
 (`PersonalDictionaries.sharedStoreExecutor()`): `PersonalDictionaryStore` (`.tpers`, learned words),
 `PersonalBigramStore` (`.tpersb`, learned word pairs), `PersonalEmojiStore` (`.tpersem`, learned
 emoji) and `SentStartOverlayStore` (`.tsent`, sentence-initial words). `RefusedCorrectionStore`

@@ -679,7 +679,7 @@ class SettingsHostActivity : Activity() {
         }.apply { id = R.id.row_switch_tatar_suggestions })
         // The personal dictionary depends on the suggestion strip: without suggestions a saved
         // word has nowhere to appear, so the row follows the switch above it.
-        val personalRow = switchRow(Settings.PREF_PERSONAL_DICTIONARY, false,
+        val personalRow = switchRow(Settings.PREF_PERSONAL_DICTIONARY, Settings.PERSONAL_DICTIONARY_DEFAULT,
                 R.string.personal_dictionary, R.string.personal_dictionary_summary)
         personalDictionaryRow = personalRow
         suggestionRows.add(personalRow)

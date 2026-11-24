@@ -30,7 +30,7 @@ To enable the keyboard:
 
 <b>Personal dictionary:</b>
 
-* Optional (off by default): remembers words you type so they can be suggested later
+* On by default, can be switched off in settings: remembers words you type so they can be suggested later
 * Every saved word is visible and erasable in settings, per language
 * "Erase everything saved" deletes saved words, word pairs, learned emoji, sentence starts, recent emoji, text shortcuts and corrections at once
 * "Pause learning" stops the keyboard from remembering anything new without erasing what is saved

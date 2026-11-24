@@ -331,7 +331,7 @@ internal object BackupTransfer {
      *   a user who had it paused.
      * A key is forced into the result only when at least one side carries it: when neither side
      * sets it the archive's omission stands (absent means the default), so a plain restore does
-     * not plant explicit false values.
+     * not plant explicit values. A side that omits a key counts as that key's default.
      */
     private fun combinePrivacySwitches(
         current: Map<String, Any>,
@@ -356,18 +356,19 @@ internal object BackupTransfer {
         val currentValue = current[key] as? Boolean
         val importedValue = imported[key] as? Boolean
         if (currentValue == null && importedValue == null) return
-        out[key] = fold(currentValue ?: false, importedValue ?: false)
+        val default = PRIVACY_SWITCH_DEFAULTS.getValue(key)
+        out[key] = fold(currentValue ?: default, importedValue ?: default)
     }
 
     private fun privacySwitchesChanged(
         before: Map<String, Any?>,
         after: Map<String, Any?>,
-    ): Boolean = PRIVACY_SWITCHES.any { key ->
-        (before[key] as? Boolean ?: false) != (after[key] as? Boolean ?: false)
+    ): Boolean = PRIVACY_SWITCH_DEFAULTS.any { (key, default) ->
+        (before[key] as? Boolean ?: default) != (after[key] as? Boolean ?: default)
     }
 
-    private val PRIVACY_SWITCHES = listOf(
-        Settings.PREF_PERSONAL_DICTIONARY,
-        Settings.PREF_INCOGNITO_MODE,
+    private val PRIVACY_SWITCH_DEFAULTS = mapOf(
+        Settings.PREF_PERSONAL_DICTIONARY to Settings.PERSONAL_DICTIONARY_DEFAULT,
+        Settings.PREF_INCOGNITO_MODE to false,
     )
 }

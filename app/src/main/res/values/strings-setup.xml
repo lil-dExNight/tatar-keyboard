@@ -50,7 +50,7 @@
     <string name="setup_guide_title">Tatar layout and gestures</string>
     <string name="setup_guide_layout">Top row: ә ө ү җ ң һ ё ъ — every Tatar letter has its own key</string>
     <string name="setup_guide_long_press">Long-press a key for its partners: е → ё, ь → ъ, а/э → ә, о → ө, у → ү, ж → җ, н → ң, г and х → һ</string>
-    <string name="setup_guide_save_word">Save your own words: long-press a word in the suggestion strip above the keyboard to add it to the personal dictionary</string>
+    <string name="setup_guide_save_word">Personal dictionary: the keyboard remembers the words you type and keeps them only on this device. Pause learning or erase everything saved in Settings. Long-press a word in the suggestion strip to add it yourself</string>
 
     <!-- One line per gesture in the setup done-block guide. The gesture name leads, then the
          effect — the same pairing the Preferences "Gestures" card shows. -->
