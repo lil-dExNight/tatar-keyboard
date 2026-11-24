@@ -16,8 +16,9 @@
 
   The prompt pools start from the 20 most frequent 4–7-letter words of the repository's own
   tt/ru evaluation corpora whose letters all sit on base keys of the respective layout
-  (proper-name forms excluded), plus probe classes the decoder handles specially: doubled
-  letters (one key visited twice), alias letters and the Tatar extra-row letters. The Tatar
+  (proper-name forms excluded), plus probes for doubled letters (one key visited twice), alias
+  letters and Tatar extra-row letters, and dictionary-backed coverage of long suffix chains,
+  extra-row minimal pairs and frequent conversational forms. The Tatar
   layout carries every alphabet letter on a key: its extra row is eight keys (ә ө ү җ ң һ ё ъ),
   so ё and ъ trace their own keys there. The Russian layout has no extra row, so the six
   Tatar-only letters plus ё/ъ are long-press aliases of their base keys. The gate below maps
@@ -167,7 +168,21 @@ var LAYOUTS = {
               /* ё, a direct extra-row key; the shipped dictionary attests these loans. */
               'режиссёр', 'режиссёрның',
               /* The extra-row letters һ and ә. */
-              'һөнәр', 'һөҗүм', 'мөһим', 'һәрбер', 'бәләкәй', 'тәрәзә'],
+              'һөнәр', 'һөҗүм', 'мөһим', 'һәрбер', 'бәләкәй', 'тәрәзә',
+              /* Additional doubled letters: сс, лл, нн, кк and тт. */
+              'эссе', 'еллар', 'аннан', 'барлыкка', 'вакытта',
+              /* Four-suffix forms attested in the bundled dictionary. */
+              'укытучыларыбызның', 'укытучыларыбызга', 'укучыларыбызның',
+              'язучыларыбызның', 'милләттәшләребезнең', 'якташларыбызның',
+              'райондашларыбызның', 'авылдашларыбызның', 'ватандашларыбызның',
+              'сорауларыбызга',
+              /* Both members of each extra-row minimal pair are bundled dictionary words. */
+              'бала', 'бәла', 'оч', 'өч', 'йорт', 'йөрт', 'кул', 'күл', 'суз', 'сүз',
+              'ана', 'аңа', 'хуш', 'һуш',
+              /* Frequent conversational forms from the Matbugat and Intertat community data. */
+              'бар', 'бер', 'һәм', 'яхшы', 'бик', 'иде', 'булса', 'матур', 'була', 'без',
+              'мин', 'ярый', 'булыр', 'телим', 'мөмкин', 'әйбәт', 'бит', 'дип', 'шулай',
+              'шул', 'икән', 'микән', 'хәзер', 'рәхмәт', 'ничек'],
   },
   ru: {
     rows: [

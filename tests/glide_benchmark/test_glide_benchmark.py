@@ -8,6 +8,7 @@ import csv
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -23,10 +24,16 @@ BRIDGE = (
 )
 COLLECTOR = ROOT / "research" / "glide-collector" / "index.html"
 PROMPTS = ROOT / "research" / "glide-evaluation" / "prompts.tsv"
+COVERAGE_SCRIPT = ROOT / "scripts" / "dictionary_coverage.py"
+PACK_SCRIPT = ROOT / "scripts" / "dictionary_pack.py"
+TATAR_ASSET = (
+    ROOT / "app" / "src" / "main" / "assets" / "dictionaries" /
+    "tatar_top100k_v1.tdict.zlib"
+)
 
 
-def load_module():
-    spec = importlib.util.spec_from_file_location("glide_benchmark", SCRIPT)
+def load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -34,7 +41,16 @@ def load_module():
     return module
 
 
-benchmark = load_module()
+benchmark = load_module("glide_benchmark", SCRIPT)
+coverage = load_module("dictionary_coverage", COVERAGE_SCRIPT)
+pack = load_module("dictionary_pack", PACK_SCRIPT)
+
+
+def collector_prompts(source, layout):
+    block = source.split(f"  {layout}: {{", 1)[1].split("\n  },", 1)[0]
+    pool = re.search(r"prompts: \[(.*?)\],", block, re.DOTALL).group(1)
+    pool = re.sub(r"/\*.*?\*/", "", pool, flags=re.DOTALL)
+    return re.findall(r"'([^']+)'", pool)
 
 
 def decoded_fixture(record, *, rank=1, stage="returned"):
@@ -258,6 +274,58 @@ class CollectorContractTest(unittest.TestCase):
 
 
 class PromptChecklistTest(unittest.TestCase):
+    def test_embedded_pools_match_the_checklist_in_order(self):
+        source = COLLECTOR.read_text(encoding="utf-8")
+        with PROMPTS.open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
+        for layout in ("tt", "ru"):
+            with self.subTest(layout=layout):
+                embedded = collector_prompts(source, layout)
+                checklist = [
+                    row["prompt"] for row in rows
+                    if row["layout"] == layout and not row["classes"].startswith("negative:")
+                ]
+                self.assertEqual(embedded, checklist)
+                self.assertEqual(len(embedded), len(set(embedded)))
+
+    def test_only_documented_legacy_probes_are_outside_the_tatar_dictionary(self):
+        source = COLLECTOR.read_text(encoding="utf-8")
+        tatar = collector_prompts(source, "tt")
+        parsed = pack.validate_raw(pack.decompress_asset(TATAR_ASSET.read_bytes()))
+        dictionary = set(parsed.words)
+        legacy_oov = {"теллә", "тәъмин", "вәҗһ"}
+        self.assertEqual(set(tatar) - dictionary, legacy_oov)
+        for prompt in tatar:
+            with self.subTest(prompt=prompt):
+                normalized, reason = coverage.normalize_word(prompt)
+                self.assertIsNone(reason)
+                self.assertEqual(normalized, prompt)
+                if prompt not in legacy_oov:
+                    self.assertIn(prompt, dictionary)
+
+    def test_minimal_pairs_are_reciprocal_single_letter_contrasts(self):
+        with PROMPTS.open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
+        by_prompt = {row["prompt"]: row for row in rows if row["layout"] == "tt"}
+        pairs = [row for row in by_prompt.values() if "minimal_pair" in row["classes"].split(",")]
+        self.assertTrue(pairs)
+        for row in pairs:
+            with self.subTest(prompt=row["prompt"]):
+                prompt = row["prompt"]
+                classes = row["classes"].split(",")
+                partner = next(c.removeprefix("minimal_pair_of:") for c in classes
+                               if c.startswith("minimal_pair_of:"))
+                self.assertIn(partner, by_prompt)
+                partner_classes = by_prompt[partner]["classes"].split(",")
+                self.assertIn(f"minimal_pair_of:{prompt}", partner_classes)
+                self.assertEqual(len(prompt), len(partner))
+                differences = [i for i, (a, b) in enumerate(zip(prompt, partner)) if a != b]
+                self.assertEqual(len(differences), 1)
+                contrast = next(c.removeprefix("minimal_pair:") for c in classes
+                                if c.startswith("minimal_pair:"))
+                index = differences[0]
+                self.assertEqual({prompt[index], partner[index]}, set(contrast.split("/")))
+
     def test_russian_alias_and_negative_requirements_are_explicit(self):
         with PROMPTS.open(encoding="utf-8", newline="") as stream:
             rows = list(csv.DictReader(stream, delimiter="\t"))
