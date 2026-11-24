@@ -58,8 +58,7 @@ class SilentGestureSourceContractTest {
     fun aLongPressOnAWordCellIsAlwaysAnswered() {
         val router = bodyOf(ime, "private void onStripWordLongPress(",
             "private void showForgetPersonalWordDialog(")
-        // The default state of the keyboard: the personal dictionary ships off, so this gate is
-        // the one almost every long press actually reaches.
+        // Switching the personal dictionary off must not leave a long press unanswered.
         val offGate = bodyOf(router, "if (!Settings.readPersonalDictionaryEnabled(mDevicePrefs)) {", "}")
         assertTrue(
             "the saved-words-are-off gate must answer the gesture: <$offGate>",
