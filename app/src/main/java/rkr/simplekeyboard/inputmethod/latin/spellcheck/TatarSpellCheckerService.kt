@@ -20,6 +20,7 @@ import android.service.textservice.SpellCheckerService
 import android.view.textservice.SentenceSuggestionsInfo
 import android.view.textservice.SuggestionsInfo
 import android.view.textservice.TextInfo
+import rkr.simplekeyboard.inputmethod.latin.suggestions.glideTrace
 
 /**
  * The system spell-checker entry point. Its verdicts are computed by [SpellCheckerEngine]; the
@@ -31,7 +32,9 @@ class TatarSpellCheckerService : SpellCheckerService() {
 
     override fun onCreate() {
         super.onCreate()
-        SharedSpellCheckerEngine.prepare(applicationContext)
+        glideTrace("TT#spellServiceCreate") {
+            SharedSpellCheckerEngine.prepare(applicationContext)
+        }
     }
 
     override fun createSession(): Session = CheckingSession()
@@ -54,13 +57,15 @@ class TatarSpellCheckerService : SpellCheckerService() {
         override fun onGetSentenceSuggestionsMultiple(
             textInfos: Array<TextInfo>,
             suggestionsLimit: Int,
-        ): Array<SentenceSuggestionsInfo> = Array(textInfos.size) { index ->
-            val response = core.sentence(textInfos[index].request(), suggestionsLimit)
-            SentenceSuggestionsInfo(
-                Array(response.words.size) { response.words[it].platformInfo() },
-                IntArray(response.words.size) { response.words[it].span.start },
-                IntArray(response.words.size) { response.words[it].span.length },
-            )
+        ): Array<SentenceSuggestionsInfo> = glideTrace("TT#spellSentence") {
+            Array(textInfos.size) { index ->
+                val response = core.sentence(textInfos[index].request(), suggestionsLimit)
+                SentenceSuggestionsInfo(
+                    Array(response.words.size) { response.words[it].platformInfo() },
+                    IntArray(response.words.size) { response.words[it].span.start },
+                    IntArray(response.words.size) { response.words[it].span.length },
+                )
+            }
         }
 
         private fun TextInfo.request(): SpellCheckerRequest =

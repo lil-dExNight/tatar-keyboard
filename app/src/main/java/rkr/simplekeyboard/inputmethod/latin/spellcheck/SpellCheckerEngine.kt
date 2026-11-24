@@ -19,6 +19,7 @@ package rkr.simplekeyboard.inputmethod.latin.spellcheck
 import java.util.concurrent.Executor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalSubtypes
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
+import rkr.simplekeyboard.inputmethod.latin.suggestions.glideTrace
 
 /** The exact candidates followed by the typo-recovery candidates of one prefix lookup. */
 internal class SpellCheckerTypoCandidates(
@@ -74,7 +75,11 @@ internal class SpellCheckerEngine(
             null
         }
         synchronized(sourceLock) {
-            if (loaded != null) source = loaded
+            if (loaded != null) {
+                glideTrace("TT#spellSourceReady") {
+                    source = loaded
+                }
+            }
             sourceLoading = false
         }
     }

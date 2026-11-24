@@ -78,11 +78,13 @@
 #      androidTest APK; without an installed runner it reports SKIP.
 #   spellcheck) opt-in TextServicesManager measurements in a self-targeted
 #      instrumentation process. With a fresh IME process and its keyboard shown,
-#      PSS is sampled before and after the first warm answer; their delta is held
-#      to the acceptor's resident-memory ceiling. The warm probe checks a
-#      200-word Tatar paragraph after warmups. Before each cold start the ritual
-#      deselects the IME, goes home and kills the process without a force-stop.
-#      Without the androidTest runner this leg reports SKIP.
+#      the warm probe checks a 200-word Tatar paragraph, waits for the first
+#      checked answer, then samples PSS before and after it; their delta is held
+#      to the acceptor's resident-memory ceiling. Every warm sample is checked.
+#      Before each cold start the ritual deselects the IME, goes home and kills
+#      the process without a force-stop. The cold arm reports the first callback
+#      separately and budgets the first checked answer. Without the androidTest
+#      runner this leg reports SKIP.
 #   battery) opt-in, never interleaved with the USB-power perf legs: it
 #      simulates the unplugged state (`dumpsys battery unplug`, restored on
 #      exit). Sub-legs, all joined by --legs battery:
@@ -1472,11 +1474,11 @@ kill_spellcheck_app() {
 
 # run_spellcheck_probe <method> <check> <runner> <output>: stream exactly one
 # budgeted result from the self-targeted client and reject a failed or partial run.
-# The warm arm pauses at its first answer so PSS is sampled before later requests.
+# The warm arm pauses at its first checked answer so PSS is sampled before later requests.
 run_spellcheck_probe() {
     local method="$1" check="$2" runner="$3" output="$4"
     local instrument_rc status metric metric_results=0
-    local instrument_pid first_answer=0 deadline
+    local instrument_pid first_checked=0 deadline
     if [ "$check" = spellcheck-warm ]; then
         SHELL "rm -f /data/local/tmp/tt-spellcheck-after-pss" >/dev/null 2>&1
         SHELL am instrument -w -r -e class "$SPELLCHECK_TEST#$method" -e ttPackage "$PKG" "$runner" \
@@ -1484,22 +1486,22 @@ run_spellcheck_probe() {
         instrument_pid=$!
         deadline=$((SECONDS + 90))
         while [ $SECONDS -lt $deadline ]; do
-            if grep -q '^INSTRUMENTATION_STATUS: tt_perf_first_answer=1$' "$output"; then
-                first_answer=1
+            if grep -q '^INSTRUMENTATION_STATUS: tt_perf_first_checked_answer=1$' "$output"; then
+                first_checked=1
                 break
             fi
             kill -0 "$instrument_pid" 2>/dev/null || break
             sleep 0.2
         done
-        if [ "$first_answer" = 1 ]; then
+        if [ "$first_checked" = 1 ]; then
             if keyboard_shown; then
                 pss_point spellcheck-after
                 SHOT spellcheck-after.png
             else
-                result FAIL spellcheck-memory "keyboard not shown after the first answer; PSS delta invalid"
+                result FAIL spellcheck-memory "keyboard not shown after the first checked answer; PSS delta invalid"
             fi
         else
-            result FAIL spellcheck-memory "first warm answer marker missing; see $output"
+            result FAIL spellcheck-memory "first checked answer marker missing; see $output"
         fi
         SHELL "echo done > /data/local/tmp/tt-spellcheck-after-pss" >/dev/null 2>&1
         wait "$instrument_pid"
@@ -1555,14 +1557,14 @@ if leg_on spellcheck; then
             SHOT spellcheck-before.png
             spellcheck_before=$(awk '/TOTAL PSS:/ {print $3; exit} /^[[:space:]]*TOTAL:/ {print $2; exit}' \
                 "$OUTDIR/meminfo-spellcheck-before.txt")
-            log "spellcheck: warm paragraph and first answer"
+            log "spellcheck: warm paragraph and first checked answer"
             run_spellcheck_probe testWarmParagraph spellcheck-warm "$spellcheck_runner" \
                 "$OUTDIR/spellcheck-warm-instrumentation.txt"
             spellcheck_after=$(awk '/TOTAL PSS:/ {print $3; exit} /^[[:space:]]*TOTAL:/ {print $2; exit}' \
                 "$OUTDIR/meminfo-spellcheck-after.txt" 2>/dev/null)
             if [[ "$spellcheck_before" =~ ^[0-9]+$ && "$spellcheck_after" =~ ^[0-9]+$ ]]; then
                 spellcheck_delta=$((spellcheck_after - spellcheck_before))
-                result INFO spellcheck-memory "before_kb=$spellcheck_before after_kb=$spellcheck_after delta_kb=$spellcheck_delta budget_kb=$SPELLCHECK_PSS_DELTA_BUDGET_KB over_budget=$(gt "$spellcheck_delta" "$SPELLCHECK_PSS_DELTA_BUDGET_KB") build=$BUILD keyboard_shown=true protocol=pss-delta-first-answer"
+                result INFO spellcheck-memory "before_kb=$spellcheck_before after_kb=$spellcheck_after delta_kb=$spellcheck_delta budget_kb=$SPELLCHECK_PSS_DELTA_BUDGET_KB over_budget=$(gt "$spellcheck_delta" "$SPELLCHECK_PSS_DELTA_BUDGET_KB") build=$BUILD keyboard_shown=true protocol=pss-delta-first-checked-answer"
             else
                 result FAIL spellcheck-memory "PSS endpoints unreadable (before='${spellcheck_before:-}' after='${spellcheck_after:-}')"
             fi
@@ -1572,7 +1574,7 @@ if leg_on spellcheck; then
         # process kill; wait for that cleanup before asserting a cold process.
         sleep 3
         if kill_spellcheck_app; then
-            log "spellcheck: cold session and first answer"
+            log "spellcheck: cold session and first checked answer"
             run_spellcheck_probe testColdFirstAnswer spellcheck-cold "$spellcheck_runner" \
                 "$OUTDIR/spellcheck-cold-instrumentation.txt"
         else

@@ -1407,7 +1407,7 @@ class SpellCheckPerfProbeTest(unittest.TestCase):
             if metric
             else ""
         )
-        marker = "INSTRUMENTATION_STATUS: tt_perf_first_answer=1\n" if first_answer else ""
+        marker = "INSTRUMENTATION_STATUS: tt_perf_first_checked_answer=1\n" if first_answer else ""
         self.fixture.write_text(
             marker + result_line + "OK (1 test)\nINSTRUMENTATION_CODE: -1\n",
             encoding="utf-8",
@@ -1468,11 +1468,14 @@ class SpellCheckPerfProbeTest(unittest.TestCase):
         self.assertIn("RESULT|FAIL|spellcheck-warm|", result.stdout)
         self.assertIn("failures=1", result.stdout)
 
-    def test_missing_first_answer_marker_fails_memory_measurement(self) -> None:
+    def test_missing_first_checked_answer_marker_fails_memory_measurement(self) -> None:
         result = self.run_probe(strict=False, first_answer=False)
         output = result.stdout + result.stderr
         self.assertEqual(0, result.returncode, output)
-        self.assertIn("RESULT|FAIL|spellcheck-memory|first warm answer marker missing", result.stdout)
+        self.assertIn(
+            "RESULT|FAIL|spellcheck-memory|first checked answer marker missing",
+            result.stdout,
+        )
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLea
 import rkr.simplekeyboard.inputmethod.latin.morphology.SharedTatarMorphology
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder
+import rkr.simplekeyboard.inputmethod.latin.suggestions.glideTrace
 
 /** Adapts the credential-protected personal files to a read-only snapshot source. */
 internal object AndroidPersonalDictionarySource {
@@ -96,19 +97,23 @@ internal object SharedSpellCheckerEngine {
         val personalContext = context.applicationContext
         try {
             loadExecutor.execute {
-                if (neighbors == null) {
-                    val built = try {
-                        KeyNeighborTableBuilder.fromTatarLayout(personalContext)
-                    } catch (_: Exception) {
-                        null
-                    }
-                    if (built != null) {
-                        synchronized(lock) {
-                            if (neighbors == null) neighbors = built
+                glideTrace("TT#spellPrepareTask") {
+                    if (neighbors == null) {
+                        val built = glideTrace("TT#spellLayout") {
+                            try {
+                                KeyNeighborTableBuilder.fromTatarLayout(personalContext)
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                        if (built != null) {
+                            synchronized(lock) {
+                                if (neighbors == null) neighbors = built
+                            }
                         }
                     }
+                    get(personalContext).prepare()
                 }
-                get(personalContext).prepare()
             }
         } catch (_: Exception) {
         }
@@ -142,16 +147,20 @@ internal object SharedSpellCheckerEngine {
             val opener = SpellCheckerAssetOpener { path ->
                 deviceContext.assets.open(path, AssetManager.ACCESS_STREAMING)
             }
-            val loaded = SpellCheckerDictionaryLoader(
-                opener,
-                { SharedTatarMorphology.getIfLoaded() },
-                AndroidPersonalDictionarySource.create(personalContext),
-                neighbors ?: emptyNeighbors,
-                AndroidSpellCheckerDictionaryLeaseSource(deviceContext),
-            ).load()
+            val loaded = glideTrace("TT#spellDictionaries") {
+                SpellCheckerDictionaryLoader(
+                    opener,
+                    { SharedTatarMorphology.getIfLoaded() },
+                    AndroidPersonalDictionarySource.create(personalContext),
+                    neighbors ?: emptyNeighbors,
+                    AndroidSpellCheckerDictionaryLeaseSource(deviceContext),
+                ).load()
+            }
             // Warming stays behind the dictionaries: the acceptor asset is read on this worker,
             // never inside a binder call.
-            if (loaded != null) SharedTatarMorphology.get(personalContext)
+            glideTrace("TT#morphLoad") {
+                if (loaded != null) SharedTatarMorphology.get(personalContext)
+            }
             loaded
         } catch (_: Exception) {
             null

@@ -21,6 +21,7 @@ import android.content.Context;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
+import android.os.Trace;
 import android.test.InstrumentationTestCase;
 import android.test.InstrumentationTestRunner;
 import android.util.Log;
@@ -44,7 +45,7 @@ import junit.framework.AssertionFailedError;
 /**
  * Measures the exported spell checker through the platform client from the test package's own
  * process. The cold arm covers session creation, service binding and process creation up to the
- * first sentence callback; the warm arm times complete sentence round trips on one session.
+ * first checked sentence callback; the warm arm times checked sentence round trips on one session.
  *
  * The host ritual kills the keyboard package before the cold method. Selection is made with the
  * three secure spell-checker settings and is restored afterwards, including deletion of keys
@@ -60,31 +61,63 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
                 try {
                     assertNoAppProcess();
                     final Callback callback = new Callback();
-                    final RoundTrip round = new RoundTrip();
                     final TextInfo[] requests = {new TextInfo(paragraph)};
-                    callback.round = round;
                     final SpellCheckerSession[] session = new SpellCheckerSession[1];
+                    final long[] startedNanos = {0L};
+                    final long deadline = SystemClock.elapsedRealtime() + COLD_TIMEOUT_MS;
                     try {
-                        // Callbacks run on the main looper, so creation and the first request
-                        // must run there. The clock starts immediately before session creation.
+                        // Callbacks run on the main looper, so creation and every request run
+                        // there. The clock starts immediately before session creation.
                         getInstrumentation().runOnMainSync(new Runnable() {
                             @Override public void run() {
-                                round.startedNanos = SystemClock.elapsedRealtimeNanos();
+                                startedNanos[0] = SystemClock.elapsedRealtimeNanos();
                                 session[0] = textServicesManager().newSpellCheckerSession(
                                         null, TATAR_RU, callback, false);
-                                if (session[0] != null) {
-                                    session[0].getSentenceSuggestions(requests, SUGGESTIONS_LIMIT);
-                                }
                             }
                         });
                         assertNotNull("the tt_RU spell-checker session must be created", session[0]);
-                        assertSentenceAnswer(round.await(COLD_TIMEOUT_MS));
-                        final double sampleMs = nanosToMs(round.elapsedNanos());
-                        emitResult(statsLine(
-                                "RESULT|INFO|spellcheck-cold|runs=1 words=" + WORDS,
-                                Collections.singletonList(sampleMs),
-                                COLD_BUDGET_MS,
-                                COLD_PROTOCOL));
+                        // Give the background source one bounded preparation window instead of
+                        // flooding unchecked requests into the platform's spell-request throttle.
+                        SystemClock.sleep(COLD_INITIAL_DELAY_MS);
+                        double firstCallbackMs = Double.NaN;
+                        int requestCount = 0;
+                        while (true) {
+                            final RoundTrip round = new RoundTrip();
+                            round.startedNanos = startedNanos[0];
+                            callback.round = round;
+                            getInstrumentation().runOnMainSync(new Runnable() {
+                                @Override public void run() {
+                                    session[0].getSentenceSuggestions(requests, SUGGESTIONS_LIMIT);
+                                }
+                            });
+                            requestCount++;
+                            final long remainingMs = Math.max(1L,
+                                    deadline - SystemClock.elapsedRealtime());
+                            final SentenceSuggestionsInfo[] answers = round.await(remainingMs);
+                            if (Double.isNaN(firstCallbackMs)) {
+                                firstCallbackMs = nanosToMs(round.elapsedNanos());
+                            }
+                            Log.i(TAG, "cold callback request=" + requestCount
+                                    + " elapsed_ms=" + fmt(nanosToMs(round.elapsedNanos()))
+                                    + " flagged_words=" + flaggedWordCount(answers));
+                            if (isCheckedAnswer(answers)) {
+                                final double checkedMs = nanosToMs(round.elapsedNanos());
+                                emitResult(statsLine(
+                                        "RESULT|INFO|spellcheck-cold|runs=1 words=" + WORDS
+                                                + " requests=" + requestCount
+                                                + " flagged_words=" + EXPECTED_FLAGGED_WORDS
+                                                + " checked_index=" + EXPECTED_FLAG_INDEX
+                                                + " first_callback_ms=" + fmt(firstCallbackMs),
+                                        Collections.singletonList(checkedMs),
+                                        COLD_BUDGET_MS,
+                                        COLD_PROTOCOL));
+                                return;
+                            }
+                            if (SystemClock.elapsedRealtime() >= deadline) {
+                                throw new AssertionFailedError(
+                                        "no checked sentence answer before the cold timeout");
+                            }
+                        }
                     } finally {
                         closeQuietly(session[0]);
                     }
@@ -104,10 +137,22 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
                 SpellCheckerSession session = null;
                 try {
                     session = newSession(callback);
+                    int readyWarmups = 0;
+                    final long readyDeadline = SystemClock.elapsedRealtime() + READY_TIMEOUT_MS;
                     for (int i = 0; i < WARMUPS; i++) {
-                        final RoundTrip round = new RoundTrip();
-                        submit(session, requests, callback, round, false);
-                        assertSentenceAnswer(round.await(WARM_TIMEOUT_MS));
+                        while (true) {
+                            final RoundTrip round = new RoundTrip();
+                            submit(session, requests, callback, round, false);
+                            final SentenceSuggestionsInfo[] answers = round.await(WARM_TIMEOUT_MS);
+                            if (isCheckedAnswer(answers)) {
+                                break;
+                            }
+                            readyWarmups++;
+                            if (SystemClock.elapsedRealtime() >= readyDeadline) {
+                                throw new AssertionFailedError(
+                                        "no checked sentence answer before the warm readiness timeout");
+                            }
+                        }
                         if (i == 0) {
                             awaitHostPssSample();
                         }
@@ -117,13 +162,18 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
                     for (int i = 0; i < MEASURED_RUNS; i++) {
                         final RoundTrip round = new RoundTrip();
                         submit(session, requests, callback, round, true);
-                        assertSentenceAnswer(round.await(WARM_TIMEOUT_MS));
+                        final SentenceSuggestionsInfo[] answers = round.await(WARM_TIMEOUT_MS);
+                        assertTrue("a measured answer was not checked",
+                                isCheckedAnswer(answers));
                         samples.add(nanosToMs(round.elapsedNanos()));
                     }
 
                     emitResult(statsLine(
                             "RESULT|INFO|spellcheck-warm|runs=" + MEASURED_RUNS
-                                    + " warmups=" + WARMUPS + " words=" + WORDS,
+                                    + " warmups=" + WARMUPS + " ready_warmups=" + readyWarmups
+                                    + " words=" + WORDS
+                                    + " flagged_words=" + EXPECTED_FLAGGED_WORDS
+                                    + " checked_index=" + EXPECTED_FLAG_INDEX,
                             samples,
                             WARM_BUDGET_MS,
                             WARM_PROTOCOL));
@@ -285,6 +335,27 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
                 answers[0].getSuggestionsCount());
     }
 
+    /** The paragraph's known typo proves that the source was loaded before the answer. */
+    private static boolean isCheckedAnswer(SentenceSuggestionsInfo[] answers) {
+        final SuggestionsInfo expected = answers[0].getSuggestionsInfoAt(EXPECTED_FLAG_INDEX);
+        return flaggedWordCount(answers) == EXPECTED_FLAGGED_WORDS
+                && (expected.getSuggestionsAttributes()
+                        & SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO) != 0;
+    }
+
+    private static int flaggedWordCount(SentenceSuggestionsInfo[] answers) {
+        assertSentenceAnswer(answers);
+        int flagged = 0;
+        for (int i = 0; i < WORDS; i++) {
+            final SuggestionsInfo word = answers[0].getSuggestionsInfoAt(i);
+            if ((word.getSuggestionsAttributes()
+                    & SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO) != 0) {
+                flagged++;
+            }
+        }
+        return flagged;
+    }
+
     private static void closeQuietly(SpellCheckerSession session) {
         if (session == null) {
             return;
@@ -310,7 +381,7 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
     /** Pauses the warm run while the host samples PSS after the first answer. */
     private void awaitHostPssSample() {
         final Bundle status = new Bundle();
-        status.putInt("tt_perf_first_answer", 1);
+        status.putInt("tt_perf_first_checked_answer", 1);
         getInstrumentation().sendStatus(0, status);
         final long deadline = SystemClock.elapsedRealtime() + PSS_WAIT_TIMEOUT_MS;
         while (SystemClock.elapsedRealtime() < deadline) {
@@ -377,9 +448,14 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
             if (finishedNanos != 0L) {
                 return;
             }
-            finishedNanos = SystemClock.elapsedRealtimeNanos();
-            answer = results;
-            done.countDown();
+            Trace.beginSection("TT#spellClientCallback");
+            try {
+                finishedNanos = SystemClock.elapsedRealtimeNanos();
+                answer = results;
+                done.countDown();
+            } finally {
+                Trace.endSection();
+            }
         }
 
         SentenceSuggestionsInfo[] await(long timeoutMs) {
@@ -419,15 +495,19 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
     };
 
     private static final int WORDS = 200;
+    private static final int EXPECTED_FLAG_INDEX = 38;
+    private static final int EXPECTED_FLAGGED_WORDS = 1;
     private static final int SUGGESTIONS_LIMIT = 5;
     private static final int WARMUPS = 5;
     private static final int MEASURED_RUNS = 31;
     private static final long WARM_TIMEOUT_MS = 15_000L;
+    private static final long READY_TIMEOUT_MS = 30_000L;
     private static final long COLD_TIMEOUT_MS = 30_000L;
+    private static final long COLD_INITIAL_DELAY_MS = 500L;
     private static final long PSS_WAIT_TIMEOUT_MS = 60_000L;
     private static final String PSS_MARKER_PATH = "/data/local/tmp/tt-spellcheck-after-pss";
     private static final double WARM_BUDGET_MS = 100.0;
     private static final double COLD_BUDGET_MS = 500.0;
     private static final String WARM_PROTOCOL = "protocol=warm-sentence-request-to-callback";
-    private static final String COLD_PROTOCOL = "protocol=cold-session-request-to-first-callback";
+    private static final String COLD_PROTOCOL = "protocol=cold-session-request-to-first-checked-callback";
 }
