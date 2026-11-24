@@ -346,6 +346,8 @@ internal class TatarWordformMatcher {
     private fun matchNominalBase(baseSlot: Int): Boolean {
         copySlot(NOMINAL_BASE_SLOT, baseSlot)
         selectStem(NOMINAL_BASE_SLOT)
+        val baseLength = lengths[NOMINAL_BASE_SLOT]
+        if (baseLength <= 0 || !queryStartsWith(NOMINAL_BASE_SLOT, baseLength - 1)) return false
         val lexicalException = exception
         exception = null
         return try {
@@ -353,6 +355,22 @@ internal class TatarWordformMatcher {
         } finally {
             exception = lexicalException
         }
+    }
+
+    /** Some verb paradigms replace one final vowel; all longer prefixes must match the query. */
+    private fun queryStartsWithDerivedStem(): Boolean {
+        val length = lengths[DERIVED_STEM_SLOT]
+        if (length <= 0) return false
+        val required = if (charAt(DERIVED_STEM_SLOT, length - 1) in VOWELS) length - 1 else length
+        return queryStartsWith(DERIVED_STEM_SLOT, required)
+    }
+
+    private fun queryStartsWith(slot: Int, prefixLength: Int): Boolean {
+        if (prefixLength < 0 || prefixLength > queryLength) return false
+        for (index in 0 until prefixLength) {
+            if (charAt(slot, index) != query[index]) return false
+        }
+        return true
     }
 
     /** One conservative derivation layer; derived stems do not inherit lexical overrides. */
@@ -364,14 +382,14 @@ internal class TatarWordformMatcher {
                 for (pattern in VERB_DERIV_PATTERNS) {
                     selectStem(baseSlot)
                     attach(DERIVED_STEM_SLOT, STEM_SLOT, pattern, harmony, devoicedFinal)
-                    if (matchVerbStem(DERIVED_STEM_SLOT)) return true
+                    if (queryStartsWithDerivedStem() && matchVerbStem(DERIVED_STEM_SLOT)) return true
                 }
             }
             if (nounChain) {
                 for (pattern in NOUN_VERB_DERIV_PATTERNS) {
                     selectStem(baseSlot)
                     attach(DERIVED_STEM_SLOT, STEM_SLOT, pattern, harmony, false)
-                    if (matchVerbStem(DERIVED_STEM_SLOT)) return true
+                    if (queryStartsWithDerivedStem() && matchVerbStem(DERIVED_STEM_SLOT)) return true
                 }
             }
             false
