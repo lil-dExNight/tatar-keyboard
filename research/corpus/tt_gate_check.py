@@ -24,6 +24,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import domain_eval  # noqa: E402
 import evaluation_metrics as metrics  # noqa: E402
 import suggest_chain  # noqa: E402
 import suggest_eval  # noqa: E402
@@ -78,6 +79,14 @@ def main() -> int:
     parser.add_argument("--candidate-bigram", type=Path, required=True)
     parser.add_argument("--eval", dest="eval_path", type=Path,
                         default=suggest_eval.DEFAULT_EVAL)
+    parser.add_argument(
+        "--domain-dir", type=Path, default=None,
+        help="directory of canonical domain files written by scripts/domain_eval.py",
+    )
+    parser.add_argument(
+        "--domain-work-dir", type=Path,
+        default=ROOT / "research" / "corpus" / "out" / "tt_gate_domains",
+    )
     args = parser.parse_args()
 
     lines = suggest_eval.load_eval_lines(args.eval_path)
@@ -166,6 +175,42 @@ def main() -> int:
             engine_top4_report=engine,
         ),
     }
+    if args.domain_dir is not None:
+        domains = domain_eval.load_canonical_domains(args.domain_dir)
+        exclusion = {"rule": "not available from canonical inputs", "words": []}
+        baseline_domains = domain_eval.evaluate_assets(
+            domains,
+            dict_asset=args.baseline_dict,
+            bigram_asset=args.baseline_bigram,
+            output=args.domain_work_dir,
+            arm="baseline",
+            bootstrap_rounds=suggest_chain.BOOTSTRAP_ROUNDS,
+            exclusion_report=exclusion,
+        )
+        candidate_domains = domain_eval.evaluate_assets(
+            domains,
+            dict_asset=args.candidate_dict,
+            bigram_asset=args.candidate_bigram,
+            output=args.domain_work_dir,
+            arm="candidate",
+            bootstrap_rounds=suggest_chain.BOOTSTRAP_ROUNDS,
+            exclusion_report=exclusion,
+        )
+        decision = metrics.decide_domain_candidate(baseline_domains, candidate_domains)
+        args.domain_work_dir.mkdir(parents=True, exist_ok=True)
+        for name, value in (
+            ("domain-baseline.json", baseline_domains),
+            ("domain-candidate.json", candidate_domains),
+            ("domain-decision.json", decision),
+        ):
+            (args.domain_work_dir / name).write_text(
+                json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        report["domain_decision"] = decision
+        report["domain_gate_passed"] = decision["acceptable"]
+        report["acceptance_passed"] = report["gate_passed"] and decision["acceptable"]
+        domain_eval.print_decision(decision, stream=sys.stderr)
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 

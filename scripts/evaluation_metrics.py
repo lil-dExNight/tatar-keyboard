@@ -9,6 +9,8 @@ Commands:
   paired-ci INPUT.json       Compare per-record hit and denominator arrays.
   check-report REPORT.json  Validate top-k roles, denominators, pairing metadata, and
                             recomputed pct/pp rates.
+  decide-domains BASELINE.json CANDIDATE.json
+                            Apply the per-domain candidate decision rule.
 """
 from __future__ import annotations
 
@@ -25,6 +27,8 @@ VISIBLE_TOP_K = 3
 ENGINE_TOP_K = 4
 BOOTSTRAP_METHOD = "paired-sentence-bootstrap"
 SHARED_RESAMPLES = "shared-record-indices"
+DOMAIN_METRICS = ("coverage", "completion_cp3", "next_word")
+NATIVE_CHAT_DOMAIN = "native_chat"
 
 
 class EvaluationMetricError(ValueError):
@@ -204,6 +208,157 @@ def measurement_report(
     }
 
 
+def series_summary(
+    hits: Sequence[int],
+    denominators: Sequence[int],
+    *,
+    rounds: int = suggest_chain.BOOTSTRAP_ROUNDS,
+    seed: int = suggest_chain.BOOTSTRAP_SEED,
+) -> dict[str, object]:
+    """Summarize one bounded per-record metric with its CI95 and normal-approximation MDE."""
+    _validate_series(hits, denominators, hits, denominators)
+    numerator = sum(hits)
+    denominator = sum(denominators)
+    low, high = rate_ci95(hits, denominators, rounds=rounds, seed=seed)
+    pct = numerator * 100.0 / denominator
+    return {
+        "hits": numerator,
+        "denominator": denominator,
+        "pct": round(pct, 6),
+        "ci95": [round(low, 6), round(high, 6)],
+        "mde_pp": round(
+            suggest_chain.minimum_detectable_effect_pp(numerator / denominator, denominator),
+            6,
+        ),
+    }
+
+
+def _domain_series(
+    report: dict[str, object], required_metrics: Sequence[str]
+) -> dict[str, dict[str, object]]:
+    domains = report.get("domains")
+    if not isinstance(domains, list) or not domains:
+        raise EvaluationMetricError("domain report has no domains")
+    result: dict[str, dict[str, object]] = {}
+    for domain in domains:
+        if not isinstance(domain, dict) or not isinstance(domain.get("id"), str):
+            raise EvaluationMetricError("domain report contains an invalid domain")
+        identifier = domain["id"]
+        if identifier in result:
+            raise EvaluationMetricError(f"duplicate domain {identifier}")
+        series = domain.get("series")
+        digest = domain.get("input_sha256")
+        if not isinstance(series, dict) or not isinstance(digest, str) or len(digest) != 64:
+            raise EvaluationMetricError(f"domain {identifier} has no series or input hash")
+        for name in required_metrics:
+            values = series.get(name)
+            if not isinstance(values, dict):
+                raise EvaluationMetricError(f"domain {identifier} has no {name} series")
+            hits = values.get("hits")
+            denominators = values.get("denominators")
+            if not isinstance(hits, list) or not isinstance(denominators, list):
+                raise EvaluationMetricError(f"domain {identifier} has invalid {name} arrays")
+            _validate_series(hits, denominators, hits, denominators)
+        result[identifier] = domain
+    return result
+
+
+def decide_domain_candidate(
+    baseline_report: dict[str, object],
+    candidate_report: dict[str, object],
+    *,
+    rounds: int = suggest_chain.BOOTSTRAP_ROUNDS,
+    seed: int = suggest_chain.BOOTSTRAP_SEED,
+    metrics: Sequence[str] = DOMAIN_METRICS,
+) -> dict[str, object]:
+    """Apply the per-domain asset rule to candidate-minus-baseline paired measurements.
+
+    Native chat requires a nonnegative point delta and a nonnegative paired CI95 lower bound.
+    Each other domain permits a loss no larger than its baseline MDE. Without native chat the
+    same secondary-domain rule applies and the result is explicitly marked as a fallback.
+    """
+    if not metrics or any(name not in DOMAIN_METRICS for name in metrics):
+        raise EvaluationMetricError("unknown or empty domain metric selection")
+    if len(set(metrics)) != len(metrics):
+        raise EvaluationMetricError("duplicate domain metric selection")
+    baseline_domains = _domain_series(baseline_report, metrics)
+    candidate_domains = _domain_series(candidate_report, metrics)
+    if set(baseline_domains) != set(candidate_domains):
+        raise EvaluationMetricError("baseline and candidate domain sets differ")
+    native_present = NATIVE_CHAT_DOMAIN in baseline_domains
+    comparisons: dict[str, object] = {}
+    failures: list[str] = []
+    for identifier in baseline_domains:
+        baseline_domain = baseline_domains[identifier]
+        candidate_domain = candidate_domains[identifier]
+        if baseline_domain["input_sha256"] != candidate_domain["input_sha256"]:
+            raise EvaluationMetricError(f"domain {identifier} uses different evaluation inputs")
+        metric_results: dict[str, object] = {}
+        for name in metrics:
+            baseline = baseline_domain["series"][name]
+            candidate = candidate_domain["series"][name]
+            baseline_hits = baseline["hits"]
+            baseline_denominators = baseline["denominators"]
+            candidate_hits = candidate["hits"]
+            candidate_denominators = candidate["denominators"]
+            baseline_pct = (
+                sum(baseline_hits) * 100.0 / sum(baseline_denominators)
+            )
+            candidate_pct = (
+                sum(candidate_hits) * 100.0 / sum(candidate_denominators)
+            )
+            low, high = paired_delta_ci95(
+                baseline_hits,
+                baseline_denominators,
+                candidate_hits,
+                candidate_denominators,
+                rounds=rounds,
+                seed=seed,
+            )
+            delta = candidate_pct - baseline_pct
+            mde = suggest_chain.minimum_detectable_effect_pp(
+                sum(baseline_hits) / sum(baseline_denominators),
+                sum(baseline_denominators),
+            )
+            if identifier == NATIVE_CHAT_DOMAIN:
+                passed = delta >= 0.0 and low >= 0.0
+                rule = "delta >= 0 and paired CI95 lower bound >= 0"
+            else:
+                passed = delta >= -mde
+                rule = "delta >= -baseline MDE"
+            if not passed:
+                failures.append(f"{identifier}:{name}")
+            metric_results[name] = {
+                "baseline_pct": round(baseline_pct, 6),
+                "candidate_pct": round(candidate_pct, 6),
+                "delta_pp": round(delta, 6),
+                "delta_ci95": [round(low, 6), round(high, 6)],
+                "baseline_mde_pp": round(mde, 6),
+                "rule": rule,
+                "passed": passed,
+            }
+        comparisons[identifier] = metric_results
+    if native_present:
+        message = (
+            "native chat and every secondary domain passed"
+            if not failures
+            else "one or more domain metrics failed"
+        )
+    else:
+        message = "native chat absent; secondary domains only"
+        if failures:
+            message += "; one or more domain metrics failed"
+    return {
+        "acceptable": not failures,
+        "metrics": list(metrics),
+        "native_chat": "evaluated" if native_present else "absent",
+        "secondary_domain_fallback": not native_present,
+        "message": message,
+        "failures": failures,
+        "domains": comparisons,
+    }
+
+
 def _finite_interval(value: object, where: str) -> None:
     if (
         not isinstance(value, list)
@@ -326,13 +481,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     paired.add_argument("input", type=Path)
     check = subparsers.add_parser("check-report")
     check.add_argument("report", type=Path)
+    decision = subparsers.add_parser("decide-domains")
+    decision.add_argument("baseline", type=Path)
+    decision.add_argument("candidate", type=Path)
     args = parser.parse_args(argv)
     try:
         if args.command == "paired-ci":
             print(json.dumps(_paired_ci_command(args.input), indent=2, sort_keys=True))
-        else:
+        elif args.command == "check-report":
             validate_gate_report(_load_json(args.report))
             print("PASS: visible top-3, diagnostic engine top-4, denominators, and pairing")
+        else:
+            baseline = _load_json(args.baseline)
+            candidate = _load_json(args.candidate)
+            if not isinstance(baseline, dict) or not isinstance(candidate, dict):
+                raise EvaluationMetricError("domain reports must be JSON objects")
+            verdict = decide_domain_candidate(baseline, candidate)
+            print(json.dumps(verdict, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0 if verdict["acceptable"] else 1
     except EvaluationMetricError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2

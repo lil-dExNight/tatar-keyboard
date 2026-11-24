@@ -141,7 +141,12 @@ These inputs are in the repository:
   declaration names its three bigram-training inputs. `optional: true` is accepted only for
   external `${CORPUS_DIR}/` sources, so a tracked artifact cannot be marked optional, and
   required-coverage configuration and leak classification are separate: leak checks always use
-  the constant development/final semantics.
+  the constant development/final semantics. A development/final source marked `private: true`
+  resolves below `--private-dir` or `TT_PRIVATE_EVAL_DIR`, never below the repository; its
+  `bytes`, `lines`, and ordered `line_sha256` fields authenticate the whole file and its physical
+  lines. Each line hash covers its bytes without LF or a trailing CR; `bytes` covers the complete
+  file, including line endings. Present private sources join the same normalized collision checks,
+  while absent ones pass with a `private_skipped` report entry.
 - `data/evaluation/final-exclusions-tt.json` with `scripts/final_evaluation_exclusions.py`: the
   shared exclusion inventory both final-set builders apply. It covers the historical
   `tat_news_2015_1M` tuning input, the other final set, every Common Voice split, every TatSC
@@ -233,6 +238,42 @@ The common metric and split rules are:
   paired 2×2 counts plus deterministic metric deltas, without a confidence interval.
 - Evaluations run on the split that matches their role (development or final; see the split
   declarations above), never on training inputs and never tuned on the final set.
+
+## Per-domain evaluation
+
+Fetch the Common Voice and TatSC text with `research/corpus-sources/fetch_sources.py`, then run:
+
+```
+python3 scripts/domain_eval.py [--native-chat FILE] [--subtitles FILE] \
+    [--common-voice FILE] [--tatsc-audiobooks FILE] [--tatsc-web FILE] \
+    [--candidate-dict FILE --candidate-bigram FILE] [--output DIR]
+```
+
+The registry covers native chat, Common Voice test, TatSC audiobooks and crowdsourced-web test,
+an OpenSubtitles sample, and the committed Tatoeba eval set. Native chat is printed first when
+present. The default input paths are the fetcher's text output, the local OpenSubtitles dump, and
+`app/src/test/resources/tt_eval_sentences.txt`; unavailable optional domains are listed as skipped.
+OpenSubtitles uses every tenth physical line starting with the first. Native placeholders split a
+line into independent segments, so no pair crosses a placeholder. Every segment or raw line is
+normalized by `make_eval_set.normalize_sentence`, restricted to the eval-set word-length bounds,
+and deduplicated before `scripts/suggest_eval.py` runs.
+
+The table reports token coverage, headline coverage, visible top-3 completion after three letters,
+and visible top-3 next-word prediction, each with CI95 and minimum detectable effect. JSON reports
+retain the canonical-input hashes and per-record arrays. With a candidate dictionary and bigram
+table, the decision requires native chat to have a nonnegative point delta and a nonnegative paired
+CI95 lower bound for every metric. Every other domain may lose no more than its baseline MDE. If
+native chat is absent, the output says so and applies only the secondary-domain rule. The same
+canonical directory enables this decision in `research/corpus/tt_gate_check.py --domain-dir DIR`
+and in `scripts/accept_wordset.py --domain-dir DIR`;
+`research/corpus/measure_accept.py --domain-dir DIR` applies the coverage part.
+
+Raw subtitle coverage remains in the subtitle row. Headline coverage removes a reproducible set of
+foreign proper names: a normalized token, or its stem before a suffix in the production
+inflection table, must contain no Tatar-specific letter; the token must have the proper-noun
+capitalization evidence defined by `research/corpus/filters.py` in the subtitle sample and occur
+in no other available evaluation domain. Both hits and denominators for those tokens
+are removed. The exact set and rule are stored in the JSON report.
 
 ## `rebuild_assets.py`
 

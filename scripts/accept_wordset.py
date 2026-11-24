@@ -102,7 +102,14 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--work-dir", type=Path, default=None,
                         help="where the step reports are saved (default: "
                              "research/corpus/out/accept_wordset/<source>/)")
+    parser.add_argument(
+        "--domain-dir", type=Path, default=None,
+        help="Tatar canonical domain directory from scripts/domain_eval.py; enables the "
+             "per-domain coverage and full-chain decision",
+    )
     args = parser.parse_args(argv)
+    if args.domain_dir is not None and args.language != "tat":
+        parser.error("--domain-dir is only valid with --language tat")
     if not SOURCE_NAME.fullmatch(args.source):
         parser.error("--source must be a lower-case slug (letters, digits, dashes)")
     if args.queries is None:
@@ -123,22 +130,27 @@ def missing_inputs(args: argparse.Namespace) -> list[str]:
                         ("query list", args.queries)):
         if not path.is_file():
             missing.append(f"{label}: {path}")
+    if args.domain_dir is not None and not args.domain_dir.is_dir():
+        missing.append(f"canonical domain directory: {args.domain_dir}")
     return missing
 
 
 def build_steps(args: argparse.Namespace) -> list[Step]:
     tag = args.language
+    coverage_argv = [MEASURE_SCRIPT, tag, args.baseline, *args.corpus]
+    gate_argv = [GATE_SCRIPTS[tag], "--candidate-dict", args.candidate_dict,
+                 "--candidate-bigram", args.candidate_bigram]
+    if args.domain_dir is not None:
+        work_dir = args.work_dir if args.work_dir is not None else DEFAULT_WORK_DIR / args.source
+        coverage_argv += ["--domain-dir", args.domain_dir]
+        gate_argv += ["--domain-dir", args.domain_dir,
+                      "--domain-work-dir", work_dir / "domains"]
     steps = [
         Step("select",
              [SELECT_SCRIPT, "select", "--baseline", args.baseline],
              "select.json", True),
-        Step("coverage",
-             [MEASURE_SCRIPT, tag, args.baseline, *args.corpus],
-             "coverage.json", True),
-        Step("gate",
-             [GATE_SCRIPTS[tag], "--candidate-dict", args.candidate_dict,
-              "--candidate-bigram", args.candidate_bigram],
-             "gate.json", True),
+        Step("coverage", coverage_argv, "coverage.json", True),
+        Step("gate", gate_argv, "gate.json", True),
     ]
     audit_argv = [AUDIT_SCRIPT, "query-audit", "--asset", args.candidate_dict,
                   "--queries", args.queries]
@@ -271,8 +283,15 @@ def main(argv=None) -> int:
                 chain_delta = relay(report, step.name, "chain_top3_delta_pp")
                 chain_ci = relay(report, step.name, "chain_top3_delta_ci95")
                 passed = relay(report, step.name, "gate_passed")
+                if args.domain_dir is not None:
+                    domain_passed = relay(
+                        report, step.name, "domain_decision", "acceptable"
+                    )
+                    passed = passed and domain_passed
             except StepFailed:
                 return 1
+            if args.domain_dir is not None:
+                print(f"      per-domain decision: {'PASSED' if domain_passed else 'REJECTED'}")
             verdict = "PASSED" if passed else "REJECTED"
             print(f"      coverage delta {coverage_delta:+.4f} pp, chain top-3 delta "
                   f"{chain_delta:+.4f} pp CI95 {chain_ci}: {verdict}")

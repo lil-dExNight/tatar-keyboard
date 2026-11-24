@@ -28,6 +28,7 @@ Coverage is computed for four dictionaries at once, on the same held-out split:
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import sys
@@ -42,6 +43,8 @@ import filters as F
 import dictionary_coverage as cov
 import dictionary_pack as dp
 import dict_accept as DA
+import domain_eval
+import evaluation_metrics as domain_metrics
 from measure_filtered import collect_split, held_tokens
 
 
@@ -63,10 +66,38 @@ def top100k(frequencies: dict[str, int]) -> set[str]:
     return {w for w, _ in sorted(frequencies.items(), key=lambda kv: (-kv[1], kv[0]))[:100_000]}
 
 
-def main() -> None:
-    tag = sys.argv[1]
-    baseline_dir = Path(sys.argv[2])
-    paths = sys.argv[3:]
+def domain_coverage_report(
+    domains: list[domain_eval.DomainData], vocabulary: set[str]
+) -> dict[str, object]:
+    entries = []
+    for domain in domains:
+        hits = [
+            sum(word in vocabulary for word in line.split(" ")) for line in domain.lines
+        ]
+        denominators = [len(line.split(" ")) for line in domain.lines]
+        entries.append(
+            {
+                "id": domain.spec.identifier,
+                "input_sha256": domain.input_sha256,
+                "series": {"coverage": {"hits": hits, "denominators": denominators}},
+            }
+        )
+    return {"domains": entries}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("tag", choices=("tat", "rus"))
+    parser.add_argument("baseline_dir", type=Path)
+    parser.add_argument("paths", nargs="+", type=Path)
+    parser.add_argument(
+        "--domain-dir", type=Path, default=None,
+        help="directory of canonical domain files written by scripts/domain_eval.py",
+    )
+    args = parser.parse_args(argv)
+    tag = args.tag
+    baseline_dir = args.baseline_dir
+    paths = args.paths
     language = cov.language_for(tag)
     shipped, boundary, baseline_sha = load_baseline(tag, baseline_dir)
 
@@ -128,9 +159,19 @@ def main() -> None:
     rejected_words = set(queue) - set(accepted)
     out["held_hits_on_rejected"] = sum(c for w, c in held.items() if w in rejected_words)
     out["held_hits_on_accepted"] = sum(c for w, c in held.items() if w in accepted)
+    if args.domain_dir is not None:
+        domains = domain_eval.load_canonical_domains(args.domain_dir)
+        baseline_domains = domain_coverage_report(domains, set(shipped))
+        accepted_domains = domain_coverage_report(domains, dicts["accepted"])
+        decision = domain_metrics.decide_domain_candidate(
+            baseline_domains, accepted_domains, metrics=("coverage",)
+        )
+        out["domain_decision"] = decision
+        domain_eval.print_decision(decision, stream=sys.stderr)
     json.dump(out, sys.stdout, ensure_ascii=False, indent=2)
     print()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

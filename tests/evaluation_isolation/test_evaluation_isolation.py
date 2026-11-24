@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import bz2
+import contextlib
 import gzip
 import hashlib
 import importlib.util
+import io
 import json
+import os
 import sys
 import tempfile
 import types
@@ -203,6 +206,129 @@ class OptionalCorpusDeclarationTest(unittest.TestCase):
             report = splits.check_splits(root, config, corpus_dir=root / "absent")
             self.assertEqual(report["records"]["development:evaluation_words"], 2)
             self.assertEqual(report["collision_count"], 0)
+
+
+class PrivateDeclarationTest(unittest.TestCase):
+    def config(self, root: Path, private_text: bytes) -> Path:
+        lines = private_text.split(b"\n")
+        if lines and lines[-1] == b"":
+            lines.pop()
+        private = {
+            "id": "native-final",
+            "kind": "sentences",
+            "split": "final",
+            "path": "native/final.txt",
+            "private": True,
+            "bytes": len(private_text),
+            "lines": len(lines),
+            "line_sha256": [
+                hashlib.sha256(line.removesuffix(b"\r")).hexdigest() for line in lines
+            ],
+        }
+        path = root / "splits.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "language": "tat",
+                    "evaluation_splits": ["development"],
+                    "sources": [
+                        {
+                            "id": "dev",
+                            "kind": "sentences",
+                            "split": "development",
+                            "path": "dev.txt",
+                        },
+                        {
+                            "id": "train",
+                            "kind": "bigram_training",
+                            "split": "train",
+                            "path": "train.txt",
+                        },
+                        private,
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (root / "dev.txt").write_text("бер ике өч\n", encoding="utf-8")
+        (root / "train.txt").write_text("дүрт биш алты\n", encoding="utf-8")
+        return path
+
+    def test_absent_private_file_passes_and_reports_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = self.config(root, "җиде сигез тугыз\n".encode())
+            document = json.loads(config.read_text(encoding="utf-8"))
+            document["evaluation_splits"] = ["development", "final"]
+            config.write_text(json.dumps(document), encoding="utf-8")
+            report = splits.check_splits(root, config, private_dir=root / "absent")
+            self.assertTrue(report["passed"])
+            self.assertEqual(report["private_skipped"], ["native-final"])
+            self.assertEqual(report["private_checked"], [])
+            self.assertNotIn("final:sentences", report["records"])
+
+    def test_present_private_file_is_verified_and_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            text = "җиде сигез тугыз\n".encode()
+            config = self.config(root, text)
+            private = root / "private" / "native"
+            private.mkdir(parents=True)
+            (private / "final.txt").write_bytes(text)
+            report = splits.check_splits(root, config, private_dir=root / "private")
+            self.assertTrue(report["passed"])
+            self.assertEqual(report["private_checked"], ["native-final"])
+            self.assertEqual(report["private_skipped"], [])
+            self.assertEqual(report["records"]["final:sentences"], 1)
+
+    def test_present_private_file_must_match_declared_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = self.config(root, "җиде сигез тугыз\n".encode())
+            private = root / "private" / "native"
+            private.mkdir(parents=True)
+            changed = "җиде сигез ун\n".encode()
+            (private / "final.txt").write_bytes(changed)
+            document = json.loads(config.read_text(encoding="utf-8"))
+            document["sources"][-1]["bytes"] = len(changed)
+            config.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(splits.SplitConfigError, "line 1.*hash"):
+                splits.check_splits(root, config, private_dir=root / "private")
+
+    def test_cli_private_argument_overrides_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            text = "җиде сигез тугыз\n".encode()
+            config = self.config(root, text)
+            private = root / "private" / "native"
+            private.mkdir(parents=True)
+            (private / "final.txt").write_bytes(text)
+            output = io.StringIO()
+            with mock.patch.dict(
+                os.environ, {splits.PRIVATE_DIR_ENV: str(root / "absent")}
+            ), contextlib.redirect_stdout(output):
+                code = splits.main(
+                    [str(config), "--root", str(root), "--private-dir", str(root / "private")]
+                )
+            self.assertEqual(0, code)
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["private_checked"], ["native-final"])
+
+    def test_private_collision_with_training_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            text = "ДҮРТ биш алты!\n".encode()
+            config = self.config(root, text)
+            private = root / "private" / "native"
+            private.mkdir(parents=True)
+            (private / "final.txt").write_bytes(text)
+            with self.assertRaises(splits.SplitCollisionError) as caught:
+                splits.check_splits(root, config, private_dir=root / "private")
+            self.assertEqual(caught.exception.report["collision_count"], 1)
+            self.assertEqual(
+                caught.exception.report["collisions"][0]["normalized"],
+                "дүрт биш алты",
+            )
 
 
 class LiveDeclarationTest(unittest.TestCase):

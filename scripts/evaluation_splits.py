@@ -18,11 +18,17 @@ portable ${CORPUS_DIR}/ prefix used by optional raw-corpus declarations; committ
 be optional. An optional source is skipped only while its file is absent; a present file is
 always parsed. Cross-split leak classification is fixed to development/final, while an optional
 `evaluation_splits` field only controls which committed sentence roles are required.
+A source with `private: true` names a file below the local private-data directory instead of
+the repository. Its `bytes`, `lines`, and ordered `line_sha256` fields authenticate the physical
+file lines without committing their contents. `--private-dir` or TT_PRIVATE_EVAL_DIR supplies
+the directory; absent private files are reported as skipped.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import sys
 import unicodedata
 from collections import Counter
@@ -42,6 +48,7 @@ SPLITS = frozenset(("train", "development", "final"))
 EVALUATION_SPLITS = frozenset(("development", "final"))
 CORPUS_DIR_PREFIX = "${CORPUS_DIR}/"
 DEFAULT_CORPUS_DIR = Path.home() / "corpora-leipzig"
+PRIVATE_DIR_ENV = "TT_PRIVATE_EVAL_DIR"
 
 
 class SplitConfigError(ValueError):
@@ -101,18 +108,17 @@ def _source_path(root: Path, source: dict[str, object], corpus_dir: Path) -> Pat
     return root / configured
 
 
-def _records(
-    root: Path,
+def _records_from_rows(
     source: dict[str, object],
     alphabet: frozenset[str],
-    corpus_dir: Path,
-) -> Iterable[tuple[str, int, str]]:
-    relative = Path(str(source["path"]))
-    path = _source_path(root, source, corpus_dir)
-    kind = source["kind"]
+    rows: Iterable[tuple[int, str]],
+    relative: Path,
+) -> Iterator[tuple[str, int, str]]:
+    kind = str(source["kind"])
     if kind in ("sentences", "bigram_training"):
         column = int(source.get("sentence_column", 0))
-        for line_number, fields in _rows(path):
+        for line_number, line in rows:
+            fields = line.split("\t")
             if column >= len(fields):
                 raise SplitConfigError(
                     f"{relative}:{line_number}: sentence column {column} is absent"
@@ -122,7 +128,8 @@ def _records(
                 yield normalized, line_number, fields[column]
     else:
         column = int(source.get("word_column", 0))
-        for line_number, fields in _rows(path):
+        for line_number, line in rows:
+            fields = line.split("\t")
             if column >= len(fields):
                 raise SplitConfigError(
                     f"{relative}:{line_number}: word column {column} is absent"
@@ -130,6 +137,77 @@ def _records(
             normalized = normalize_word(fields[column], alphabet)
             if normalized is not None:
                 yield normalized, line_number, fields[column]
+
+
+def _records(
+    root: Path,
+    source: dict[str, object],
+    alphabet: frozenset[str],
+    corpus_dir: Path,
+) -> Iterator[tuple[str, int, str]]:
+    relative = Path(str(source["path"]))
+    path = _source_path(root, source, corpus_dir)
+    rows = ((line_number, "\t".join(fields)) for line_number, fields in _rows(path))
+    yield from _records_from_rows(source, alphabet, rows, relative)
+
+
+def _private_path(private_dir: Path | None, source: dict[str, object]) -> Path | None:
+    if private_dir is None:
+        return None
+    relative = Path(str(source["path"]))
+    path = private_dir.joinpath(*relative.parts)
+    resolved = path.resolve()
+    private_root = private_dir.resolve()
+    if private_root not in resolved.parents:
+        raise SplitConfigError(f"private source {source['id']} escapes the private-data directory")
+    return path
+
+
+def _private_rows(path: Path, source: dict[str, object]) -> list[tuple[int, str]]:
+    """Verify the authenticated line list; return the decoded physical lines."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise SplitConfigError(f"cannot open private source {source['id']}: {error}") from error
+    if len(data) != int(source["bytes"]):
+        raise SplitConfigError(
+            f"private source {source['id']} is {len(data)} bytes, declared {source['bytes']}"
+        )
+    pieces = data.split(b"\n")
+    if pieces and pieces[-1] == b"":
+        pieces.pop()
+    if len(pieces) != int(source["lines"]):
+        raise SplitConfigError(
+            f"private source {source['id']} has {len(pieces)} lines, declared {source['lines']}"
+        )
+    declared = source["line_sha256"]
+    if not isinstance(declared, list) or len(declared) != len(pieces):
+        raise SplitConfigError(f"private source {source['id']} has a stale line-hash list")
+    lines: list[tuple[int, str]] = []
+    for line_number, raw in enumerate(pieces, 1):
+        digest = hashlib.sha256(raw.removesuffix(b"\r")).hexdigest()
+        if digest != declared[line_number - 1]:
+            raise SplitConfigError(
+                f"private source {source['id']} line {line_number} does not match its hash"
+            )
+        try:
+            lines.append((line_number, raw.removesuffix(b"\r").decode("utf-8")))
+        except UnicodeDecodeError as error:
+            raise SplitConfigError(
+                f"private source {source['id']} line {line_number} is not UTF-8"
+            ) from error
+    filtered: list[tuple[int, str]] = []
+    skipped_header = False
+    for line_number, line in lines:
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if not skipped_header:
+            skipped_header = True
+            if fields[0] in ("word", "case_id"):
+                continue
+        filtered.append((line_number, line))
+    return filtered
 
 
 def _validate_config(
@@ -171,6 +249,36 @@ def _validate_config(
                 raise SplitConfigError(
                     f"source {source['id']} cannot make a committed artifact optional"
                 )
+        private = source.get("private", False)
+        if not isinstance(private, bool):
+            raise SplitConfigError(f"source {source['id']} private must be a boolean")
+        if private:
+            if source["split"] not in EVALUATION_SPLITS or source["kind"] == "bigram_training":
+                raise SplitConfigError(
+                    f"private source {source['id']} must be a development/final evaluation source"
+                )
+            if source.get("optional", False):
+                raise SplitConfigError(f"private source {source['id']} cannot be optional")
+            for field in ("bytes", "lines"):
+                value = source.get(field)
+                if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                    raise SplitConfigError(
+                        f"private source {source['id']} has no valid {field}"
+                    )
+            hashes = source.get("line_sha256")
+            if (
+                not isinstance(hashes, list)
+                or len(hashes) != source["lines"]
+                or any(
+                    not isinstance(digest, str)
+                    or len(digest) != 64
+                    or any(character not in "0123456789abcdef" for character in digest)
+                    for digest in hashes
+                )
+            ):
+                raise SplitConfigError(
+                    f"private source {source['id']} has no valid ordered line_sha256 list"
+                )
         key = configured_path
         if key in paths:
             raise SplitConfigError(
@@ -191,9 +299,9 @@ def _validate_config(
         or len(set(configured_evaluation_splits)) != len(configured_evaluation_splits)
     ):
         raise SplitConfigError("evaluation_splits must contain development and/or final once")
-    # Required evaluation splits need committed sentence sources so the collision gate can run
-    # offline. Raw bigram inputs are declared as optional: clean archives skip only absent files,
-    # while builders require every exclusion input they consume.
+    # Required evaluation splits need sentence declarations; private sentences satisfy the role
+    # and are explicitly skipped while their local files are absent. Raw bigram inputs are
+    # optional, while builders require every exclusion input they consume.
     for split in configured_evaluation_splits:
         if not any(
             source["split"] == split
@@ -201,12 +309,16 @@ def _validate_config(
             and not source.get("optional", False)
             for source in sources
         ):
-            raise SplitConfigError(f"{split} has no committed sentence source")
+            raise SplitConfigError(f"{split} has no sentence source")
     return language, sources, frozenset(configured_evaluation_splits)
 
 
 def check_splits(
-    root: Path, config_path: Path, *, corpus_dir: Path = DEFAULT_CORPUS_DIR
+    root: Path,
+    config_path: Path,
+    *,
+    corpus_dir: Path = DEFAULT_CORPUS_DIR,
+    private_dir: Path | None = None,
 ) -> dict[str, object]:
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -219,15 +331,31 @@ def check_splits(
     counts: Counter[str] = Counter()
     collisions: list[dict[str, object]] = []
     optional_missing: list[str] = []
+    private_checked: list[str] = []
+    private_skipped: list[str] = []
     for source in sources:
         kind = str(source["kind"])
         split = str(source["split"])
         identifier = str(source["id"])
-        path = _source_path(root, source, corpus_dir)
-        if source.get("optional", False) and not path.exists():
-            optional_missing.append(identifier)
-            continue
-        for normalized, line_number, raw in _records(root, source, alphabet, corpus_dir):
+        if source.get("private", False):
+            path = _private_path(private_dir, source)
+            if path is None or not path.exists():
+                private_skipped.append(identifier)
+                continue
+            if not path.is_file():
+                raise SplitConfigError(f"private source {identifier} is not a file: {path}")
+            rows: Iterable[tuple[int, str]] = _private_rows(path, source)
+            records = _records_from_rows(
+                source, alphabet, rows, Path(str(source["path"]))
+            )
+            private_checked.append(identifier)
+        else:
+            path = _source_path(root, source, corpus_dir)
+            if source.get("optional", False) and not path.exists():
+                optional_missing.append(identifier)
+                continue
+            records = _records(root, source, alphabet, corpus_dir)
+        for normalized, line_number, raw in records:
             counts[f"{split}:{kind}"] += 1
             if kind in WORD_TABLE_KINDS:
                 if kind in UNIQUE_WORD_TABLE_KINDS:
@@ -285,6 +413,9 @@ def check_splits(
         "collision_count": len(collisions),
         "passed": not collisions,
     }
+    if any(source.get("private", False) for source in sources):
+        report["private_checked"] = private_checked
+        report["private_skipped"] = private_skipped
     if collisions:
         raise SplitCollisionError(report)
     return report
@@ -295,11 +426,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("config", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--corpus-dir", type=Path, default=DEFAULT_CORPUS_DIR)
+    parser.add_argument(
+        "--private-dir",
+        type=Path,
+        default=None,
+        help=f"local private split root (default: ${PRIVATE_DIR_ENV}, if set)",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
     config_path = args.config if args.config.is_absolute() else root / args.config
+    private_dir = args.private_dir
+    if private_dir is None and os.environ.get(PRIVATE_DIR_ENV):
+        private_dir = Path(os.environ[PRIVATE_DIR_ENV])
     try:
-        report = check_splits(root, config_path, corpus_dir=args.corpus_dir)
+        report = check_splits(
+            root, config_path, corpus_dir=args.corpus_dir, private_dir=private_dir
+        )
     except SplitCollisionError as error:
         print(json.dumps(error.report, ensure_ascii=False, indent=2, sort_keys=True))
         return 1

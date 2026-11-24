@@ -67,13 +67,15 @@ class AcceptWordsetTest(unittest.TestCase):
         else:
             os.environ[LOG_ENV] = self._saved_log
 
-    def run_runner(self, language: str = "tat"):
+    def run_runner(self, language: str = "tat", domain_dir: Path | None = None):
         """Run main() with the temp-tree inputs; return (exit code, stdout, stderr)."""
         argv = ["--source", "test-source", "--language", language,
                 "--baseline", str(self.baseline), "--corpus", str(self.corpus),
                 "--candidate-dict", str(self.candidate_dict),
                 "--candidate-bigram", str(self.candidate_bigram),
                 "--queries", str(self.queries), "--work-dir", str(self.work_dir)]
+        if domain_dir is not None:
+            argv += ["--domain-dir", str(domain_dir)]
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             code = accept_wordset.main(argv)
@@ -117,6 +119,17 @@ class AcceptWordsetTest(unittest.TestCase):
                        "AutocorrectAdvice.kt", "MIN_CANDIDATE_FREQUENCY_TT",
                        "known_asset_drift.json", "TtSuggestEvalTest"):
             self.assertIn(needle, out)
+
+    def test_domain_rejection_stops_before_the_audit(self) -> None:
+        accept_wordset.GATE_SCRIPTS["tat"] = FIXTURES / "fixture_gate_domain_fail.py"
+        domains = Path(self._tmp.name) / "domains"
+        domains.mkdir()
+        code, out, _err = self.run_runner(domain_dir=domains)
+        self.assertEqual(3, code, out)
+        self.assertEqual(3, len(self.read_log()))
+        self.assertFalse((self.work_dir / "query-audit.tsv").exists())
+        self.assertIn("per-domain decision: REJECTED", out)
+        self.assertIn("REJECTED", out)
 
     def test_happy_path_russian(self) -> None:
         code, out, _err = self.run_runner(language="rus")

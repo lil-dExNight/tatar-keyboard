@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -176,6 +177,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval", dest="eval_path", type=Path, default=None)
     parser.add_argument("--dict-asset", type=Path, default=None)
     parser.add_argument("--bigram-asset", type=Path, default=None)
+    parser.add_argument(
+        "--series-output",
+        type=Path,
+        default=None,
+        help="write per-record coverage, cp3 completion, and chain next-word arrays as JSON",
+    )
     return parser
 
 
@@ -214,6 +221,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     covered_tokens = sum(1 for word in tokens if word in vocabulary)
     covered_types = sum(1 for word in unique_words if word in vocabulary)
+    series: dict[str, object] = {
+        "coverage": {
+            "hits": [
+                sum(1 for word in line.split(" ") if word in vocabulary) for line in lines
+            ],
+            "denominators": [len(line.split(" ")) for line in lines],
+        }
+    }
 
     pairs: list[tuple[str, str]] = []
     for line in lines:
@@ -265,9 +280,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         ]
     )
     metrics.extend(_chain_metrics(lines, pairs, dictionary_words, dictionary_frequencies,
-                                  successes_by_head, unique_words, not russian))
+                                  successes_by_head, unique_words, not russian, series))
     for name, value in metrics:
         print(f"EVAL|{name}|{value}")
+    if args.series_output is not None:
+        args.series_output.parent.mkdir(parents=True, exist_ok=True)
+        args.series_output.write_text(
+            json.dumps(series, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
     return 0
 
 
@@ -279,6 +300,7 @@ def _chain_metrics(
     successes_by_head: dict[str, list[str]],
     unique_words: set[str],
     suffix_rules: bool,
+    series: dict[str, object] | None = None,
 ) -> list[tuple[str, str]]:
     """The chain-hit, bootstrap, MDE, completion, strip-empty, strata and keystroke lines."""
     chain = suggest_chain.ChainMirror(
@@ -335,7 +357,12 @@ def _chain_metrics(
         ("nextword_chain_engine_top4_ci95_hi", f"{engine_ci[1]:.4f}"),
         ("nextword_chain_engine_top4_mde_pp", f"{engine_mde:.4f}"),
     ]
-    metrics.extend(_completion_metrics(unique_words, chain))
+    if series is not None:
+        series["next_word"] = {
+            "hits": sentence_visible_hits,
+            "denominators": sentence_pairs,
+        }
+    metrics.extend(_completion_metrics(unique_words, chain, series))
     metrics.extend(_context_boost_metrics(lines, chain))
     metrics.extend(_strip_empty_metrics(lines, pairs, chain))
     if suffix_rules:
@@ -411,7 +438,9 @@ def _context_boost_metrics(
 
 
 def _completion_metrics(
-    unique_words: set[str], chain: suggest_chain.ChainMirror
+    unique_words: set[str],
+    chain: suggest_chain.ChainMirror,
+    series: dict[str, object] | None = None,
 ) -> list[tuple[str, str]]:
     """Measure top-1, visible top-3 and engine top-4 at one-to-three-code-point prefixes."""
     metrics: list[tuple[str, str]] = []
@@ -420,13 +449,19 @@ def _completion_metrics(
         visible_top3_hits = 0
         engine_top4_hits = 0
         top1_hits = 0
-        for word in unique_words:
+        completion_hits: list[int] = []
+        completion_denominators: list[int] = []
+        for word in sorted(unique_words):
             if len(word) < length:
                 continue
             words += 1
             shown = chain.prefix_top3(word[:length])
-            if word in shown[:SHOWN_RESULTS]:
+            hit = word in shown[:SHOWN_RESULTS]
+            if hit:
                 visible_top3_hits += 1
+            if length == STRATUM_PREFIX_CODE_POINTS:
+                completion_hits.append(int(hit))
+                completion_denominators.append(1)
             if word in shown[:suggest_chain.CELL_COUNT]:
                 engine_top4_hits += 1
             if shown and shown[0] == word:
@@ -443,6 +478,11 @@ def _completion_metrics(
                 (f"prefix_engine_top4_cp{length}_pct", f"{percent(engine_top4_hits, words):.4f}"),
             ]
         )
+        if series is not None and length == STRATUM_PREFIX_CODE_POINTS:
+            series["completion_cp3"] = {
+                "hits": completion_hits,
+                "denominators": completion_denominators,
+            }
     return metrics
 
 
