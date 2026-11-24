@@ -28,6 +28,7 @@
       "kind": "sentences",
       "split": "development",
       "path": "app/src/test/resources/tt_ru_mix_sentences.txt",
+      "sentence_column": 1,
       "role": "hand-authored code-mix development/regression data"
     },
     {
