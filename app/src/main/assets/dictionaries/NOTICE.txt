@@ -69,6 +69,28 @@ the dictionary's own word forms, so its sources and license are those of the
 dictionary above.
 
 --------------------------------------------------------------------------------
+tatar_stems_v1.tstem.zlib
+
+Contains lexical stems and morphological flags derived from Apertium-tat,
+the bundled Tatar dictionary and data/dictionary/tatar-wordform-review.tsv.
+
+Apertium-tat
+https://github.com/apertium/apertium-tat
+Source revision: 18fe9e45d5672d6f6113291197449e7522df1b3e
+License: GNU General Public License, version 3 (GPL-3.0)
+https://www.gnu.org/licenses/gpl-3.0.html
+Upstream authors: Röstäm Battal, Francis M. Tyers, Ilnar Salimzyan,
+Jonathan N. Washington, Aglimzan, Kevin Brubeck Unhammer,
+Beknazar Abdikamalov and Trond Trosterud.
+
+Changes by the Tatar Keyboard project: literal stems were extracted from the
+pinned lexc source, normalized and filtered, merged with unambiguous
+word-form groups and reviewed lemmas, deduplicated, stripped of every form
+already in the bundled dictionary, annotated with part of speech, harmony and
+continuation flags, front-coded and zlib-compressed by
+scripts/stem_lexicon_pack.py. No upstream source file is bundled.
+
+--------------------------------------------------------------------------------
 russian_top100k_v1.tdict.zlib
 
 Derived from the Russian corpora rus_news_2022_1M, rus_news_2019_1M, and

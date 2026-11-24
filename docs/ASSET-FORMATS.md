@@ -1,14 +1,16 @@
 # Asset and store formats
 
 This reference covers the binary files the keyboard reads: the bundled dictionaries (TATDICT
-schema 2), the bundled bigram and combined bigram/trigram tables (TATBIGR schemas 3 and 4), and
-the personal-dictionary files (TATPERS, TATPERSB, TATPERSE, TATREF). The plain-text assets are
+schema 2), the bundled bigram and combined bigram/trigram tables (TATBIGR schemas 3 and 4), the
+Tatar stem lexicon (TATSTEM schema 1), and the personal-dictionary files (TATPERS, TATPERSB,
+TATPERSE, TATREF). The plain-text assets are
 summarized at the end. For how
 the bundled files are built, see [ASSET-PIPELINE.md](ASSET-PIPELINE.md).
 
 The code is the authority. The format constants are in `TdictFormat`
-(`DictionaryStorageContracts.kt`), `TatBigrFormat` (`BigramStorageContracts.kt`), and
-`TpersFormat`, `TpersbFormat`, `TpersemFormat`, `TrefFormat` (`dictionary/personal/`). All code
+(`DictionaryStorageContracts.kt`), `TatBigrFormat` (`BigramStorageContracts.kt`), `TatStemFormat`
+(`StemLexiconStorageContracts.kt`), and `TpersFormat`, `TpersbFormat`, `TpersemFormat`,
+`TrefFormat` (`dictionary/personal/`). All code
 paths below are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/latin/`.
 
 ## Common conventions
@@ -25,8 +27,8 @@ paths below are relative to `app/src/main/java/rkr/simplekeyboard/inputmethod/la
 - Every header begins with the same 16 bytes: magic (8 bytes of ASCII) at offset 0, then the
   u16 fields schemaId at 8, formatVersion at 10, headerSize at 12 and checksumAlgorithm at 14.
 - A validator rejects a file at the first violation, and nothing repairs data. If a bundled file
-  fails validation, it is not published and its language has no suggestions from it. A personal
-  file that fails validation is quarantined (see below).
+  fails validation, its consumer does not receive an image. A personal file that fails validation
+  is quarantined (see below).
 
 ## TATDICT schema 2: bundled dictionaries
 
@@ -362,6 +364,66 @@ The list is read whole into memory once per process (it is the top of a frequenc
 dictionary), never copied into device-protected storage. Strings are decoded only if the `words`
 view is read; membership probes compare bytes.
 
+## TATSTEM schema 1: incremental Tatar stem lexicon
+
+Asset: `assets/dictionaries/tatar_stems_v1.tstem.zlib`. The lexicon contains stems from
+Apertium-tat, unambiguous bundled-dictionary word-form groups and the word-form review table.
+Every stem already shipped as a dictionary form is excluded. Bare-stem acceptance and suffix
+chains are separate: only Apertium-attested stems carry continuation flags. Constants:
+`BLOCK_SIZE = 8`, `MAX_STEM_BYTES = 128`, `MAX_STEM_CODE_POINTS = 64`, `MAX_STEMS`, `MAX_RAW_SIZE`
+and `MAX_COMPRESSED_SIZE` in `TatStemFormat`.
+
+The 136-byte header uses the common conventions:
+
+| Offset | Size | Field | Required value |
+|---:|---:|---|---|
+| 0 | 8 | magic `TATSTEM\0` | |
+| 8 / 10 / 12 / 14 | 2 each | schemaId / formatVersion / headerSize / checksumAlgorithm | 1 / 1 / 136 / 1 |
+| 16 | 4 | stemCount | the pinned `expectedStemCount` |
+| 20 | 4 | blockCount | ⌈stemCount / 8⌉ |
+| 24 | 4 | blockIndexOffset | 136 |
+| 28 | 4 | blocksOffset | 136 + 4 · blockCount |
+| 32 | 4 | blocksSize | |
+| 36 | 4 | fileSize | blocksOffset + blocksSize = file length |
+| 40 | 32 | dictionaryRawSha256 | raw SHA-256 of the linked Tatar dictionary |
+| 72 | 32 | apertiumLexiconSha256 | SHA-256 of the pinned Apertium-tat lexc source |
+| 104 | 32 | checksum | SHA-256 with this field set to zero |
+
+Two sections follow without padding:
+
+1. Block index: `blockCount` × u32 absolute block offsets. The first equals blocksOffset; later
+   offsets strictly increase.
+2. Front-coded blocks of at most eight entries. The first entry is `u8 firstLength`,
+   `firstWord[firstLength]`, `u8 flags`. Each later entry is `varint prefixLength`,
+   `u8 suffixLength`, `suffix[suffixLength]`, `u8 flags`. The prefix shares bytes with the
+   block's first word; suffixLength is nonzero, and prefix + suffix is at most 128 bytes.
+
+Words strictly increase in unsigned UTF-8 byte order. They are strict UTF-8, NFC lowercase,
+2..64 code points, in the Tatar alphabet, with U+002D only between letters, and have a harmony
+vowel. The flags byte is:
+
+| Bit | Value | Meaning |
+|---:|---:|---|
+| 0 | 1 | noun category |
+| 1 | 2 | verb category |
+| 2 | 4 | front harmony |
+| 3 | 8 | back harmony |
+| 4 | 16 | noun suffix chains attested by Apertium |
+| 5 | 32 | verb suffix chains attested by Apertium |
+| 6 | 64 | Apertium `-RUS` forces back harmony |
+| 7 | 128 | reserved, zero |
+
+At least one category and exactly one harmony bit are required. A chain bit requires its matching
+category. Without forced back harmony, the harmony bit equals the generator's last-syllable rule;
+with it, back harmony and at least one chain bit are required.
+
+Validation (`storage/TatStemValidator.kt`) inflates exactly one zlib stream under the compressed
+and raw bounds, then checks all header fields, both source identities, the embedded checksum and
+the compressed/raw pins. The full walk checks block boundaries, minimal varints, front-coded
+lengths, strict word shape and ordering, flags and exact section closure. Any violation throws
+`StemLexiconValidationException`. The validated image retains only the raw byte array and section
+metadata; no decoded-stem object trie is built. It is not published to a device file.
+
 ## Plain-text assets
 
 These assets are UTF-8 with LF line endings. Their readers are fail-closed: a malformed line is
@@ -387,6 +449,7 @@ in the `NOTICE.txt` in each asset directory.
 | dictionaries | compressed size and SHA-256, raw size and SHA-256, entry count | `DictionaryArtifactSpec.TATAR_TOP100K_V1` / `RUSSIAN_TOP100K_V1`, `storage/DictionaryStorageContracts.kt` |
 | bigram tables | the same values, with head count instead of entry count, plus the linked dictionary's raw SHA-256 | `BigramArtifactSpec.TATAR_BIGRAMS_V2` / `RUSSIAN_BIGRAMS_V1`, `storage/BigramStorageContracts.kt` |
 | cold-companion lists | compressed size and SHA-256, raw size and SHA-256, word count | `CompanionListArtifactSpec.TATAR_COMPANION_V1` / `RUSSIAN_COMPANION_V1`, `storage/CompanionListStorageContracts.kt` |
+| stem lexicon | the same values, stem count, linked dictionary raw SHA-256 and Apertium lexc SHA-256 | `StemLexiconArtifactSpec.TATAR_STEMS_V1`, `storage/StemLexiconStorageContracts.kt` |
 | plain-text assets | SHA-256 and line or record counts | `tests/<packer>/test_*.py` and the JVM asset and emoji tests |
 
 `scripts/rebuild_assets.py` rewrites the storage-contract pins, and its `--check` mode compares

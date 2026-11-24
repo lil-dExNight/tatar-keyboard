@@ -3,9 +3,11 @@
 
 Inputs not in the repo: --baseline DIR (the two 1.8.4 dictionary assets, extracted from git)
 and --corpus-dir DIR (the corpus files named in BIGRAMS and WORDFORM_FREQUENCY_SOURCES, whose
-size and SHA-256 are pinned in data/corpus-manifest.json and verified before any step). Steps:
-Tatar word forms, dict_accept pack, bigram_asset_pack pack, companion_list_pack build, pin
-rewrite in the Kotlin storage contracts (between the `// <generated pins>` markers),
+size and SHA-256 are pinned in data/corpus-manifest.json and verified before any step), and
+--apertium-lexc FILE (the pinned source fetched by stem_lexicon_pack.py fetch). Steps: Tatar
+word forms, dict_accept pack, bigram_asset_pack pack, companion_list_pack build,
+stem_lexicon_pack build, pin rewrite in the Kotlin storage contracts (between the
+`// <generated pins>` markers),
 regeneration of the Tatar calibration
 sets (typo recovery, glide) with a pin rewrite in their python and JVM tests, then --check.
 --only tatar|russian rebuilds one side; the other must stay identical.
@@ -44,12 +46,14 @@ from bigram_pack import select_heads  # noqa: E402
 import companion_list_pack  # noqa: E402
 import proper_name_pack  # noqa: E402
 import provenance  # noqa: E402
+import stem_lexicon_pack  # noqa: E402
 import trigram_asset_pack  # noqa: E402
 
 STORAGE_DIR = Path("app/src/main/java/rkr/simplekeyboard/inputmethod/latin/dictionary/storage")
 DICT_CONTRACT = STORAGE_DIR / "DictionaryStorageContracts.kt"
 BIGRAM_CONTRACT = STORAGE_DIR / "BigramStorageContracts.kt"
 COMPANION_CONTRACT = STORAGE_DIR / "CompanionListStorageContracts.kt"
+STEM_CONTRACT = STORAGE_DIR / "StemLexiconStorageContracts.kt"
 
 DEFAULT_KNOWN_DRIFT = Path("scripts/known_asset_drift.json")
 DEFAULT_CORPUS_DIR = Path.home() / "corpora-leipzig"
@@ -125,6 +129,9 @@ DICTIONARIES = (
 )
 
 TATAR_DICTIONARY_ASSET = Path(DICTIONARIES[0].asset)
+STEM_LEXICON_SPEC = "TATAR_STEMS_V1"
+STEM_LEXICON_ASSET = stem_lexicon_pack.DEFAULT_OUTPUT
+DEFAULT_APERTIUM_LEXC = stem_lexicon_pack.DEFAULT_APERTIUM_LEXC
 
 # Packing parameters of the shipped tables (H heads, K successors per head, extra heads,
 # training corpora). Changing any of them changes the table, so change them only together
@@ -915,6 +922,31 @@ def measure_companion(asset_path: Path) -> Pins:
     )
 
 
+def measure_stem_lexicon(asset_path: Path, dictionary_path: Path) -> Pins:
+    """Validate the stem image, its source identities and the incremental boundary."""
+    asset = asset_path.read_bytes()
+    raw = stem_lexicon_pack.decompress_asset(asset)
+    entries, fields = stem_lexicon_pack.parse_raw(raw)
+    dictionary = dictionary_pack.validate_asset(
+        dictionary_path.read_bytes(), language=coverage.language_for("tat")
+    )
+    dictionary_sha = hashlib.sha256(dictionary.raw).hexdigest()
+    if fields["dictionary_raw_sha256"] != dictionary_sha:
+        raise ContractError("stem lexicon names a different dictionary")
+    if fields["apertium_lexc_sha256"] != stem_lexicon_pack.APERTIUM_LEXC_SHA256:
+        raise ContractError("stem lexicon names a different Apertium source")
+    if not set(dictionary.words).isdisjoint(entry.word for entry in entries):
+        raise ContractError("stem lexicon contains a shipped dictionary form")
+    return Pins(
+        compressed_size=len(asset),
+        compressed_sha256=hashlib.sha256(asset).hexdigest(),
+        raw_size=len(raw),
+        raw_sha256=hashlib.sha256(raw).hexdigest(),
+        count=len(entries),
+        dictionary_raw_sha256=dictionary_sha,
+    )
+
+
 # --- consistency check ------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -1029,7 +1061,8 @@ def run_check(
     dict_contract = root / DICT_CONTRACT
     bigram_contract = root / BIGRAM_CONTRACT
     companion_contract = root / COMPANION_CONTRACT
-    for path in (dict_contract, bigram_contract, companion_contract):
+    stem_contract = root / STEM_CONTRACT
+    for path in (dict_contract, bigram_contract, companion_contract, stem_contract):
         if not path.is_file():
             print(f"error: no contract file {path}", file=sys.stderr)
             return 2
@@ -1047,7 +1080,9 @@ def run_check(
         known = load_known_drift(known_drift_path)
 
     failed = False
-    report: dict[str, object] = {"dictionaries": {}, "bigrams": {}, "companions": {}}
+    report: dict[str, object] = {
+        "dictionaries": {}, "bigrams": {}, "companions": {}, "stem_lexicon": {},
+    }
     corpus_entry: dict[str, object] = {"manifest": str(CORPUS_MANIFEST)}
 
     for dictionary in DICTIONARIES:
@@ -1267,6 +1302,34 @@ def run_check(
             failed = failed or bool(problems)
         report["companions"][companion.tag] = entry  # type: ignore[index]
 
+    stem_entry: dict[str, object] = {
+        "asset": str(STEM_LEXICON_ASSET), "spec": STEM_LEXICON_SPEC,
+    }
+    stem_path = root / STEM_LEXICON_ASSET
+    dictionary_path = root / TATAR_DICTIONARY_ASSET
+    if not stem_path.is_file() or not dictionary_path.is_file():
+        stem_entry["verdict"] = "missing"
+        failed = True
+    else:
+        try:
+            pinned = read_pins(
+                stem_contract, STEM_LEXICON_SPEC, "StemLexiconArtifactSpec",
+                "expectedStemCount", linked=True,
+            )
+        except ContractError as error:
+            print(f"error: unparsable contract: {error}", file=sys.stderr)
+            return 2
+        try:
+            problems = _pin_problems(
+                measure_stem_lexicon(stem_path, dictionary_path), pinned
+            )
+        except Exception as error:  # a broken asset is a check verdict, not a crash
+            problems = [f"asset unreadable: {error}"]
+        stem_entry["verdict"] = "mismatch" if problems else "ok"
+        stem_entry["problems"] = problems
+        failed = failed or bool(problems)
+    report["stem_lexicon"]["tat"] = stem_entry  # type: ignore[index]
+
     if corpus_dir is None:
         corpus_entry["verdict"] = "not-checked"
     else:
@@ -1286,7 +1349,7 @@ def run_check(
     json.dump(report, stream, ensure_ascii=False, indent=2, sort_keys=True)
     stream.write("\n")
 
-    for section in ("dictionaries", "bigrams", "companions"):
+    for section in ("dictionaries", "bigrams", "companions", "stem_lexicon"):
         for tag, entry in sorted(report[section].items()):  # type: ignore[union-attr]
             line = f"{section}/{tag}: {entry['verdict']}"
             if entry["verdict"] == "known-drift":
@@ -1639,6 +1702,23 @@ def companion_pack_argv(root: Path, companion: CompanionListAsset) -> list[str]:
     ]
 
 
+def stem_lexicon_pack_argv(
+    root: Path, apertium_lexc: Path, work_dir: Path
+) -> list[str]:
+    """Command line that rebuilds the Tatar stem lexicon from the new dictionary."""
+    return [
+        sys.executable,
+        str(root / "scripts/stem_lexicon_pack.py"),
+        "build",
+        "--apertium-lexc", str(apertium_lexc),
+        "--dictionary", str(root / TATAR_DICTIONARY_ASSET),
+        "--review", str(root / WORDFORM_REVIEW),
+        "--exceptions", str(root / WORDFORM_EXCEPTIONS),
+        "--output", str(root / STEM_LEXICON_ASSET),
+        "--report", str(work_dir / "tatar-stem-lexicon.generated.json"),
+    ]
+
+
 def _path_list(value: Path | Sequence[Path] | None) -> list[Path]:
     """Normalize one path or a sequence to a list; None means none."""
     if value is None:
@@ -1729,6 +1809,15 @@ def _side_snapshot(root: Path, tags: frozenset[str]) -> dict[str, object]:
             root / COMPANION_CONTRACT, companion.spec, "CompanionListArtifactSpec",
             "expectedWordCount",
         )
+    if "tat" in tags:
+        asset = root / STEM_LEXICON_ASSET
+        snapshot[f"asset:{STEM_LEXICON_ASSET}"] = (
+            hashlib.sha256(asset.read_bytes()).hexdigest() if asset.is_file() else None
+        )
+        snapshot[f"pins:{STEM_LEXICON_SPEC}"] = read_pins(
+            root / STEM_CONTRACT, STEM_LEXICON_SPEC, "StemLexiconArtifactSpec",
+            "expectedStemCount", linked=True,
+        )
     return snapshot
 
 
@@ -1759,7 +1848,12 @@ def run_rebuild(
     known_drift_path: Path | None,
     only: str | None = None,
     stream: TextIO = sys.stdout,
+    apertium_lexc: Path | None = None,
 ) -> int:
+    if apertium_lexc is None:
+        apertium_lexc = root / DEFAULT_APERTIUM_LEXC
+    elif not apertium_lexc.is_absolute():
+        apertium_lexc = root / apertium_lexc
     # `--only tatar|russian` rebuilds one side: its dictionary, bigram table and pins. The
     # other side needs none of its inputs and must stay byte-identical (snapshot before/after).
     selected = frozenset(
@@ -1792,6 +1886,10 @@ def run_rebuild(
                 missing.append(str(corpus_dir / name))
         if not (root / WORDFORM_EXCEPTIONS).is_file():
             missing.append(str(root / WORDFORM_EXCEPTIONS))
+        if not apertium_lexc.is_file():
+            missing.append(str(apertium_lexc))
+        if not (root / WORDFORM_REVIEW).is_file():
+            missing.append(str(root / WORDFORM_REVIEW))
         for review in (COMPOUND_REVIEW, proper_name_pack.PROPER_NAME_REVIEW):
             if not (root / review).is_file():
                 missing.append(str(root / review))
@@ -1875,6 +1973,10 @@ def run_rebuild(
         if companion.tag not in selected:
             continue
         _run_step(companion_pack_argv(root, companion), cwd=root)
+    if "tat" in selected:
+        _run_step(
+            stem_lexicon_pack_argv(root, apertium_lexc, work_dir), cwd=root
+        )
 
     # 3. Pins of the selected assets, one write per contract file.
     dict_updates = {
@@ -1906,7 +2008,17 @@ def run_rebuild(
         root / COMPANION_CONTRACT, companion_updates, "CompanionListArtifactSpec",
         "expectedWordCount",
     )
-    print("pins rewritten in all three contracts", file=sys.stderr)
+    if "tat" in selected:
+        write_pins(
+            root / STEM_CONTRACT,
+            {
+                STEM_LEXICON_SPEC: measure_stem_lexicon(
+                    root / STEM_LEXICON_ASSET, root / TATAR_DICTIONARY_ASSET
+                )
+            },
+            "StemLexiconArtifactSpec", "expectedStemCount",
+        )
+    print("pins rewritten in the storage contracts", file=sys.stderr)
 
     # 3b. With --only, the unselected side must be byte-identical.
     if only is not None:
@@ -1940,7 +2052,7 @@ def run_rebuild(
         else:
             print("calibration pins already match", file=sys.stderr)
 
-    # 4. Verify the result with the --check procedure over all six assets, including the
+    # 4. Verify the result with the --check procedure over all shipped assets, including the
     # untouched side.
     result = run_check(root, known_drift_path, stream)
     print(
@@ -1966,7 +2078,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "stage), its bigram table, its cold-companion list and its pins; the other side's "
         "inputs are not needed, "
         "while its assets and pins must stay byte-identical (a SHA-256 snapshot before "
-        "and after). The final check verifies all six assets. Not valid with --check",
+        "and after). The final check verifies all shipped assets. Not valid with --check",
     )
     parser.add_argument(
         "--allow-known-drift",
@@ -1989,6 +2101,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="directory holding the corpora listed in data/corpus-manifest.json "
         f"(rebuild default {DEFAULT_CORPUS_DIR}); with --check they are verified "
         "against the manifest",
+    )
+    parser.add_argument(
+        "--apertium-lexc",
+        type=Path,
+        default=None,
+        help="pinned Apertium-tat lexc source for the Tatar stem lexicon "
+        f"(default <root>/{DEFAULT_APERTIUM_LEXC}); fetch it with stem_lexicon_pack.py fetch",
     )
     parser.add_argument(
         "--work-dir",
@@ -2017,7 +2136,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         known_drift = root / known_drift
     if args.check:
         if args.only is not None:
-            print("error: --only applies to rebuilds; --check always verifies all six assets",
+            print("error: --only applies to rebuilds; --check always verifies all shipped assets",
                   file=sys.stderr)
             return 2
         return run_check(root, known_drift, corpus_dir=args.corpus_dir)
@@ -2029,7 +2148,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     corpus_dir = args.corpus_dir if args.corpus_dir is not None else DEFAULT_CORPUS_DIR
     try:
         return run_rebuild(
-            root, args.baseline, corpus_dir, work_dir, known_drift, only=args.only
+            root, args.baseline, corpus_dir, work_dir, known_drift, only=args.only,
+            apertium_lexc=args.apertium_lexc,
         )
     except ContractError as error:
         print(f"error: unparsable contract: {error}", file=sys.stderr)

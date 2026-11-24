@@ -28,6 +28,7 @@ import dict_accept  # noqa: E402
 import dictionary_pack  # noqa: E402
 import proper_name_pack  # noqa: E402
 import rebuild_assets  # noqa: E402
+import stem_lexicon_pack  # noqa: E402
 import trigram_asset_pack  # noqa: E402
 import wordform_gen  # noqa: E402
 
@@ -65,6 +66,29 @@ def build_companion_asset(directory: Path, words,
     asset_path = directory / name
     asset_path.write_bytes(built.compressed)
     return asset_path
+
+
+def build_stem_asset(directory: Path,
+                     dictionary_name="tatar_top100k_v1.tdict.zlib") -> Path:
+    """A valid incremental image over stems absent from the fixture dictionary."""
+    parsed = dictionary_pack.validate_asset((directory / dictionary_name).read_bytes())
+    records = [
+        stem_lexicon_pack.StemEntry(
+            "бала",
+            stem_lexicon_pack.FLAG_NOUN | stem_lexicon_pack.FLAG_BACK
+            | stem_lexicon_pack.FLAG_NOUN_CHAIN,
+        ),
+        stem_lexicon_pack.StemEntry(
+            "башла", stem_lexicon_pack.FLAG_VERB | stem_lexicon_pack.FLAG_BACK,
+        ),
+    ]
+    raw = stem_lexicon_pack.build_raw(
+        records, hashlib.sha256(parsed.raw).hexdigest(),
+        stem_lexicon_pack.APERTIUM_LEXC_SHA256,
+    )
+    path = directory / "tatar_stems_v1.tstem.zlib"
+    path.write_bytes(stem_lexicon_pack.compress_raw(raw))
+    return path
 
 
 def build_bigram_asset(directory: Path, heads, table, dictionary_asset: Path,
@@ -137,6 +161,25 @@ COMPANION_BLOCK = """\
 
 
 
+STEM_BLOCK = """\
+        // <generated pins>
+        val TATAR_STEMS_V1 = StemLexiconArtifactSpec(
+            family = "tatar_stems",
+            expectedCompressedSize = 1,
+            expectedCompressedSha256 =
+                "{sha}",
+            expectedRawSize = 136,
+            expectedRawSha256 =
+                "{sha}",
+            expectedStemCount = 1,
+            expectedDictionaryRawSha256 =
+                "{sha}",
+            expectedApertiumLexiconSha256 =
+                "{apertium_sha}",
+        )
+        // </generated pins>"""
+
+
 def write_fake_contracts(root: Path) -> None:
     dict_contract = root / rebuild_assets.DICT_CONTRACT
     dict_contract.parent.mkdir(parents=True, exist_ok=True)
@@ -168,6 +211,13 @@ def write_fake_contracts(root: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+    stem_contract = root / rebuild_assets.STEM_CONTRACT
+    stem_contract.write_text(
+        STEM_BLOCK.format(
+            sha=SHA0, apertium_sha=stem_lexicon_pack.APERTIUM_LEXC_SHA256
+        ) + "\n",
+        encoding="utf-8",
+    )
 
 
 def pin_everything(root: Path, dictionary: rebuild_assets.DictionaryAsset,
@@ -194,6 +244,17 @@ def pin_everything(root: Path, dictionary: rebuild_assets.DictionaryAsset,
          for companion in rebuild_assets.COMPANIONS},
         "CompanionListArtifactSpec",
         "expectedWordCount",
+    )
+    rebuild_assets.write_pins(
+        root / rebuild_assets.STEM_CONTRACT,
+        {
+            rebuild_assets.STEM_LEXICON_SPEC: rebuild_assets.measure_stem_lexicon(
+                root / rebuild_assets.STEM_LEXICON_ASSET,
+                root / dictionary.asset,
+            )
+        },
+        "StemLexiconArtifactSpec",
+        "expectedStemCount",
     )
 
 
@@ -287,6 +348,7 @@ class FakeTreeTest(unittest.TestCase):
             dictionary="tat", top=len(WORDS),
         )
         build_companion_asset(asset_dir, WORDS)
+        build_stem_asset(asset_dir)
         self._saved = (
             rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS, rebuild_assets.COMPANIONS,
         )
@@ -482,6 +544,7 @@ class CheckTest(FakeTreeTest):
         build_bigram_asset(self.root / "app/src/main/assets/bigrams",
                            new_top3, {word: [(WORDS[0], 10)] for word in new_top3},
                            asset_dir / "tatar_top100k_v1.tdict.zlib")
+        build_stem_asset(asset_dir)
         pin_everything(self.root, self.dictionary, self.bigram)
 
         code, report = self.run_check()
@@ -770,6 +833,7 @@ class TwoSideTreeTest(unittest.TestCase):
         build_companion_asset(dictionaries, ["мама", "папа", "работа"],
                               name="russian_companion_v1.tcomp.zlib",
                               dictionary_name="russian_top100k_v1.tdict.zlib")
+        build_stem_asset(dictionaries)
         self._saved = (
             rebuild_assets.DICTIONARIES, rebuild_assets.BIGRAMS, rebuild_assets.COMPANIONS,
         )
@@ -805,6 +869,12 @@ class TwoSideTreeTest(unittest.TestCase):
         )
         review_dir = self.root / "data/dictionary"
         review_dir.mkdir(parents=True)
+        (review_dir / "tatar-wordform-review.tsv").write_text(
+            "lemma\tparadigm_cell\n", encoding="utf-8"
+        )
+        apertium = self.root / rebuild_assets.DEFAULT_APERTIUM_LEXC
+        apertium.parent.mkdir(parents=True)
+        apertium.write_text("source presence fixture\n", encoding="utf-8")
         (review_dir / "tatar-compound-review.tsv").write_text(
             "\t".join(proper_name_pack.COMPOUND_REVIEW_HEADER) + "\n"
             + "\t".join([WORDS[0] + "-" + WORDS[1], "10", "coordinated", "test=10", "",

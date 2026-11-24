@@ -296,9 +296,8 @@ fi
 fi
 
 # --- 3. asset pins against the constants in code ----------------------------------------------
-# Extracts *.tdict.zlib / *.tatbigr.zlib / *.tcomp.zlib from the APK and compares size and
-# SHA-256 (compressed and raw) with the constants in DictionaryStorageContracts.kt /
-# BigramStorageContracts.kt / CompanionListStorageContracts.kt.
+# Extracts the bundled binary assets from the APK and compares compressed/raw size and SHA-256
+# with the storage contracts.
 # The pins are read with the same regex approach as read_pins in scripts/rebuild_assets.py,
 # but self-contained, so this check does not depend on the pipeline being importable.
 if want asset_pins; then
@@ -324,6 +323,8 @@ SPECS = [
     (storage / "CompanionListStorageContracts.kt", "CompanionListArtifactSpec",
      [("TATAR_COMPANION_V1", "dictionaries/tatar_companion_v1.tcomp.zlib"),
       ("RUSSIAN_COMPANION_V1", "dictionaries/russian_companion_v1.tcomp.zlib")]),
+    (storage / "StemLexiconStorageContracts.kt", "StemLexiconArtifactSpec",
+     [("TATAR_STEMS_V1", "dictionaries/tatar_stems_v1.tstem.zlib")]),
 ]
 
 def read_field(block, field):

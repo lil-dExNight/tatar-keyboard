@@ -32,6 +32,7 @@ candidate is selected.
 |---|---|---|
 | `dictionaries/*.tdict.zlib` | `scripts/rebuild_assets.py` (runs `dict_accept.py pack`) | release 1.8.4 baseline dictionaries, `data/dictionary/dict-accept/`, Tatar word forms |
 | `dictionaries/*_companion_v1.tcomp.zlib` | `scripts/rebuild_assets.py` (runs `companion_list_pack.py build`) | the committed dictionary of the same language |
+| `dictionaries/tatar_stems_v1.tstem.zlib` | `scripts/rebuild_assets.py` (runs `stem_lexicon_pack.py build`) | pinned Apertium-tat lexc, the rebuilt Tatar dictionary, word-form groups and review lemmas |
 | `dictionaries/*_sentstart_v1.txt` | `scripts/sentstart_pack.py` | Leipzig sentence corpora, the conversational training files, the bundled dictionary |
 | `dictionaries/tatar_proper_names_v1.txt` | `scripts/rebuild_assets.py` (runs `proper_name_pack.py`) | `data/dictionary/tatar-proper-name-review.tsv`, `data/dictionary/tatar-compound-review.tsv` |
 | `emoji/emoji_set_v1.txt`, `emoji_skin_v1.txt` | `scripts/emoji_pack.py`, `scripts/emoji_skin_pack.py` | Unicode Emoji 15.1 `emoji-test.txt` |
@@ -56,6 +57,16 @@ These inputs are not in the repository:
   ```
 
   (`6306014a` is the commit that set version 1.8.4.)
+- Apertium-tat lexc stems (GPL-3.0), pinned to an immutable commit and to the lexc file's size
+  and SHA-256 in `scripts/stem_lexicon_pack.py`. Fetch the source with:
+
+  ```
+  python3 scripts/stem_lexicon_pack.py fetch
+  ```
+
+  Only `apertium-tat.tat.lexc` is extracted, into
+  `build/stem-lexicon/apertium-tat/`; no upstream source is committed. A rebuild reads that file
+  by default, or the file named by `--apertium-lexc`.
 - Leipzig corpora (CC BY 4.0), from https://wortschatz.uni-leipzig.de/en/download. The
   rebuild reads the `*-sentences.txt` files named in `BIGRAMS[].train` and the Tatar
   `*-words.txt` files named in `WORDFORM_FREQUENCY_SOURCES` (both are in `rebuild_assets.py`).
@@ -277,8 +288,9 @@ are removed. The exact set and rule are stored in the JSON report.
 
 ## `rebuild_assets.py`
 
-This is the single entry point for dictionaries and bigram or combined bigram/trigram tables.
-A table is a set of indices into its dictionary, so the two are always rebuilt together.
+This is the single entry point for dictionaries, bigram or combined bigram/trigram tables,
+cold-companion lists and the Tatar stem lexicon. A table is a set of indices into its dictionary,
+so the two are always rebuilt together.
 
 ### Full rebuild
 
@@ -340,9 +352,17 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    list from the dictionary of step 2 alone: the top 20 000 words by stored frequency, no corpus
    and no baseline input. The words are an exact list, never a probabilistic filter, because a
    false positive would suppress a legitimate correction.
+4b. **Tatar stem lexicon.** `stem_lexicon_pack.py build` extracts literal stems, parts of speech
+   and continuation classes from the pinned Apertium-tat lexc source. It merges them with stems
+   inferred by `wordform_gen.build_groups` and review-table lemmas, then excludes every form in
+   the rebuilt Tatar dictionary. Only Apertium stems receive noun or verb suffix-chain flags.
+   Apertium's `-RUS` continuation forces back harmony. Entries are sorted, front-coded in blocks,
+   linked to the dictionary's raw SHA-256 and the lexc SHA-256, and zlib-compressed. The build
+   parses the complete image back before atomically replacing the asset.
 5. **Pins.** Each asset is measured, and its pins are rewritten in
-   `DictionaryStorageContracts.kt`, `BigramStorageContracts.kt` and
-   `CompanionListStorageContracts.kt`, between the `// <generated pins>` marker pairs of each
+   `DictionaryStorageContracts.kt`, `BigramStorageContracts.kt`,
+   `CompanionListStorageContracts.kt` and `StemLexiconStorageContracts.kt`, between the
+   `// <generated pins>` marker pairs of each
    spec block. There is one atomic write per file, and the values are read back afterwards.
 6. **Calibration pins.** The typo-recovery and glide calibration sets are deterministic
    functions of the Tatar dictionary, so their identities change with it. The rebuild
@@ -365,9 +385,9 @@ The raw tables and the JSON reports go to `--work-dir`, which defaults to
 ### One language: `--only tatar|russian`
 
 `--only` rebuilds the dictionary, the bigram table, the cold-companion list and the pins of one
-language, and needs only that language's inputs. The SHA-256 of the other language's assets and
+language, plus the stem lexicon for Tatar, and needs only that language's inputs. The SHA-256 of the other language's assets and
 its contract pins are recorded before the run and compared afterwards. If anything changed, the
-run fails. The final check still covers all six assets. `--only` cannot be combined with
+run fails. The final check still covers all shipped assets. `--only` cannot be combined with
 `--check`.
 
 ### Consistency check: `--check`
@@ -386,7 +406,9 @@ This mode rebuilds and writes nothing, and needs no corpora. It checks that:
 - the heads of each table equal the heads the packer would select from the current dictionary
   (the top heads by frequency plus the extra heads);
 - the words of each cold-companion list equal the top words the packer would select from the
-  current dictionary.
+  current dictionary;
+- the stem lexicon matches its contract, names the current Tatar dictionary and pinned Apertium
+  source, and contains no shipped dictionary form. The lexc file itself is not needed.
 
 Each asset gets a verdict: `ok`, `mismatch`, `missing`, `drift`, `known-drift` or
 `stale-known-drift`. The corpus section gets `not-checked` (no `--corpus-dir`), `ok`, `missing`
@@ -520,6 +542,19 @@ python3 scripts/companion_list_pack.py build \
 
 For the Russian list, use `--language rus` with `russian_top100k_v1.tdict.zlib`. The rebuild
 runs the same command itself (step 4), so this manual form is only for inspection.
+
+Build the stem lexicon directly only for inspection; a shipped update belongs in the full Tatar
+rebuild so its dictionary pin stays synchronized:
+
+```
+python3 scripts/stem_lexicon_pack.py fetch
+python3 scripts/stem_lexicon_pack.py build \
+    --report build/stem-lexicon/build-report.json
+```
+
+The direct build reads the committed dictionary and review tables and writes the asset named in
+`StemLexiconArtifactSpec`. Its JSON report records source, category and continuation counts and
+the compressed/raw identities.
 
 ## Equivalence checks
 
