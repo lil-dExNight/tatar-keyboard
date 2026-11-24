@@ -254,6 +254,45 @@ class GlideWordIndex private constructor(
             val plainLengths = FloatArray(entryCount)
             val loopLengths = FloatArray(entryCount) { -1f }
             val normativeDurations = FloatArray(entryCount)
+            // The per-entry channels write disjoint cells, so parallel ranges keep the exact
+            // sequential values while keeping the rebuild inside one gesture's overlap window.
+            fun computeIdealChannels(from: Int, to: Int) {
+                for (entry in from until to) {
+                    val start = keySeqStarts[entry]
+                    val end = keySeqStarts[entry + 1]
+                    if (end <= start) continue // a skipped (unmappable) word: an empty range
+                    plainLengths[entry] =
+                        idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, false)
+                    if (foldedYoPlainLengths[entry] >= 0f) {
+                        foldedYoPlainLengths[entry] = idealLength(
+                            keySeqPool, sameLetterAsPrevious, start, end, geometry, false,
+                            foldYoToE = true,
+                        )
+                    }
+                    val loopLength =
+                        idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, true)
+                    if (loopLength >= 0f) loopLengths[entry] = loopLength
+                    normativeDurations[entry] =
+                        fittsDurationMs(keySeqPool, start, end, geometry)
+                }
+            }
+            val workerCount = minOf(4, entryCount)
+            if (workerCount <= 1) {
+                computeIdealChannels(0, entryCount)
+            } else {
+                val threads = Array(workerCount) { worker ->
+                    Thread(
+                        {
+                            val from = entryCount * worker / workerCount
+                            val to = entryCount * (worker + 1) / workerCount
+                            computeIdealChannels(from, to)
+                        },
+                        "glide-index-build-$worker",
+                    ).apply { isDaemon = true }
+                }
+                threads.forEach { it.start() }
+                threads.forEach { it.join() }
+            }
             for (entry in 0 until entryCount) {
                 val start = keySeqStarts[entry]
                 val end = keySeqStarts[entry + 1]
@@ -261,19 +300,6 @@ class GlideWordIndex private constructor(
                 val firstKey = keySeqPool[start].toInt() and 0xff
                 val lastKey = keySeqPool[end - 1].toInt() and 0xff
                 pairEntries[cursors[firstKey * keyCount + lastKey]++] = entry
-                plainLengths[entry] =
-                    idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, false)
-                if (foldedYoPlainLengths[entry] >= 0f) {
-                    foldedYoPlainLengths[entry] = idealLength(
-                        keySeqPool, sameLetterAsPrevious, start, end, geometry, false,
-                        foldYoToE = true,
-                    )
-                }
-                val loopLength =
-                    idealLength(keySeqPool, sameLetterAsPrevious, start, end, geometry, true)
-                if (loopLength >= 0f) loopLengths[entry] = loopLength
-                normativeDurations[entry] =
-                    fittsDurationMs(keySeqPool, start, end, geometry)
             }
             sortPairBuckets(pairEntries, pairOffsets, frequencies)
             val twinless = twinlessBits(keySeqStarts, keySeqPool, loopLengths, entryCount)

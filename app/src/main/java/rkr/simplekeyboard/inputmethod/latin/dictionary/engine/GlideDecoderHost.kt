@@ -28,6 +28,7 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry
 import rkr.simplekeyboard.inputmethod.latin.glide.GlidePath
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideResult
 import rkr.simplekeyboard.inputmethod.latin.glide.GlideWordInventory
+import rkr.simplekeyboard.inputmethod.latin.suggestions.glideTrace
 
 /**
  * Owns one engine's glide decode side: the [GlideDecoder], its word index and the current layout
@@ -89,7 +90,9 @@ internal class GlideDecoderHost(
     }
 
     override fun prewarmGlideIndex() {
-        activeDecoder()?.prewarmIndex()
+        glideTrace("TT#glidePrewarm") {
+            activeDecoder()?.prewarmIndex()
+        }
     }
 
     private fun activeDecoder(): GlideDecoder? {
@@ -103,7 +106,9 @@ internal class GlideDecoderHost(
             val effective =
                 if (snapshot.isEmpty) inventory
                 else CompositeGlideInventory(inventory, snapshot, dictionaryMembership)
-            active = GlideDecoder(current, effective, glideConstants)
+            active = glideTrace("TT#glideIndexBuild") {
+                GlideDecoder(current, effective, glideConstants)
+            }
             decoder = active
             decoderGeometry = current
             decoderStructureVersion = snapshot.structureVersion
@@ -113,7 +118,7 @@ internal class GlideDecoderHost(
 
     override fun decodeGlide(path: GlidePath, contextWord: String?): List<String> {
         val active = activeDecoder() ?: return emptyList()
-        val count = active.decode(path, result)
+        val count = glideTrace("TT#glideDecode") { active.decode(path, result) }
         if (count == 0) return emptyList()
         // The bigram channel: rerank the N-best against the committed context word. A missing or
         // unknown context word (the table has no such head) leaves the decode order untouched.
