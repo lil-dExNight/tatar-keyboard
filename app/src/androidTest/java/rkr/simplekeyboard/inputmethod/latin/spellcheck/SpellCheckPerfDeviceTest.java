@@ -76,9 +76,6 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
                             }
                         });
                         assertNotNull("the tt_RU spell-checker session must be created", session[0]);
-                        // Give the background source one bounded preparation window instead of
-                        // flooding unchecked requests into the platform's spell-request throttle.
-                        SystemClock.sleep(COLD_INITIAL_DELAY_MS);
                         double firstCallbackMs = Double.NaN;
                         int requestCount = 0;
                         while (true) {
@@ -117,6 +114,9 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
                                 throw new AssertionFailedError(
                                         "no checked sentence answer before the cold timeout");
                             }
+                            // Pace unchecked retries instead of flooding the platform's request
+                            // throttle while the source is being prepared.
+                            SystemClock.sleep(COLD_RETRY_DELAY_MS);
                         }
                     } finally {
                         closeQuietly(session[0]);
@@ -503,7 +503,7 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
     private static final long WARM_TIMEOUT_MS = 15_000L;
     private static final long READY_TIMEOUT_MS = 30_000L;
     private static final long COLD_TIMEOUT_MS = 30_000L;
-    private static final long COLD_INITIAL_DELAY_MS = 500L;
+    private static final long COLD_RETRY_DELAY_MS = 50L;
     private static final long PSS_WAIT_TIMEOUT_MS = 60_000L;
     private static final String PSS_MARKER_PATH = "/data/local/tmp/tt-spellcheck-after-pss";
     private static final double WARM_BUDGET_MS = 100.0;
