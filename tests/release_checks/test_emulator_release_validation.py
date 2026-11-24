@@ -183,12 +183,15 @@ class ArtifactContractTest(unittest.TestCase):
         self.fixture = ArtifactFixture(Path(self.temporary_directory.name))
         self.minimum, self.target = sdk_bounds()
 
-    def arguments(self) -> list[str]:
+    def arguments(self, with_previous: bool = True) -> list[str]:
         apks = self.fixture.apks
         arguments = [
             "bash", str(SCRIPT),
             "--candidate", str(apks["candidate"]),
-            "--previous", str(apks["previous"]),
+        ]
+        if with_previous:
+            arguments.extend(("--previous", str(apks["previous"])))
+        arguments += [
             "--debug-apk", str(apks["debug"]),
             "--androidtest-apk", str(apks["androidtest"]),
             "--outdir", str(self.fixture.outdir),
@@ -205,11 +208,16 @@ class ArtifactContractTest(unittest.TestCase):
         environment["ANDROID_SDK_ROOT"] = str(self.fixture.sdk)
         return environment
 
-    def run_script(self, timeout: int = 15) -> tuple[int | None, str]:
+    def run_script(
+        self, timeout: int = 15, with_previous: bool = True, previous_dir: Path | None = None,
+    ) -> tuple[int | None, str]:
+        environment = self.environment()
+        if previous_dir is not None:
+            environment["PREVIOUS_DIR"] = str(previous_dir)
         try:
             completed = subprocess.run(
-                self.arguments(), capture_output=True, text=True,
-                env=self.environment(), timeout=timeout, check=False,
+                self.arguments(with_previous), capture_output=True, text=True,
+                env=environment, timeout=timeout, check=False,
             )
             return completed.returncode, normalized(completed.stdout) + normalized(completed.stderr)
         except subprocess.TimeoutExpired as error:
@@ -225,6 +233,31 @@ class ArtifactContractTest(unittest.TestCase):
             "androidTest=org.tatarkeyboard.ime.debug.test/3.14.2/57",
             output,
         )
+
+    def test_without_previous_the_highest_lower_release_of_the_package_is_chosen(self) -> None:
+        releases = self.fixture.root / "releases"
+        releases.mkdir()
+        for name, badging in (
+            ("old.apk", ("org.tatarkeyboard.ime", 50, "3.10.0")),
+            ("last.apk", ("org.tatarkeyboard.ime", 56, "3.14.1")),
+            ("same.apk", ("org.tatarkeyboard.ime", 57, "3.14.2")),
+            ("other.apk", ("org.otherkeyboard.ime", 56, "9.9.9")),
+        ):
+            (releases / name).write_bytes(b"")
+            self.fixture.badging[name] = badging
+        self.fixture.write_binaries()
+        returncode, output = self.run_script(with_previous=False, previous_dir=releases)
+        self.assertIsNone(returncode, output)
+        self.assertIn("RESULT|PASS|artifact.upgrade-contract|package=org.tatarkeyboard.ime "
+                      "from=3.14.1/56 to=3.14.2/57", output)
+
+    def test_without_previous_and_no_lower_release_the_run_stops(self) -> None:
+        releases = self.fixture.root / "releases"
+        releases.mkdir()
+        returncode, output = self.run_script(with_previous=False, previous_dir=releases)
+        self.assertEqual(2, returncode, output)
+        self.assertIn("ERROR: no previous release APK below versionCode 57", output)
+        self.assertNotIn("RESULT|PASS|artifact.upgrade-contract|", output)
 
     def test_a_debug_apk_from_another_version_is_rejected(self) -> None:
         self.fixture.badging["debug.apk"] = ("org.tatarkeyboard.ime.debug", 56, "3.14.1")

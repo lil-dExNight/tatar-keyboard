@@ -22,7 +22,9 @@
 #
 # Required artifacts:
 #   --candidate <apk>       signed candidate release APK
-#   --previous <apk>        signed installed-base APK (default dist/tatar-keyboard-3.14.1.apk)
+#   --previous <apk>        signed installed-base APK (default: the APK in $PREVIOUS_DIR, dist/
+#                           unless set, of the candidate's package with the highest
+#                           versionCode below the candidate's)
 #   --debug-apk <apk>       matching debug APK for instrumentation/run-as probes
 #   --androidtest-apk <apk> matching debug androidTest APK
 #   --avd <api=name>        repeatable API-to-AVD mapping
@@ -31,7 +33,7 @@
 #
 # Example (one mapping per supported API is required):
 #   bash scripts/emulator-release-validation.sh \
-#     --candidate dist/tatar-keyboard-4.0.0.apk \
+#     --candidate build/release_pack/tatar-keyboard-<version>-release.apk \
 #     --avd 24=tt_api24 --avd 25=tt_api25 # ... through the target API
 #
 # The result is never P0 signoff by itself: Direct Boot before first unlock,
@@ -42,7 +44,8 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CANDIDATE=""
-PREVIOUS="$ROOT/dist/tatar-keyboard-3.14.1.apk"
+PREVIOUS=""
+PREVIOUS_DIR="${PREVIOUS_DIR:-$ROOT/dist}"
 DEBUG_APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
 ANDROIDTEST_APK="$ROOT/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 OUTDIR="$ROOT/build/emulator-release-validation"
@@ -167,7 +170,7 @@ if [ -n "$ONLY_APIS" ]; then
     done
 fi
 [ -n "$CANDIDATE" ] || { echo "ERROR: --candidate is required" >&2; exit 2; }
-for artifact in "$CANDIDATE" "$PREVIOUS" "$DEBUG_APK" "$ANDROIDTEST_APK"; do
+for artifact in "$CANDIDATE" ${PREVIOUS:+"$PREVIOUS"} "$DEBUG_APK" "$ANDROIDTEST_APK"; do
     [ -f "$artifact" ] && [ -r "$artifact" ] || { echo "ERROR: unreadable APK: $artifact" >&2; exit 2; }
 done
 [ -x "$ADB" ] || { echo "ERROR: adb not found: $ADB" >&2; exit 2; }
@@ -207,10 +210,23 @@ certificate() { # certificate <apk> -> exactly one verified SHA-256 digest
 }
 
 CANDIDATE_BADGE=$(badge "$CANDIDATE") || { echo "ERROR: bad candidate badging" >&2; exit 2; }
+IFS='|' read -r PKG CANDIDATE_VC CANDIDATE_VN <<<"$CANDIDATE_BADGE"
+if [ -z "$PREVIOUS" ]; then
+    previous_vc=-1
+    for apk in "$PREVIOUS_DIR"/*.apk; do
+        [ -f "$apk" ] || continue
+        IFS='|' read -r apk_pkg apk_vc _ <<<"$(badge "$apk" || true)"
+        if [ "$apk_pkg" = "$PKG" ] && [ -n "$apk_vc" ] && [ "$apk_vc" -lt "$CANDIDATE_VC" ] \
+            && [ "$apk_vc" -gt "$previous_vc" ]; then
+            PREVIOUS="$apk"
+            previous_vc="$apk_vc"
+        fi
+    done
+    [ -n "$PREVIOUS" ] || { echo "ERROR: no previous release APK below versionCode $CANDIDATE_VC in $PREVIOUS_DIR; pass --previous" >&2; exit 2; }
+fi
 PREVIOUS_BADGE=$(badge "$PREVIOUS") || { echo "ERROR: bad previous APK badging" >&2; exit 2; }
 DEBUG_BADGE=$(badge "$DEBUG_APK") || { echo "ERROR: bad debug APK badging" >&2; exit 2; }
 ANDROIDTEST_BADGE=$(badge "$ANDROIDTEST_APK" allow-unversioned) || { echo "ERROR: bad androidTest APK badging" >&2; exit 2; }
-IFS='|' read -r PKG CANDIDATE_VC CANDIDATE_VN <<<"$CANDIDATE_BADGE"
 IFS='|' read -r PREVIOUS_PKG PREVIOUS_VC PREVIOUS_VN <<<"$PREVIOUS_BADGE"
 IFS='|' read -r DEBUG_PKG DEBUG_VC DEBUG_VN <<<"$DEBUG_BADGE"
 IFS='|' read -r TEST_PKG TEST_VC TEST_VN <<<"$ANDROIDTEST_BADGE"
