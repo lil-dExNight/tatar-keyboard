@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Version:** 1.16 — 2026-11-24
+**Version:** 1.18 — 2026-11-25
 
 Tatar Keyboard keeps what you type **on your device**.
 
@@ -134,12 +134,20 @@ Keyboard settings → “Backup” can write one backup file with your settings 
 A single switch (keyboard settings → Preferences → “Pause learning”, off by default) pauses all personal learning.
 
 - **What pauses.** No new word, pair, learned emoji, refused correction or sentence start is written, and the half-learned hashes of the stores that use them are left untouched: nothing is hashed, nothing expires, and the counters keep their values. The recently used emoji list is not added to either.
-- **What does not pause.** What you already saved keeps working: saved words, learned pairs, learned emoji and sentence starts still appear in suggestions, a remembered refused correction keeps suppressing its correction, text shortcuts keep working, and the “Recent” tab still shows your recent emoji. This is a pause, not a wipe; the personal dictionary switch is the one that hides them.
+- **What does not pause.** What you already saved keeps working: saved words, learned pairs, learned emoji and sentence starts still appear in suggestions, a remembered refused correction keeps suppressing its correction, text shortcuts keep working, and the “Recent” tab still shows your recent emoji. This is a pause, not a wipe; the personal dictionary switch hides them from the keyboard and the spell checker. Pause learning does not stop the spell checker's read-only use while that switch is on.
 - Turning it off resumes learning where it stopped. Nothing typed while it was on is learned afterwards; for the stores, those observations never happened.
 
 ## Spell checker
 
-Tatar Keyboard includes a Tatar spell checker for other apps; Android uses it only when you select it in the system settings (Settings → System → Languages & input → Spell checker). While it is selected, Android sends it the text of the field you are editing, and the check runs on your device. To check words and offer corrections, the spell checker reads the bundled Tatar dictionary and, after you unlock your device for the first time following a restart, your personal dictionary read-only. Before that first unlock, it does not read your personal dictionary. The spell checker keeps no copy of the checked text, stores nothing it checks, learns nothing from it and writes no log.
+Tatar Keyboard includes a Tatar spell checker for other apps. Android uses it only when you select it in the system settings (Settings → System → Languages & input → Spell checker). While it is selected, Android decides what text to submit in text requests. The spell checker does not read the host field itself and sees neither the field type nor the host app, so it cannot apply the keyboard's private-field rules itself; any password-field exclusion depends on Android. Tatar text is checked; known Russian words and all English words are not underlined.
+
+To return verdicts and corrections, the spell checker reads its bundled language data: the Tatar and Russian dictionaries, reviewed Tatar proper names and the Tatar morphological acceptor. After the first unlock following a restart, it also reads the Tatar and Russian personal dictionaries read-only while the personal dictionary switch is on. It reads that switch on every request. When the switch is off, no personal words are used for verdicts or corrections, including cached snapshots. Pause learning does not gate this read-only use. Before that first unlock, no personal file is read. The app's "Check Tatar words" switch, on by default, turns checking off without changing the system selection or stopping Android submissions.
+
+The spell checker keeps no submitted text or verdict beyond the request, stores no checked text, learns nothing from it and writes no log. Its process-wide caches hold only language and layout data and read-only personal snapshots.
+
+## Feedback email
+
+Settings → Information → "Send feedback" opens your email app with the feedback address and a subject naming the keyboard version already filled in. The keyboard supplies no message body or attachments. Nothing is sent until you choose to send the message in that app. The email app and your email provider, not Tatar Keyboard, transmit and store the message under their own privacy terms. If the device has no email app, the keyboard shows the address.
 
 ## Contact
 
