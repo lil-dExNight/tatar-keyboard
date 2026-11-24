@@ -92,6 +92,34 @@ class SpellCheckerRealAssetsIntegrationTest {
     }
 
     @Test
+    fun tatarChatSpellingOffersTheTatarCorrection() {
+        val checked = engine().checkSentence("бүген рэхмэт", 4)
+
+        assertAccepted(checked.answers[0])
+        assertTypo(checked.answers[1])
+        assertEquals("рәхмәт", checked.answers[1].suggestions.firstOrNull())
+    }
+
+    @Test
+    fun tatarChatSpellingRecoversSeveralSubstitutedLetters() {
+        val checked = engine().checkSentence("бүген хэбэр", 4)
+
+        assertTypo(checked.answers[1])
+        assertEquals("хәбәр", checked.answers[1].suggestions.firstOrNull())
+    }
+
+    @Test
+    fun chatRecoveryLeavesVerdictsAndRussianTextUnchanged() {
+        // The word-only callback leaves a word without a Tatar-specific letter alone, and one such
+        // word does not make a sentence Tatar.
+        assertAccepted(engine().checkWord("рэхмэт", 4))
+        assertAccepted(engine().checkSentence("рэхмэт", 4).answers.single())
+
+        // A Russian sentence stays unchecked, so its words never reach chat recovery.
+        engine().checkSentence("очень хороший рэхмэт", 4).answers.forEach(::assertAccepted)
+    }
+
+    @Test
     fun concurrentRequestsProduceCorrectAnswers() {
         val sharedEngine = engine()
         val executor = Executors.newFixedThreadPool(8)

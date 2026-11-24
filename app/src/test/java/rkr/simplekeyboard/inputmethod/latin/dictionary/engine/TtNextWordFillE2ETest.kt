@@ -48,7 +48,7 @@ class TtNextWordFillE2ETest {
         // Derived through [TdictPrefixIndex.topFrequentWords] and pinned as literals: the order
         // the fallback offers.
         assertEquals(
-            listOf("һәм", "белән", "да", "дә", "бу", "ул", "дип", "өчен"),
+            listOf("һәм", "белән", "да", "дә", "бу", "ул", "өчен", "дип"),
             requireNotNull(tatarIndex).topFrequentWords(8),
         )
     }

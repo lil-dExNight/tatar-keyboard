@@ -50,12 +50,12 @@ data class CompanionListArtifactSpec(
             family = "tatar_companion",
             languageTag = PersonalSubtypes.TATAR_RU,
             assetPath = "dictionaries/tatar_companion_v1.tcomp.zlib",
-            expectedCompressedSize = 78_986,
+            expectedCompressedSize = 79_016,
             expectedCompressedSha256 =
-                "081fccfc3c7decb1e008904d4d3d861bfea51848db5e91fd085efe3a7a8a70c3",
-            expectedRawSize = 318_677,
+                "e1b2aa48fde8148e882488a0bfdf70cc188e22cd0b37c77aadd6413ae4858dac",
+            expectedRawSize = 319_047,
             expectedRawSha256 =
-                "916266adfcc05894f510c516d27d232c3b79a263b1cce53cb9a343049e0ae7e4",
+                "bb52c3eca45e691d9a9ba7252cd1bf75877ea772b82581aa2a2954711ae5b9f2",
             expectedWordCount = 20_000,
         )
         // </generated pins>

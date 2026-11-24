@@ -267,6 +267,16 @@ layout (`KeyNeighborTable` derives the adjacency from the key rectangles, center
 normalized per axis by the keys' half-extents) ranks before a non-neighbor substitution at the
 same length tier.
 
+Chat-spelling recovery (`EDIT_CLASS_CHAT_SUBSTITUTION`) is Tatar-only and shares the tier's
+empty-exact, four-code-point domain. `TatarChatSpellingRules` replaces the Russian partner
+letters with the Tatar letters; a variant needs at least two such positions, every subset up to
+six positions is probed, and a longer word gets its all-substituted form only. Candidates are
+bundled dictionary words or forms the Tatar morphological acceptor admits; accepted-only forms
+carry no stored frequency. The class ranks after exact matches, class #1 and the DL-1 tier. It is
+display-only for the keyboard: `FuzzyEditPolicy` refuses it in `autocorrectClasses`, so no advice,
+preview or separator commit can originate from it. The spell checker offers its corrections
+without changing a word's verdict.
+
 Next-word prediction (`CompositePrefixComputer.predict`): with a Tatar `A B ` context, bundled
 two-word successors lead and one-word successors of B fill their free cells; with only B, the
 one-word successors answer directly. Learned word pairs keyed on B fill the cells left free (at
@@ -400,8 +410,8 @@ dictionary, so those chains are available without duplicating dictionary admissi
 inferred and review stems stay bare-only. The acceptor applies the word-form generator's vowel
 harmony, forced-back harmony, consonant assimilation, final voicing, possessive, suppletive and
 override rules, reuses fixed scratch and allocates nothing per lookup. The spell checker uses it
-for word verdicts and correction filtering; keyboard suggestion, autocorrect, glide and learning
-paths do not call it.
+for word verdicts and correction filtering; in the keyboard only chat-spelling recovery calls it,
+to admit candidate forms. Autocorrect, glide and learning paths do not call it.
 
 The acceptor also covers negative imperatives, nominal chains on verbal nouns, participles,
 nominalized stems and categorical futures, locative-attributive, similative and terminative cases, and

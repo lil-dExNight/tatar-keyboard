@@ -122,10 +122,20 @@ class ApplyTest(unittest.TestCase):
             csf.apply(frequencies, {})
 
     def test_a_missing_target_fails(self) -> None:
-        frequencies = {"рэхмэт": 100}
-        review = self.review(csf.Decision("рэхмэт", "fold", "рәхмәт", 0, 0, ""))
+        frequencies = {"рәхмәт": 4000, "рэхмэт": 100}
+        review = self.review(csf.Decision("рэхмэт", "fold", "рәхмәтне", 0, 0, ""))
         with self.assertRaisesRegex(csf.ChatSpellingError, "not in the composition"):
             csf.apply(frequencies, review)
+
+    def test_stale_removals_do_not_apply_to_another_composition(self) -> None:
+        frequencies = {"азатлыгынын": 100, "монда": 50, "китап": 5}
+        review = self.review(
+            csf.Decision("азатлыгынын", "fold", "азатлыгының", 0, 0, ""),
+            csf.Decision("монда", "drop", "", 0, 0, ""),
+        )
+        result, report = csf.apply(frequencies, review)
+        self.assertEqual(frequencies, result)
+        self.assertEqual((report.folded, report.dropped, report.kept), (0, 0, 0))
 
     def test_review_rows_outside_the_composition_are_ignored(self) -> None:
         review = self.review(csf.Decision("рэхмэт", "fold", "рәхмәт", 0, 0, ""))
@@ -218,6 +228,14 @@ class PackIntegrationTest(unittest.TestCase):
             with self.assertRaisesRegex(csf.ChatSpellingError, "unreviewed"):
                 da.merged_entries("tat", self.baseline)
 
+    def test_a_stale_fold_keeps_an_admitted_word_and_its_preservation(self) -> None:
+        self.build([("азатлыгынын", 100), ("китап", 300)])
+        with self.patched() as da:
+            _shipped, _accepted, entries = da.merged_entries(
+                "tat", self.baseline, preserve={"азатлыгынын": 100}
+            )
+        self.assertEqual(dict(entries)["азатлыгынын"], 100)
+
     def test_a_required_word_the_rule_folds_is_reported(self) -> None:
         with self.patched() as da:
             report: dict = {}
@@ -266,7 +284,10 @@ class LiveTreeTest(unittest.TestCase):
         # after it the composition no longer does. What must hold either way is that the rule
         # leaves no reviewed removal behind and never stops on an unreviewed word.
         cleaned, _report = csf.apply(self.frequencies, self.review)
-        removed = {word for word, row in self.review.items() if row.decision != "keep"}
+        current_words = {item.word for item in csf.flagged(self.frequencies)}
+        removed = current_words & {
+            word for word, row in self.review.items() if row.decision != "keep"
+        }
         self.assertEqual(sorted(removed & set(cleaned)), [])
 
     def test_the_review_covers_the_reported_chat_spellings(self) -> None:

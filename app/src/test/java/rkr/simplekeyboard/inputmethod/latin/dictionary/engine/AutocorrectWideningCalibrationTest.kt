@@ -335,10 +335,10 @@ class AutocorrectWideningCalibrationTest {
         val raw = inflate(DictionaryArtifactSpec.TATAR_TOP100K_V1)
         val sortedFrequencies = vocabulary.map { requireNotNull(currentIndex).frequencyOf(it) }.sorted()
         val expected = mapOf(
-            10_000 to Triple(3_284L, 2_930, 0),
-            5_000 to Triple(7_566L, 2_179, 0),
-            2_000 to Triple(20_012L, 1_269, 0),
-            1_000 to Triple(38_359L, 754, 0),
+            10_000 to Triple(3_282L, 2_955, 0),
+            5_000 to Triple(7_566L, 2_200, 0),
+            2_000 to Triple(20_050L, 1_283, 0),
+            1_000 to Triple(38_424L, 765, 0),
         )
         val failingFloors = ArrayList<Int>()
         for ((rank, pins) in expected) {
@@ -513,12 +513,20 @@ class AutocorrectWideningCalibrationTest {
         // The two arms differ ONLY in the autocorrect class set; the display side of both is the
         // shipped Tatar configuration.
         private val CURRENT_POLICY = FuzzyEditPolicy(
-            intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+            intArrayOf(
+                TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
+                TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+                TdictPrefixIndex.EDIT_CLASS_CHAT_SUBSTITUTION,
+            ),
             true,
             intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS),
         )
         private val WIDENED_POLICY = FuzzyEditPolicy(
-            intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+            intArrayOf(
+                TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
+                TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+                TdictPrefixIndex.EDIT_CLASS_CHAT_SUBSTITUTION,
+            ),
             true,
             intArrayOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
         )
@@ -536,14 +544,14 @@ class AutocorrectWideningCalibrationTest {
         )
 
         // Pins over the committed assets, generators and reviewed safety sets.
-        private const val PIN_VALID_OOV_ROWS = 215
+        private const val PIN_VALID_OOV_ROWS = 213
         private const val PIN_TT_CURRENT_SEEN_FORM = 0
-        private const val PIN_TT_CURRENT_NEW_FORM = 1
+        private const val PIN_TT_CURRENT_NEW_FORM = 0
         private const val PIN_TT_CURRENT_UNSEEN_STEM = 0
         private const val PIN_TT_WIDENED_SEEN_FORM = 0
         private const val PIN_TT_WIDENED_NEW_FORM = 0
         private const val PIN_TT_WIDENED_UNSEEN_STEM = 0
-        private const val PIN_TT_CURRENT_FIRES = 1
+        private const val PIN_TT_CURRENT_FIRES = 0
         private const val PIN_TT_WIDENED_FIRES = 0
         private const val PIN_RU_CURRENT_SEEN_FORM = 0
         private const val PIN_RU_CURRENT_NEW_FORM = 0
@@ -551,9 +559,9 @@ class AutocorrectWideningCalibrationTest {
         private const val PIN_RU_WIDENED_SEEN_FORM = 0
         private const val PIN_RU_WIDENED_NEW_FORM = 0
         private const val PIN_RU_WIDENED_UNSEEN_STEM = 0
-        private const val PIN_TT_CURRENT_RECOVERED = 21
-        private const val PIN_TT_CURRENT_HARMFUL = 9
-        private const val PIN_TT_WIDENED_RECOVERED = 2_930
+        private const val PIN_TT_CURRENT_RECOVERED = 25
+        private const val PIN_TT_CURRENT_HARMFUL = 10
+        private const val PIN_TT_WIDENED_RECOVERED = 2_955
         private const val PIN_TT_WIDENED_HARMFUL = 0
         private const val PIN_RU_CURRENT_RECOVERED = 0
         private const val PIN_RU_CURRENT_HARMFUL = 4
@@ -573,7 +581,7 @@ class AutocorrectWideningCalibrationTest {
         private const val PIN_RU_GUARD_NEW_FORM = 0
         private const val PIN_RU_GUARD_UNSEEN_STEM = 0
         private const val PIN_RU_GUARD_FIRES = 0
-        private const val PIN_TT_GUARD_RECOVERED = 855
+        private const val PIN_TT_GUARD_RECOVERED = 866
         private const val PIN_TT_GUARD_HARMFUL = 0
         private const val PIN_RU_GUARD_RECOVERED = 797
         private const val PIN_RU_GUARD_HARMFUL = 0

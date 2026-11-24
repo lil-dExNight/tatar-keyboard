@@ -2,6 +2,7 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import rkr.simplekeyboard.inputmethod.latin.morphology.Utf8WordformAcceptor
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.StoreValidationToken
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictFormat
 
@@ -225,6 +226,8 @@ internal class TdictPrefixIndex private constructor(
     private val suffixTable: InflectedSuffixTable?,
     private val fuzzyPolicy: FuzzyEditPolicy,
     private val autocorrectMinCandidateFrequency: Long,
+    // Directed Tatar chat-spelling substitutions; null disables edit class #5.
+    private val chatSubstitutions: ChatSubstitutionTable?,
 ) : ContextBoostedPrefixComputer, KeyNeighborSink, BigramDictionary, WordFrequencySource,
     TopFrequencySource, ExactPrefixRangeChecker, AutocorrectAdviceControl {
     // Reusable per-index scratch, touched only inside lookup(), whose exclusivity is guaranteed by
@@ -306,6 +309,13 @@ internal class TdictPrefixIndex private constructor(
     // typo-recovery level ran.
     private val autocorrectCodePointScratch = IntArray(MAX_PREFIX_BYTES)
     private val autocorrectVariantScratch = ByteArray(MAX_PREFIX_BYTES + VARIANT_HEADROOM)
+    // Chat-substitution generator scratches: eligible positions and their typed letters, plus
+    // fixed slots for acceptor-only candidates. The negative synthetic indices point at these
+    // slots, so the existing ranked cells remain primitive ints.
+    private val chatPositionScratch = IntArray(MAX_PREFIX_BYTES)
+    private val chatOriginalScratch = IntArray(MAX_PREFIX_BYTES)
+    private val chatMorphWords = Array(MAX_RESULTS) { ByteArray(MAX_PREFIX_BYTES) }
+    private val chatMorphWordLengths = IntArray(MAX_RESULTS)
 
     // Worker-confined like the scratch above: the engine applies the setting before each PREFIX
     // lookup and through its serialized worker on a transition.
@@ -313,6 +323,14 @@ internal class TdictPrefixIndex private constructor(
 
     @Volatile
     private var neighborTable: KeyNeighborTable? = null
+
+    /**
+     * Loaded morphology image; null until its loader adopts it or for tests without morphology.
+     * Read on the worker inside the chat-substitution level; published from the morphology load
+     * thread or the spell checker's correction call, hence volatile.
+     */
+    @Volatile
+    private var wordformAcceptor: Utf8WordformAcceptor? = null
 
     /**
      * How many leading results of the last [lookup] are exact. Worker-confined; reset at the start
@@ -393,6 +411,8 @@ internal class TdictPrefixIndex private constructor(
     // substitution family can raise it (it alone carries a typed->replacement letter pair), and
     // only when the policy arms FuzzyEditPolicy.geometryNeighborBonus.
     private var fuzzyCurrentNeighbor = false
+    private var fuzzyAllowMorphCandidate = false
+    private var fuzzyCurrentSameLengthFound = false
 
     // Autocorrect accumulator, private to one computeAutocorrectAdvice() call. It counts whole-word
     // matches: how many variants of the typed word are dictionary entries, and which one. Anything
@@ -425,6 +445,11 @@ internal class TdictPrefixIndex private constructor(
 
     override fun updateKeyNeighbors(table: KeyNeighborTable?) {
         neighborTable = table
+    }
+
+    /** Publishes the morphology image adopted by the owning engine, or disables it. */
+    internal fun updateWordformAcceptor(acceptor: Utf8WordformAcceptor?) {
+        wordformAcceptor = acceptor
     }
 
     /** Exact-pass emptiness without candidate ranking, typo recovery or autocorrect work. */
@@ -532,7 +557,16 @@ internal class TdictPrefixIndex private constructor(
             if (resultCount == 0) return emptyList()
             ArrayList<String>(resultCount).also { result ->
                 for (slot in 0 until resultCount) {
-                    result += decodeWord(rankedIndices[slot])
+                    val index = rankedIndices[slot]
+                    if (index < 0) {
+                        val morphSlot = -1 - index
+                        result += String(
+                            chatMorphWords[morphSlot], 0, chatMorphWordLengths[morphSlot],
+                            Charsets.UTF_8,
+                        )
+                    } else {
+                        result += decodeWord(index)
+                    }
                 }
             }
         } catch (_: RuntimeException) {
@@ -879,6 +913,7 @@ internal class TdictPrefixIndex private constructor(
         fuzzyVariantsUsed = 0
         fuzzyProbesUsed = 0
         fuzzyCurrentNeighbor = false
+        fuzzyAllowMorphCandidate = false
         // The enabled passes share one budget: variants scanned across all of them stay within
         // MAX_FUZZY_VARIANTS (for the tier only survivors count; its probes count against
         // MAX_FUZZY_PROBES). Each candidate is tagged with a rank key derived from
@@ -942,6 +977,31 @@ internal class TdictPrefixIndex private constructor(
             // double-count.
         }
 
+        // Chat-substitution recovery fills only cells the tier left free, so it never displaces
+        // a closer edit. It runs on the same empty-exact, >=4-code-point domain. Subsets need at
+        // least two replacements; all other generator masks duplicate the tier's one-substitution
+        // families.
+        if (dl1Tier &&
+            fuzzyCount < fuzzyRemaining &&
+            chatSubstitutions != null &&
+            EDIT_CLASS_CHAT_SUBSTITUTION in fuzzyPolicy.editClasses
+        ) {
+            fuzzyCurrentClass = EDIT_CLASS_CHAT_SUBSTITUTION
+            fuzzyAllowMorphCandidate = true
+            val emitted = FuzzyPrefixVariants.generateChatSubstitutionVariants(
+                exactScratch, prefixLength, chatSubstitutions, codePointScratch,
+                variantScratch, chatPositionScratch, chatOriginalScratch,
+                MAX_FUZZY_PROBES - fuzzyProbesUsed, substitutionProbeConsumer,
+            )
+            fuzzyAllowMorphCandidate = false
+            if (emitted < 0 || fuzzyOverBudget) {
+                lastFuzzyOverBudget = true
+                lastFuzzyVisitedCount = fuzzyVisited
+                lastFuzzyProbeCount = fuzzyProbesUsed
+                return exactCount
+            }
+        }
+
         lastFuzzyVariantCount = fuzzyVariantsUsed
         lastFuzzyVisitedCount = fuzzyVisited
         lastFuzzyProbeCount = fuzzyProbesUsed
@@ -973,23 +1033,78 @@ internal class TdictPrefixIndex private constructor(
      */
     private fun probeAndScanVariant(position: Int, variantBytes: ByteArray, variantLength: Int) {
         if (fuzzyOverBudget) return
+        fuzzyCurrentSameLengthFound = false
         val rangeStart = probeRangeStart[position]
         val rangeEnd = probeRangeEnd[position]
-        if (rangeStart >= rangeEnd) return
-        fuzzyProbesUsed++
-        val probe = probeLowerBound(variantBytes, variantLength, rangeStart, rangeEnd)
-        if (probe >= rangeEnd) return
-        val wordLength = decodeWordInto(probe, probeScratch)
-        if (wordLength < variantLength) return
-        for (offset in 0 until variantLength) {
-            if (unsigned(probeScratch[offset]) != (variantBytes[offset].toInt() and 0xff)) return
+        if (rangeStart < rangeEnd) {
+            fuzzyProbesUsed++
+            val probe = probeLowerBound(variantBytes, variantLength, rangeStart, rangeEnd)
+            if (probe < rangeEnd) {
+                val wordLength = decodeWordInto(probe, probeScratch)
+                var prefixMatches = wordLength >= variantLength
+                for (offset in 0 until variantLength) {
+                    if (unsigned(probeScratch[offset]) !=
+                        (variantBytes[offset].toInt() and 0xff)
+                    ) {
+                        prefixMatches = false
+                        break
+                    }
+                }
+                if (prefixMatches) {
+                    if (fuzzyVariantsUsed >= MAX_FUZZY_VARIANTS) {
+                        fuzzyOverBudget = true
+                    } else {
+                        fuzzyVariantsUsed++
+                        scanVariantBlockFrom(variantBytes, variantLength, probe)
+                    }
+                }
+            }
         }
+        if (fuzzyAllowMorphCandidate &&
+            !fuzzyCurrentSameLengthFound &&
+            !fuzzyOverBudget
+        ) {
+            addMorphCandidate(variantBytes, variantLength)
+        }
+    }
+
+    /**
+     * Adds one acceptor-only candidate under edit class #5. Negative indices address the fixed
+     * morphological slots; frequency 0 keeps them after every bundled candidate of the same class.
+     */
+    private fun addMorphCandidate(variantBytes: ByteArray, variantLength: Int) {
+        val acceptor = wordformAcceptor ?: return
+        if (variantLength > MAX_PREFIX_BYTES || !acceptor.acceptsUtf8(variantBytes, variantLength)) {
+            return
+        }
+        var slot = -1
+        for (candidateSlot in 0 until MAX_RESULTS) {
+            val syntheticIndex = -1 - candidateSlot
+            var used = false
+            for (fuzzySlot in 0 until fuzzyCount) {
+                if (fuzzyIndices[fuzzySlot] == syntheticIndex) {
+                    used = true
+                    break
+                }
+            }
+            if (!used) {
+                slot = candidateSlot
+                break
+            }
+        }
+        if (slot < 0) return
+        System.arraycopy(variantBytes, 0, chatMorphWords[slot], 0, variantLength)
+        chatMorphWordLengths[slot] = variantLength
         if (fuzzyVariantsUsed >= MAX_FUZZY_VARIANTS) {
             fuzzyOverBudget = true
             return
         }
         fuzzyVariantsUsed++
-        scanVariantBlockFrom(variantBytes, variantLength, probe)
+        fuzzyCount = insertRanked(
+            fuzzyIndices, fuzzyFrequencies, fuzzyClasses, fuzzyCount, fuzzyRemaining,
+            -1 - slot, 0L,
+            fuzzyRankKey(fuzzyCurrentClass, true, fuzzyCurrentNeighbor),
+        )
     }
 
     /**
@@ -1101,6 +1216,9 @@ internal class TdictPrefixIndex private constructor(
                 if (fuzzyVisited > MAX_FUZZY_VISITED) {
                     fuzzyOverBudget = true
                     return@scanBlockRange SCAN_ABORT
+                }
+                if (remFirstLength == 0 && remSecondLength == 0) {
+                    fuzzyCurrentSameLengthFound = true
                 }
                 // Never suggest the typed word itself, and never put one word in two cells
                 // (de-duplicated by dictionary index). A word reachable from two families or two
@@ -1757,6 +1875,12 @@ internal class TdictPrefixIndex private constructor(
      * [scratch], so consecutive decodes into one scratch cannot corrupt the prefix.
      */
     private fun decodeWordInto(index: Int, scratch: ByteArray): Int {
+        if (index < 0) {
+            val slot = -1 - index
+            val length = chatMorphWordLengths[slot]
+            System.arraycopy(chatMorphWords[slot], 0, scratch, 0, minOf(length, scratch.size))
+            return length
+        }
         val block = index / TdictFormat.BLOCK_SIZE
         val position = index % TdictFormat.BLOCK_SIZE
         ensureProbeBlock(block)
@@ -1908,6 +2032,7 @@ internal class TdictPrefixIndex private constructor(
         private const val EDIT_CLASS_EXACT = 0
         internal const val EDIT_CLASS_LONG_PRESS = 1
         internal const val EDIT_CLASS_SUBSTITUTION = 4
+        internal const val EDIT_CLASS_CHAT_SUBSTITUTION = 5
 
         // Which edit classes run is the per-engine [FuzzyEditPolicy] passed to [open].
 
@@ -1973,6 +2098,8 @@ internal class TdictPrefixIndex private constructor(
             // A live store token for exactly this content skips the structural walk below; the
             // header and section checks always run. See [StoreValidationToken].
             validationToken: StoreValidationToken? = null,
+            // Directed chat-spelling substitutions; null for engines without edit class #5.
+            chatSubstitutions: ChatSubstitutionTable? = null,
         ): TdictPrefixIndex? = try {
             require(identity.generation > 0)
             require(identity.schemaId == TdictFormat.SCHEMA_ID)
@@ -2020,6 +2147,7 @@ internal class TdictPrefixIndex private constructor(
                 suffixTable,
                 fuzzyEditPolicy ?: FuzzyEditPolicy.DEFAULT,
                 autocorrectMinCandidateFrequency,
+                chatSubstitutions,
             )
             val skipStructuralWalk =
                 StoreValidationToken.matches(validationToken, identity.rawSha256, expectedRawSize)

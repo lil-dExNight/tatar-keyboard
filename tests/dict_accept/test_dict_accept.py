@@ -768,8 +768,8 @@ class DictAcceptCheckLiveTreeTest(unittest.TestCase):
         # promote entries above the old cutoff and displace entries from the tail. Explicitly
         # approved forms then ship even when they remain below the new cutoff.
         self.assertEqual(self.report["tat"]["entries_after"], 112_916)
-        self.assertEqual(self.report["tat"]["words_added"], 23_644)
-        self.assertEqual(self.report["tat"]["words_displaced"], 10_728)
+        self.assertEqual(self.report["tat"]["words_added"], 24_029)
+        self.assertEqual(self.report["tat"]["words_displaced"], 11_113)
 
     def test_mozhna_pair_shows_single_word_on_prefix(self) -> None:
         # On the prefix `можн` there is no `можно | можна` pair: the curator excluded

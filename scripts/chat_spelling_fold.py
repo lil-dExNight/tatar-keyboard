@@ -229,9 +229,11 @@ def apply(
     keeping changes nothing.
     """
     result = dict(frequencies)
+    current = flagged(frequencies)
+    current_words = {item.word for item in current}
     unreviewed = [
         item.word
-        for item in flagged(frequencies)
+        for item in current
         if item.word not in review and item.decision != "keep"
     ]
     if unreviewed:
@@ -243,7 +245,7 @@ def apply(
     folded = dropped = kept = 0
     folded_tokens = dropped_tokens = 0
     for word, item in review.items():
-        if word not in result:
+        if word not in result or word not in current_words:
             continue
         count = result[word]
         if item.decision == "keep":

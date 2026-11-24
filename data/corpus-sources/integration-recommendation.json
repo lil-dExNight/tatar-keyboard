@@ -85,9 +85,9 @@
   },
   "evidence_blockers": [
     "shipped bigram identity is unverifiable: the comparison records no SHA-256 for bigram; rerun compare_sources.py so a same-size asset change stays detectable",
-    "shipped bigram changed since the comparison: the comparison records 212223 bytes, the current asset is 1124062 bytes; rerun compare_sources.py over the current assets",
+    "shipped bigram changed since the comparison: the comparison records 212223 bytes, the current asset is 1124117 bytes; rerun compare_sources.py over the current assets",
     "shipped dictionary identity is unverifiable: the comparison records no SHA-256 for dictionary; rerun compare_sources.py so a same-size asset change stays detectable",
-    "shipped dictionary changed since the comparison: the comparison records 597694 bytes, the current asset is 610928 bytes; rerun compare_sources.py over the current assets"
+    "shipped dictionary changed since the comparison: the comparison records 597694 bytes, the current asset is 609634 bytes; rerun compare_sources.py over the current assets"
   ],
   "evidence_status": "stale",
   "later_integration_instructions": [

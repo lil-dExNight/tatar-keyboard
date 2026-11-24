@@ -500,7 +500,7 @@ class AutocorrectControllerTest {
             assertEquals("malformed valid-OOV row: $line", 2, fields.size)
             fields[0]
         }
-        assertNoExplicitCorrections(words, "valid_oov", expectedRows = 215)
+        assertNoExplicitCorrections(words, "valid_oov", expectedRows = 213)
     }
 
     @Test

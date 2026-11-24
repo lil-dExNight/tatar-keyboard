@@ -515,17 +515,32 @@ def write_proper_name_asset(root: Path) -> Path:
 # "source". The entry set must equal corpus_names(); a rebuild verifies the files of the selected
 # languages before any step runs.
 CORPUS_MANIFEST = Path("data/corpus-manifest.json")
+CANDIDATE_SOURCE_PREFIX = "cand-"
 
 
 class CorpusManifestError(ValueError):
     """The corpus manifest is missing, malformed, or does not match the corpus registry."""
 
 
-def corpus_names(tags: frozenset[str] = frozenset({"tat", "rus"})) -> list[str]:
+def select_sources(names: Sequence[str], shipped_sources: bool) -> tuple[str, ...]:
+    """Select the full corpus mix or exclude its optional `cand-*` inputs."""
+    if not shipped_sources:
+        return tuple(names)
+    return tuple(name for name in names if not name.startswith(CANDIDATE_SOURCE_PREFIX))
+
+
+def corpus_names(
+    tags: frozenset[str] = frozenset({"tat", "rus"}), shipped_sources: bool = False
+) -> list[str]:
     """Corpus file names the rebuild reads for the languages in `tags`, sorted."""
-    names = {name for bigram in BIGRAMS if bigram.tag in tags for name in bigram.train}
+    names = {
+        name
+        for bigram in BIGRAMS
+        if bigram.tag in tags
+        for name in select_sources(bigram.train, shipped_sources)
+    }
     if "tat" in tags:
-        names.update(WORDFORM_FREQUENCY_SOURCES)
+        names.update(select_sources(WORDFORM_FREQUENCY_SOURCES, shipped_sources))
     return sorted(names)
 
 
@@ -600,7 +615,11 @@ def verify_corpus(
 
 
 def build_admitted_wordforms(
-    root: Path, baseline: Path, corpus_dir: Path, work_dir: Path
+    root: Path,
+    baseline: Path,
+    corpus_dir: Path,
+    work_dir: Path,
+    frequency_sources: Sequence[str] = WORDFORM_FREQUENCY_SOURCES,
 ) -> Path:
     """Write the admitted Tatar word forms (word<TAB>freq TSV) to work_dir; return its path.
 
@@ -614,7 +633,7 @@ def build_admitted_wordforms(
     stems = sorted(set(shipped) | set(accepted))
 
     frequencies: dict[str, int] = dictionary_pack.CheckedFrequencyCounter()
-    for name in WORDFORM_FREQUENCY_SOURCES:
+    for name in frequency_sources:
         path = corpus_dir / name
         with path.open("r", encoding="utf-8-sig", newline="") as stream:
             coverage.read_source(
@@ -662,7 +681,7 @@ def build_admitted_wordforms(
     wordform_gen.write_atomic(out, data)
     report = {
         **stats,
-        "frequency_sources": list(WORDFORM_FREQUENCY_SOURCES)
+        "frequency_sources": list(frequency_sources)
         + ["data/dictionary/dict-accept/conv-freq-tt.tsv"],
         "output": str(out),
         "output_bytes": len(data),
@@ -1644,7 +1663,13 @@ def _schema3_raw_path(work_dir: Path, bigram: BigramAsset) -> Path:
     return work_dir / f"{stem}-schema3.tatbigr"
 
 
-def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: BigramAsset) -> list[str]:
+def bigram_pack_argv(
+    root: Path,
+    corpus_dir: Path,
+    work_dir: Path,
+    bigram: BigramAsset,
+    train: Sequence[str] | None = None,
+) -> list[str]:
     """Build schema 3; Tatar's image is an intermediate for the combined packer."""
     combined = bigram.tag == "tat"
     raw_path = (
@@ -1655,12 +1680,13 @@ def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: Bigra
     compressed_path = (
         raw_path.with_name(raw_path.name + ".zlib") if combined else root / bigram.asset
     )
+    train_names = bigram.train if train is None else train
     argv = [
         sys.executable,
         str(root / "scripts/bigram_asset_pack.py"),
         "pack",
         "--train",
-        *[str(corpus_dir / name) for name in bigram.train],
+        *[str(corpus_dir / name) for name in train_names],
         "--asset",
         str(root / next(d.asset for d in DICTIONARIES if d.tag == bigram.dictionary)),
         "--heads",
@@ -1685,16 +1711,23 @@ def bigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: Bigra
     return argv
 
 
-def trigram_pack_argv(root: Path, corpus_dir: Path, work_dir: Path, bigram: BigramAsset) -> list[str]:
+def trigram_pack_argv(
+    root: Path,
+    corpus_dir: Path,
+    work_dir: Path,
+    bigram: BigramAsset,
+    train: Sequence[str] | None = None,
+) -> list[str]:
     """Build Tatar's final combined image from the work-dir schema-3 intermediate."""
     if bigram.tag != "tat":
         raise ValueError("only the Tatar table has a trigram extension")
+    train_names = bigram.train if train is None else train
     argv = [
         sys.executable,
         str(root / "scripts/trigram_asset_pack.py"),
         "pack",
         "--train",
-        *[str(corpus_dir / name) for name in bigram.train],
+        *[str(corpus_dir / name) for name in train_names],
         "--source-bigram",
         str(_schema3_raw_path(work_dir, bigram)),
         "--dictionary",
@@ -1877,6 +1910,7 @@ def run_rebuild(
     only: str | None = None,
     stream: TextIO = sys.stdout,
     apertium_lexc: Path | None = None,
+    shipped_sources: bool = False,
 ) -> int:
     if apertium_lexc is None:
         apertium_lexc = root / DEFAULT_APERTIUM_LEXC
@@ -1887,6 +1921,10 @@ def run_rebuild(
     selected = frozenset(
         ("tat", "rus") if only is None else ({"tatar": "tat", "russian": "rus"}[only],)
     )
+    train_by_tag = {
+        bigram.tag: select_sources(bigram.train, shipped_sources) for bigram in BIGRAMS
+    }
+    wordform_sources = select_sources(WORDFORM_FREQUENCY_SOURCES, shipped_sources)
     untouched = _side_snapshot(
         root, frozenset(d.tag for d in DICTIONARIES) - selected
     )
@@ -1903,13 +1941,13 @@ def run_rebuild(
     for bigram in BIGRAMS:
         if bigram.tag not in selected:
             continue
-        for name in bigram.train:
+        for name in train_by_tag[bigram.tag]:
             if not (corpus_dir / name).is_file():
                 missing.append(str(corpus_dir / name))
         if bigram.extra_heads is not None and not (root / bigram.extra_heads).is_file():
             missing.append(str(root / bigram.extra_heads))
     if "tat" in selected:
-        for name in WORDFORM_FREQUENCY_SOURCES:
+        for name in wordform_sources:
             if not (corpus_dir / name).is_file():
                 missing.append(str(corpus_dir / name))
         if not (root / WORDFORM_EXCEPTIONS).is_file():
@@ -1935,7 +1973,9 @@ def run_rebuild(
     except CorpusManifestError as error:
         print(f"error: corpus manifest: {error}", file=sys.stderr)
         return 2
-    corpus_verdicts = verify_corpus(corpus_dir, corpus_manifest, corpus_names(selected))
+    corpus_verdicts = verify_corpus(
+        corpus_dir, corpus_manifest, corpus_names(selected, shipped_sources)
+    )
     bad_corpora = {name: v for name, v in corpus_verdicts.items() if v != "ok"}
     if bad_corpora:
         print(f"error: corpora do not match {CORPUS_MANIFEST}:", file=sys.stderr)
@@ -1959,7 +1999,9 @@ def run_rebuild(
     compound_extra: Path | None = None
     compound_required: Path | None = None
     if "tat" in selected:
-        wordforms = build_admitted_wordforms(root, baseline, corpus_dir, work_dir)
+        wordforms = build_admitted_wordforms(
+            root, baseline, corpus_dir, work_dir, wordform_sources
+        )
         wordforms = merge_reviewed_wordforms(root, wordforms)
         compound_extra, compound_required = write_reviewed_compounds(root, work_dir)
     for dictionary in DICTIONARIES:
@@ -1992,9 +2034,19 @@ def run_rebuild(
     for bigram in BIGRAMS:
         if bigram.tag not in selected:
             continue
-        _run_step(bigram_pack_argv(root, corpus_dir, work_dir, bigram), cwd=root)
+        _run_step(
+            bigram_pack_argv(
+                root, corpus_dir, work_dir, bigram, train_by_tag[bigram.tag]
+            ),
+            cwd=root,
+        )
         if bigram.tag == "tat":
-            _run_step(trigram_pack_argv(root, corpus_dir, work_dir, bigram), cwd=root)
+            _run_step(
+                trigram_pack_argv(
+                    root, corpus_dir, work_dir, bigram, train_by_tag[bigram.tag]
+                ),
+                cwd=root,
+            )
     # 2b. Companion lists of the selected languages, derived from the dictionaries of
     # step 1 alone: no corpus and no baseline input.
     for companion in COMPANIONS:
@@ -2109,6 +2161,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "and after). The final check verifies all shipped assets. Not valid with --check",
     )
     parser.add_argument(
+        "--shipped-sources",
+        action="store_true",
+        help="exclude the optional cand-* Tatar training and frequency inputs; "
+        "the final check still validates the complete corpus manifest. Not valid with --check",
+    )
+    parser.add_argument(
         "--allow-known-drift",
         nargs="?",
         const=str(DEFAULT_KNOWN_DRIFT),
@@ -2163,6 +2221,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if known_drift is not None and not known_drift.is_absolute():
         known_drift = root / known_drift
     if args.check:
+        if args.shipped_sources:
+            print("error: --shipped-sources applies to rebuilds; --check verifies the full manifest",
+                  file=sys.stderr)
+            return 2
         if args.only is not None:
             print("error: --only applies to rebuilds; --check always verifies all shipped assets",
                   file=sys.stderr)
@@ -2177,7 +2239,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return run_rebuild(
             root, args.baseline, corpus_dir, work_dir, known_drift, only=args.only,
-            apertium_lexc=args.apertium_lexc,
+            apertium_lexc=args.apertium_lexc, shipped_sources=args.shipped_sources,
         )
     except ContractError as error:
         print(f"error: unparsable contract: {error}", file=sys.stderr)

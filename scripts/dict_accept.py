@@ -927,6 +927,8 @@ def merged_entries(tag: str, baseline: Path, top: int = 100_000,
         )
     if hygiene and tag == "tat":
         review = chat_spelling_fold.read_review(ROOT / chat_spelling_fold.REVIEW)
+        current_words = {item.word for item in chat_spelling_fold.flagged(merged)}
+        review = {word: item for word, item in review.items() if word in current_words}
         removed = {word: item.target for word, item in review.items() if item.decision != "keep"}
         merged, report = chat_spelling_fold.apply(merged, review)
         if report_out is not None:

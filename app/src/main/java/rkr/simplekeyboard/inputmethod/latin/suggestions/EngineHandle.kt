@@ -325,6 +325,7 @@ class MappedEngineHandle private constructor(
             glideConstants: GlideDecoder.GlideConstants = GlideDecoder.GlideConstants.TATAR,
             autocorrectMinCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
             wordformAcceptorLoader: MorphologicalAcceptorLoader? = null,
+            chatSubstitutions: TatarChatSpellingRules? = null,
         ): MappedEngineHandle? {
             val handoff = ResultHandoff { result ->
                 callback.onResult(result.token, result.suggestions, result.kind)
@@ -341,6 +342,7 @@ class MappedEngineHandle private constructor(
                 // The worker half of the round trip's slices; below API 29 this is DISABLED.
                 traceHook = LookupTracer.ATRACE,
                 wordformAcceptorLoader = wordformAcceptorLoader,
+                chatSubstitutions = chatSubstitutions,
             ) ?: return null
             return MappedEngineHandle(engine)
         }

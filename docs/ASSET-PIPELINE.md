@@ -310,8 +310,13 @@ so the two are always rebuilt together.
 
 ```
 python3 scripts/rebuild_assets.py --baseline /tmp/baseline-1.8.4 \
-    [--corpus-dir DIR] [--work-dir DIR] [--allow-known-drift]
+    [--corpus-dir DIR] [--work-dir DIR] [--allow-known-drift] [--shipped-sources]
 ```
+
+`--shipped-sources` excludes every optional `cand-*` Tatar training and frequency input before
+input validation. Those files are neither required nor read; the dictionary review rules,
+including chat-spelling folding, still apply. The final consistency check validates the complete
+corpus manifest. The option applies only to a rebuild, not to `--check`.
 
 The script first lists every missing input and stops if there are any. It then compares the
 corpus files of the selected languages with `data/corpus-manifest.json` (size first, then
@@ -359,7 +364,9 @@ SHA-256) and stops with exit code 1, before writing anything, if one differs. Th
    stops the packer, and a required or preserved word the rule removes fails closed. `dict_accept.py
    pack --dump-composition FILE` writes the composition before the rule; `python3
    scripts/chat_spelling_fold.py propose --composition FILE` pre-fills the table from it for
-   review and keeps the decisions already recorded.
+   review and keeps the decisions already recorded. Rows whose variant is not flagged in the active
+   composition leave it unchanged. An active fold whose named target is absent is inconsistent and
+   stops the packer; an inactive candidate-only row cannot remove a shipped-source word.
 3. **Bigram and trigram tables.** `bigram_asset_pack.py pack --schema 3` is run against the new
    dictionaries with the `BIGRAMS` parameters (head count, successors per head, extra heads,
    training corpora). For Tatar, that image is an intermediate: `trigram_asset_pack.py pack`

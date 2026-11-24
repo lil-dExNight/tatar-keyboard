@@ -150,8 +150,8 @@ class TrigramCandidateMeasurementTest {
         private const val SAMPLES = 5_000
         private const val EXPECTED_BASELINE_TOP1 = 345
         private const val EXPECTED_CANDIDATE_TOP1 = 409
-        private const val EXPECTED_BASELINE_VISIBLE = 652
-        private const val EXPECTED_CANDIDATE_VISIBLE = 733
+        private const val EXPECTED_BASELINE_VISIBLE = 651
+        private const val EXPECTED_CANDIDATE_VISIBLE = 731
         private var computer: CandidateComputer? = null
         private var probes: List<Probe> = emptyList()
 

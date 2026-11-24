@@ -54,10 +54,10 @@ suggest_chain = load_module("suggest_chain", ROOT / "scripts" / "suggest_chain.p
 # Pins of the committed assets and eval set (see TtSuggestEvalTest).
 PIN_CONTROL_PAIRS = 4_473
 PIN_CONTROL_TOP1 = 345
-PIN_CONTROL_VISIBLE_TOP3 = 652
-PIN_CONTROL_ENGINE_TOP4 = 741
+PIN_CONTROL_VISIBLE_TOP3 = 651
+PIN_CONTROL_ENGINE_TOP4 = 740
 PIN_REP_CTRL_KS_BASELINE = 34_196
-PIN_REP_CTRL_KS_SIMULATED = 21_096
+PIN_REP_CTRL_KS_SIMULATED = 21_099
 PIN_REP_CTRL_KS_ORACLE = 8_451
 
 # Graduation-counter pins per split and arm; PersonalizationEvalTest.kt pins the same
@@ -80,11 +80,11 @@ PIN_OBSERVED_LOOKUPS = {
 }
 PIN_EMPTY_OBSERVATIONS = {
     ("hash", "oracle"): 784, ("hash", "realistic"): 784, ("hash", "fixed"): 784,
-    ("chrono", "oracle"): 808, ("chrono", "realistic"): 808, ("chrono", "fixed"): 808,
+    ("chrono", "oracle"): 806, ("chrono", "realistic"): 806, ("chrono", "fixed"): 806,
     ("rep", "oracle"): 4_959, ("rep", "realistic"): 4_959, ("rep", "fixed"): 4_959,
 }
 PIN_WORD_COMPLETIONS = {
-    "hash": 93, "chrono": 88, "rep": 588,
+    "hash": 93, "chrono": 87, "rep": 588,
 }
 PIN_PAIR_OBSERVATIONS = {
     "hash": 2_224, "chrono": 2_173, "rep": 13_419,
@@ -92,8 +92,8 @@ PIN_PAIR_OBSERVATIONS = {
 PIN_PAIRS_DROPPED_UNKNOWN_CONTEXT = {"hash": 0, "chrono": 0, "rep": 0}
 PIN_WORD_PENDING_EVICTIONS = {"hash": 0, "chrono": 0, "rep": 0}
 PIN_PAIR_PENDING_EVICTIONS = {"hash": 1_887, "chrono": 1_798, "rep": 12_400}
-PIN_FIX_PROBES = {"hash": 57, "chrono": 43, "rep": 402}
-PIN_PRIME_UNSEEN_TOKENS = {"hash": 59, "chrono": 54, "rep": 384}
+PIN_FIX_PROBES = {"hash": 62, "chrono": 41, "rep": 405}
+PIN_PRIME_UNSEEN_TOKENS = {"hash": 60, "chrono": 55, "rep": 387}
 PIN_UNSEEN_STEM = {"hash": (0, 0, 0), "chrono": (0, 0, 0), "rep": (327, 327, 327)}
 # The realistic-arm sweep on the repetition split: the timeline parity channel.
 PIN_REP_SWEEP = {
@@ -108,20 +108,20 @@ PIN_REP_COMP_ACCEPT = 195
 PIN_REP_COMP_ACCEPT_TOP1 = 55
 PIN_REP_COMP_CP1_TOP1 = 0
 PIN_REP_COMP_CP2_TOP1 = 9
-PIN_REP_COMP_CP2_VISIBLE_TOP3 = 73
-PIN_REP_COMP_CP2_ENGINE_TOP4 = 73
+PIN_REP_COMP_CP2_VISIBLE_TOP3 = 74
+PIN_REP_COMP_CP2_ENGINE_TOP4 = 74
 PIN_REP_COMP_CP3_TOP1 = 25
 PIN_REP_COMP_CP4_TOP1 = 7
-PIN_REP_NW_PERS_VISIBLE_TOP3 = 652
-PIN_REP_NW_PERS_ENGINE_TOP4 = 741
-PIN_REP_NW_DISP_VISIBLE_TOP3 = 698
-PIN_REP_NW_DISP_ENGINE_TOP4 = 778
+PIN_REP_NW_PERS_VISIBLE_TOP3 = 651
+PIN_REP_NW_PERS_ENGINE_TOP4 = 740
+PIN_REP_NW_DISP_VISIBLE_TOP3 = 697
+PIN_REP_NW_DISP_ENGINE_TOP4 = 777
 PIN_REP_NW_DISP_GAINED = 47
-PIN_REP_KS_PERS_KEYS = 20_180
+PIN_REP_KS_PERS_KEYS = 20_186
 PIN_REP_REORD_PROMO_1 = 196
 # Pollution pins: personal cells shown and hit, per measure walk (the hash/chrono halves
 # graduate no word, so only the next-word pair cells appear there).
-PIN_REP_COMP_PERSONAL_SHOWN = 8_563
+PIN_REP_COMP_PERSONAL_SHOWN = 8_557
 PIN_REP_COMP_PERSONAL_HIT = 196
 PIN_REP_NW_PERSONAL_SHOWN = 1_523
 PIN_REP_NW_PERSONAL_HIT = 145

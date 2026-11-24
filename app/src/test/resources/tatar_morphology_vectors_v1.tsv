@@ -1,7 +1,7 @@
 #format	tatar_morphology_vectors_v1
 #sample_seed	0x54415441
 #sample_stems	160
-#stem_lexicon_sha256	98fe63ee5446a4e5599cc1828043bdfddda613c89b9f2d21c3e60077035cdbd9
+#stem_lexicon_sha256	0cd6601f67803fb79a96c8748a1c27935a8199cd15c9580608ffda49bc664302
 #exceptions_sha256	43d301466cda9705ce15adb143ccf868ae8622319beb7c851be6e311de15e64e
 #accepted_rows	18539
 #rejected_rows	261

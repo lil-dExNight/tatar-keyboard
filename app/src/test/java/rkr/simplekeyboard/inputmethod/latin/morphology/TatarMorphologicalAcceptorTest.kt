@@ -344,6 +344,23 @@ class TatarMorphologicalAcceptorTest {
     }
 
     @Test
+    fun utf8EntryPointMatchesStringsAndReusesScratchAfterRejectedInput() {
+        val acceptor = acceptor("татар", "яз")
+        for (word in listOf("татар", "татарлар", "яздым")) {
+            val bytes = word.toByteArray(Charsets.UTF_8)
+            assertTrue(word, acceptor.acceptsUtf8(bytes, bytes.size))
+        }
+        assertFalse(acceptor.acceptsUtf8(ByteArray(0), 0))
+        val valid = "татар".toByteArray(Charsets.UTF_8)
+        assertFalse(acceptor.acceptsUtf8(valid, valid.size + 1))
+        assertFalse(acceptor.acceptsUtf8(valid, valid.size - 1))
+        assertFalse(acceptor.acceptsUtf8(byteArrayOf(0xc3.toByte(), 0x28), 2))
+        val emoji = "татар😀".toByteArray(Charsets.UTF_8)
+        assertFalse(acceptor.acceptsUtf8(emoji, emoji.size))
+        assertTrue(acceptor.acceptsUtf8(valid, valid.size))
+    }
+
+    @Test
     fun dictionaryIdentityComesFromTheArtifactSpec() {
         val entries = listOf(MorphologyTestSupport.entry("татар"))
         val artifact = rkr.simplekeyboard.inputmethod.latin.dictionary.storage.StemLexiconTestFixtures.artifact(entries)

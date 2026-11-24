@@ -33,6 +33,11 @@ internal fun countCodePointsByLeadBytes(bytes: ByteArray, length: Int): Int {
     return count
 }
 
+/** Maps a code point to its chat substitution, or to itself when no substitution is defined. */
+fun interface ChatSubstitutionTable {
+    fun replacementOf(codePoint: Int): Int
+}
+
 /**
  * Pure generator of typo-recovery prefix variants. It works on Unicode code points and re-encodes
  * each variant to UTF-8, because a byte-level edit of a two-byte Cyrillic letter would produce
@@ -162,6 +167,90 @@ internal object FuzzyPrefixVariants {
     }
 
     /**
+     * Emits every subset of at least two chat substitutions when there are at most six eligible
+     * positions, in ascending subset-mask order. With more eligible positions, emits only the
+     * variant that substitutes all of them. The reported position is the first substituted index.
+     *
+     * Returns the emitted count, or -1 on malformed input, short scratch, output overflow, or
+     * budget overflow. [codePointScratch] is restored to the decoded prefix before every return.
+     */
+    fun generateChatSubstitutionVariants(
+        prefixUtf8: ByteArray,
+        prefixLength: Int,
+        table: ChatSubstitutionTable,
+        codePointScratch: IntArray,
+        variantScratch: ByteArray,
+        eligiblePositionScratch: IntArray,
+        originalCodePointScratch: IntArray,
+        maxVariants: Int,
+        consumer: PositionedVariantConsumer,
+    ): Int {
+        if (prefixLength < 0 || prefixLength > prefixUtf8.size || maxVariants < 0) return -1
+        val codePointCount = decodeCodePoints(prefixUtf8, prefixLength, codePointScratch)
+        if (codePointCount < 0) return -1
+        if (eligiblePositionScratch.size < codePointCount ||
+            originalCodePointScratch.size < codePointCount
+        ) {
+            return -1
+        }
+        for (position in 0 until codePointCount) {
+            originalCodePointScratch[position] = codePointScratch[position]
+        }
+        try {
+            var eligibleCount = 0
+            for (position in 0 until codePointCount) {
+                val original = originalCodePointScratch[position]
+                val replacement = table.replacementOf(original)
+                if (replacement == original) continue
+                if (utf8Length(replacement) < 0) return -1
+                eligiblePositionScratch[eligibleCount++] = position
+                codePointScratch[position] = replacement
+            }
+            if (eligibleCount <= 1) return 0
+            if (eligibleCount <= 6) {
+                val subsetLimit = 1 shl eligibleCount
+                val variantCount = subsetLimit - eligibleCount - 1
+                if (variantCount > maxVariants) return -1
+                var emitted = 0
+                for (mask in 1 until subsetLimit) {
+                    if (Integer.bitCount(mask) < 2) continue
+                    val length = encodeChatSubstitutionVariant(
+                        codePointScratch,
+                        originalCodePointScratch,
+                        eligiblePositionScratch,
+                        codePointCount,
+                        eligibleCount,
+                        mask,
+                        variantScratch,
+                    )
+                    if (length < 0) return -1
+                    val first = Integer.numberOfTrailingZeros(mask)
+                    consumer.onVariant(eligiblePositionScratch[first], variantScratch, length)
+                    emitted++
+                }
+                return emitted
+            }
+            if (maxVariants < 1) return -1
+            val length = encodeChatSubstitutionVariant(
+                codePointScratch,
+                originalCodePointScratch,
+                eligiblePositionScratch,
+                codePointCount,
+                eligibleCount,
+                -1,
+                variantScratch,
+            )
+            if (length < 0) return -1
+            consumer.onVariant(eligiblePositionScratch[0], variantScratch, length)
+            return 1
+        } finally {
+            for (position in 0 until codePointCount) {
+                codePointScratch[position] = originalCodePointScratch[position]
+            }
+        }
+    }
+
+    /**
      * DL-1 tier, deletion family: remove one code point, in every position (n variants).
      * Position order ascending. The variant at position p shares the typed prefix's first p
      * code points, so the consumer can probe within the p-narrowed range.
@@ -282,6 +371,62 @@ internal object FuzzyPrefixVariants {
         return emitted
     }
 
+    /** Encodes one selected subset without changing either code-point buffer. */
+    private fun encodeChatSubstitutionVariant(
+        replacements: IntArray,
+        originals: IntArray,
+        eligiblePositions: IntArray,
+        codePointCount: Int,
+        eligibleCount: Int,
+        substitutionMask: Int,
+        out: ByteArray,
+    ): Int {
+        var outputPosition = 0
+        var eligibleIndex = 0
+        for (position in 0 until codePointCount) {
+            var codePoint = originals[position]
+            if (eligibleIndex < eligibleCount && eligiblePositions[eligibleIndex] == position) {
+                if (substitutionMask < 0 || (substitutionMask and (1 shl eligibleIndex)) != 0) {
+                    codePoint = replacements[position]
+                }
+                eligibleIndex++
+            }
+            val byteCount = utf8Length(codePoint)
+            if (byteCount < 0 || outputPosition > out.size - byteCount) return -1
+            when (byteCount) {
+                1 -> {
+                    out[outputPosition] = codePoint.toByte()
+                }
+                2 -> {
+                    out[outputPosition] = (0xc0 or (codePoint shr 6)).toByte()
+                    out[outputPosition + 1] = (0x80 or (codePoint and 0x3f)).toByte()
+                }
+                3 -> {
+                    out[outputPosition] = (0xe0 or (codePoint shr 12)).toByte()
+                    out[outputPosition + 1] = (0x80 or ((codePoint shr 6) and 0x3f)).toByte()
+                    out[outputPosition + 2] = (0x80 or (codePoint and 0x3f)).toByte()
+                }
+                4 -> {
+                    out[outputPosition] = (0xf0 or (codePoint shr 18)).toByte()
+                    out[outputPosition + 1] = (0x80 or ((codePoint shr 12) and 0x3f)).toByte()
+                    out[outputPosition + 2] = (0x80 or ((codePoint shr 6) and 0x3f)).toByte()
+                    out[outputPosition + 3] = (0x80 or (codePoint and 0x3f)).toByte()
+                }
+            }
+            outputPosition += byteCount
+        }
+        return outputPosition
+    }
+
+    private fun utf8Length(codePoint: Int): Int = when (codePoint) {
+        in 0..0x7f -> 1
+        in 0x80..0x7ff -> 2
+        in 0x800..0xd7ff -> 3
+        in 0xe000..0xffff -> 3
+        in 0x10000..0x10ffff -> 4
+        else -> -1
+    }
+
     /** Scalar UTF-8 decode into [out]; returns the code-point count, or -1 on malformed input. */
     private fun decodeCodePoints(bytes: ByteArray, length: Int, out: IntArray): Int {
         var index = 0
@@ -316,6 +461,13 @@ internal object FuzzyPrefixVariants {
                 if (continuation < 0x80 || continuation > 0xbf) return -1
                 value = (value shl 6) or (continuation and 0x3f)
             }
+            val minimum = when (continuationCount) {
+                0 -> 0
+                1 -> 0x80
+                2 -> 0x800
+                else -> 0x10000
+            }
+            if (value < minimum || value > 0x10ffff || value in 0xd800..0xdfff) return -1
             if (count >= out.size) return -1
             out[count++] = value
             index += continuationCount + 1

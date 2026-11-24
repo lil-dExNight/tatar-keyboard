@@ -298,7 +298,10 @@ class MappedDictionaryEngine private constructor(
         /** Publishes the original image only while this engine still owns its resources. */
         fun adoptMorphologicalAcceptor(acceptor: TatarMorphologicalAcceptor) {
             synchronized(lock) {
-                if (!released) wordformAcceptor = acceptor
+                if (!released) {
+                    wordformAcceptor = acceptor
+                    index?.updateWordformAcceptor(acceptor)
+                }
             }
         }
 
@@ -327,6 +330,7 @@ class MappedDictionaryEngine private constructor(
                 if (released) return
                 released = true
                 wordformAcceptor = null
+                index?.updateWordformAcceptor(null)
                 heldBigramLease = bigramLease
                 heldBigramCatalog = bigramCatalog
                 bigramLease = null
@@ -404,6 +408,7 @@ class MappedDictionaryEngine private constructor(
             autocorrectMinCandidateFrequency: Long = AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
             traceHook: LookupTraceHook = LookupTraceHook.NONE,
             wordformAcceptorLoader: MorphologicalAcceptorLoader? = null,
+            chatSubstitutions: ChatSubstitutionTable? = null,
         ): MappedDictionaryEngine? {
             val lease = try {
                 catalog.acquireLatestForActivation()
@@ -414,7 +419,7 @@ class MappedDictionaryEngine private constructor(
                 lease, catalog, resultHandoff, executorFactory, mapper, personalCandidates,
                 suffixTable, fuzzyEditPolicy, fallbackWordsFactory,
                 personalBigrams, glideConstants, autocorrectMinCandidateFrequency, traceHook,
-                wordformAcceptorLoader,
+                wordformAcceptorLoader, chatSubstitutions,
             )
         }
 
@@ -433,6 +438,7 @@ class MappedDictionaryEngine private constructor(
             autocorrectMinCandidateFrequency: Long,
             traceHook: LookupTraceHook,
             wordformAcceptorLoader: MorphologicalAcceptorLoader?,
+            chatSubstitutions: ChatSubstitutionTable?,
         ): MappedDictionaryEngine? {
             val dictionary = lease.dictionary
             val identity = DictionaryIdentity(
@@ -457,6 +463,7 @@ class MappedDictionaryEngine private constructor(
                     // or modification time changed) gets the full walk. See StoreValidationToken.
                     validationToken = lease.validationToken
                         ?.takeIf { it.matchesFile(dictionary.file) },
+                    chatSubstitutions = chatSubstitutions,
                 ) ?: throw IllegalArgumentException("validated dictionary layout mismatch")
                 val fallbackSource = if (fallbackWordsFactory == null) {
                     null

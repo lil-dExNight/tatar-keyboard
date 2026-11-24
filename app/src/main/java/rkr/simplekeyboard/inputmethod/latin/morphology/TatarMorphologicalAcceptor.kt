@@ -5,6 +5,11 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.StemLexiconArtifa
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatStemValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.ValidatedStemLexicon
 
+/** Allocation-free UTF-8 form of [TatarMorphologicalAcceptor.accepts]. */
+internal interface Utf8WordformAcceptor {
+    fun acceptsUtf8(normalizedWordUtf8: ByteArray, length: Int): Boolean
+}
+
 /**
  * Matches normalized Tatar words against bare stems and enabled suffix chains.
  * Callers own normalization; malformed, out-of-alphabet and oversized input is a non-match.
@@ -15,7 +20,7 @@ class TatarMorphologicalAcceptor private constructor(
     spec: StemLexiconArtifactSpec,
     private val exceptions: Array<LexicalException>,
     @Suppress("UNUSED_PARAMETER") marker: Boolean,
-) {
+) : Utf8WordformAcceptor {
     constructor(
         lexicon: ValidatedStemLexicon,
         spec: StemLexiconArtifactSpec,
@@ -58,6 +63,17 @@ class TatarMorphologicalAcceptor private constructor(
     fun accepts(normalizedWord: String): Boolean {
         val length = copyQuery(normalizedWord)
         if (length < 0) return false
+        return acceptsPrepared(length)
+    }
+
+    @Synchronized
+    override fun acceptsUtf8(normalizedWordUtf8: ByteArray, length: Int): Boolean {
+        val codePointCount = copyQueryUtf8(normalizedWordUtf8, length)
+        if (codePointCount < 0) return false
+        return acceptsPrepared(codePointCount)
+    }
+
+    private fun acceptsPrepared(length: Int): Boolean {
         val queryByteLength = queryByteOffsets[length]
         if (lookup(queryBytes, queryByteLength) != 0) return true
 
@@ -186,6 +202,49 @@ class TatarMorphologicalAcceptor private constructor(
             if (equal) return exception
         }
         return null
+    }
+
+    /** Returns the code-point count, or -1 when the bytes cannot occur in a validated lexicon. */
+    private fun copyQueryUtf8(bytes: ByteArray, length: Int): Int {
+        if (length <= 0 || length > MAX_QUERY_CODE_POINTS || length > bytes.size) return -1
+        var byteOffset = 0
+        var index = 0
+        var previousWasLetter = false
+        queryByteOffsets[0] = 0
+        var charCount = 0
+        while (index < length) {
+            val first = bytes[index].toInt() and 0xff
+            if (first <= 0x7f) {
+                val char = first.toChar()
+                if (char == '-') {
+                    if (!previousWasLetter || index + 1 >= length) return -1
+                    previousWasLetter = false
+                    queryBytes[byteOffset++] = char.code.toByte()
+                } else {
+                    if (char.code >= ALPHABET_TABLE.size || !ALPHABET_TABLE[char.code]) return -1
+                    previousWasLetter = true
+                    queryBytes[byteOffset++] = char.code.toByte()
+                }
+                queryChars[charCount++] = char
+                queryByteOffsets[charCount] = byteOffset
+                index++
+                continue
+            }
+            if (first !in 0xc2..0xdf || index + 1 >= length) return -1
+            val continuation = bytes[index + 1].toInt() and 0xff
+            if (continuation !in 0x80..0xbf) return -1
+            val codePoint = ((first and 0x1f) shl 6) or (continuation and 0x3f)
+            val char = codePoint.toChar()
+            if (char.code >= ALPHABET_TABLE.size || !ALPHABET_TABLE[char.code]) return -1
+            previousWasLetter = true
+            queryChars[charCount++] = char
+            queryBytes[byteOffset++] = (0xc0 or (char.code ushr 6)).toByte()
+            queryBytes[byteOffset++] = (0x80 or (char.code and 0x3f)).toByte()
+            queryByteOffsets[charCount] = byteOffset
+            index += 2
+        }
+        queryLength = charCount
+        return if (charCount < MIN_STEM_CODE_POINTS) -1 else charCount
     }
 
     /** Returns the byte length, or -1 when the input cannot occur in a validated lexicon. */

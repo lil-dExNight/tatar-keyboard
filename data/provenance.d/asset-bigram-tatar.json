@@ -1,11 +1,11 @@
 {
   "id": "asset-bigram-tatar-v2",
   "revision": "tatar_bigrams_v2",
-  "size_bytes": 1124062,
-  "sha256": "3902a98178449c374dac173657e545b4913f250922b42d59f301d3552b5a2b75",
+  "size_bytes": 1124117,
+  "sha256": "5b3be7ea1502418770c304cc64b7448c34b16c2837d8dd9f3f584496588dd294",
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_bigram_table",
   "split_rule": "training output; excludes final evaluation records",
-  "generation_command": "python3 scripts/rebuild_assets.py --only tatar --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
+  "generation_command": "python3 scripts/rebuild_assets.py --only tatar --shipped-sources --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
   "path": "app/src/main/assets/bigrams/tatar_bigrams_v2.tatbigr.zlib"
 }

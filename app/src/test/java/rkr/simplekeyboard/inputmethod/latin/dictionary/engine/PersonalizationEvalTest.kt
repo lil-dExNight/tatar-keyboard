@@ -27,6 +27,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.BigramArtifactSpe
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TatBigrValidator
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
+import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarChatSpellingRules
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
 import java.io.File
 import java.nio.ByteBuffer
@@ -841,11 +842,11 @@ class PersonalizationEvalTest {
         )
         private val PIN_EMPTY_OBSERVATIONS = mapOf(
             "hash.oracle" to 784L, "hash.realistic" to 784L, "hash.fixed" to 784L,
-            "chrono.oracle" to 808L, "chrono.realistic" to 808L, "chrono.fixed" to 808L,
+            "chrono.oracle" to 806L, "chrono.realistic" to 806L, "chrono.fixed" to 806L,
             "rep.oracle" to 4_959L, "rep.realistic" to 4_959L, "rep.fixed" to 4_959L,
         )
         private val PIN_WORD_COMPLETIONS = mapOf(
-            "hash" to 93L, "chrono" to 88L, "rep" to 588L,
+            "hash" to 93L, "chrono" to 87L, "rep" to 588L,
         )
         private val PIN_PAIR_OBSERVATIONS = mapOf(
             "hash" to 2_224L, "chrono" to 2_173L, "rep" to 13_419L,
@@ -860,10 +861,10 @@ class PersonalizationEvalTest {
             "hash" to 1_887L, "chrono" to 1_798L, "rep" to 12_400L,
         )
         private val PIN_FIX_PROBES = mapOf(
-            "hash" to 57L, "chrono" to 43L, "rep" to 402L,
+            "hash" to 62L, "chrono" to 41L, "rep" to 405L,
         )
         private val PIN_PRIME_UNSEEN_TOKENS = mapOf(
-            "hash" to 59L, "chrono" to 54L, "rep" to 384L,
+            "hash" to 60L, "chrono" to 55L, "rep" to 387L,
         )
         private val PIN_UNSEEN_STEM = mapOf(
             "hash" to listOf(0L, 0L, 0L),
@@ -884,8 +885,8 @@ class PersonalizationEvalTest {
         // repetition split. The control count is cross-pinned with the fourth-cell keystroke
         // arm of TtSuggestEvalTest; the lift is pinned python-side (PIN_REP_KS_PERS_KEYS in
         // tests/personalization_eval) and floored here at 80%.
-        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_096
-        private const val PIN_REP_KS_LIFT_KEYS = 916
+        private const val PIN_REP_CTRL_KS_SIMULATED_KEYS = 21_099
+        private const val PIN_REP_KS_LIFT_KEYS = 913
 
         private lateinit var evalLines: List<String>
         private var dictionaryIndex: TdictPrefixIndex? = null
@@ -940,6 +941,7 @@ class PersonalizationEvalTest {
                         ByteBuffer.wrap(raw), identity,
                         validated.entryCount, validated.rawSize, TatarSuffixRules,
                         FuzzyEditPolicy.TATAR, AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
+                        chatSubstitutions = TatarChatSpellingRules,
                     ),
                 )
                 // The eval configuration: typo recovery off.

@@ -757,6 +757,18 @@ class PackArgvTest(unittest.TestCase):
         self.assertEqual(10, argv.count("/corpora/tt_conv_train90-sentences.txt"))
         self.assertNotIn("eval", text)
 
+    def test_shipped_source_commands_exclude_candidate_inputs(self):
+        bigram = rebuild_assets.BIGRAMS[0]
+        train = rebuild_assets.select_sources(bigram.train, shipped_sources=True)
+        self.assertTrue(any(name.startswith("cand-") for name in bigram.train))
+        for factory in (rebuild_assets.bigram_pack_argv, rebuild_assets.trigram_pack_argv):
+            argv = factory(Path("/root"), Path("/corpora"), Path("/work"), bigram, train)
+            text = " ".join(argv)
+            self.assertNotIn("/cand-", text)
+            self.assertIn("/corpora/tat_mixed_2015_1M-sentences.txt", text)
+            self.assertIn("/corpora/tat_web_2018_1M-sentences.txt", text)
+            self.assertEqual(10, argv.count("/corpora/tt_conv_train90-sentences.txt"))
+
     def test_russian_command(self):
         argv = rebuild_assets.bigram_pack_argv(
             Path("/root"), Path("/corpora"), Path("/work"), rebuild_assets.BIGRAMS[1])
@@ -955,6 +967,12 @@ class OnlyModeTest(TwoSideTreeTest):
         code = rebuild_assets.main(["--check", "--only", "tatar", "--root", str(self.root)])
         self.assertEqual(2, code)
 
+    def test_check_rejects_shipped_sources(self):
+        code = rebuild_assets.main([
+            "--check", "--shipped-sources", "--root", str(self.root)
+        ])
+        self.assertEqual(2, code)
+
 
 class CorpusManifestRebuildTest(TwoSideTreeTest):
     """The rebuild verifies the corpus bytes against the manifest before writing anything."""
@@ -1129,6 +1147,14 @@ class CorpusManifestFormatTest(unittest.TestCase):
         self.assertLessEqual(set(rebuild_assets.WORDFORM_FREQUENCY_SOURCES), names)
         self.assertEqual(
             set(rebuild_assets.BIGRAMS[1].train), set(rebuild_assets.corpus_names({"rus"})))
+
+    def test_shipped_source_registry_excludes_only_candidate_inputs(self):
+        full = rebuild_assets.corpus_names()
+        shipped = rebuild_assets.corpus_names(shipped_sources=True)
+        self.assertTrue(any(name.startswith("cand-") for name in full))
+        self.assertEqual(
+            [name for name in full if not name.startswith("cand-")], shipped
+        )
 
 
 class CorpusManifestCheckTest(FakeTreeTest):

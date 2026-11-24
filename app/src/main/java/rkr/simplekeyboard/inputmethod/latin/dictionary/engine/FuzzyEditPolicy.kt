@@ -25,7 +25,8 @@ package rkr.simplekeyboard.inputmethod.latin.dictionary.engine
  * [editClasses] holds EDIT_CLASS_* values; their order is irrelevant. EDIT_CLASS_LONG_PRESS runs
  * on every typo-recovery activation; EDIT_CLASS_SUBSTITUTION engages the shared DL-1 tier
  * (substitution, deletion, insertion and transposition under one rank tag) on its gated domain —
- * see [TdictPrefixIndex.collectFuzzy].
+ * see [TdictPrefixIndex.collectFuzzy]. EDIT_CLASS_CHAT_SUBSTITUTION engages Tatar-only
+ * multi-substitution recovery on the same gated domain and is refused for autocorrect.
  * [sameLengthBonus] ranks a candidate exactly as long as its variant before that variant's
  * continuations, so the corrected word itself comes before longer words that start with it.
  * [sameLengthBonusOnlyInDl1] leaves class #1 ranked by frequency while retaining that order in
@@ -52,11 +53,19 @@ class FuzzyEditPolicy(
     init {
         require(editClasses.isNotEmpty()) { "a fuzzy policy needs at least one edit class" }
         require(autocorrectClasses.isNotEmpty()) { "a fuzzy policy needs an autocorrect class" }
-        for (editClass in editClasses + autocorrectClasses) {
+        for (editClass in editClasses) {
             require(
                 editClass == TdictPrefixIndex.EDIT_CLASS_LONG_PRESS ||
-                    editClass == TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+                    editClass == TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION ||
+                    editClass == TdictPrefixIndex.EDIT_CLASS_CHAT_SUBSTITUTION,
             ) { "unknown edit class $editClass" }
+        }
+        // Multi-substitution recovery is display-only until its own autocorrect arm is measured.
+        for (autocorrectClass in autocorrectClasses) {
+            require(
+                autocorrectClass == TdictPrefixIndex.EDIT_CLASS_LONG_PRESS ||
+                    autocorrectClass == TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+            ) { "edit class $autocorrectClass may not autocorrect" }
         }
     }
 
@@ -80,6 +89,7 @@ class FuzzyEditPolicy(
             intArrayOf(
                 TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
                 TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+                TdictPrefixIndex.EDIT_CLASS_CHAT_SUBSTITUTION,
             ),
             true,
             intArrayOf(

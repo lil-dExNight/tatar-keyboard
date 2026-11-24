@@ -625,11 +625,11 @@ class TypoMutatedEvalTest {
         )
 
         // Pins over the committed dictionary, eval set and layout; re-pin when an input changes.
-        private const val PIN_SUBSTRATE_WORDS = 2_378
-        private const val PIN_SET_ROWS = 9_512
-        private const val PIN_SET_BYTES = 310_580
+        private const val PIN_SUBSTRATE_WORDS = 2_377
+        private const val PIN_SET_ROWS = 9_508
+        private const val PIN_SET_BYTES = 310_650
         private const val PIN_SET_SHA256 =
-            "2819c3e08eebc311b6f3eb64b9cccfb93cf19d3ef1e55b78c8790c0531f50ace"
+            "0e4903157803dca4cf587ac657119b5ddfe462c5b0cb6650785778967c17bf40"
 
         // Quality floors beside the exact pins: per-class recovery must stay within 5% of its
         // pinned count, so a dictionary rebuild cannot be re-pinned through a silent quality
@@ -639,27 +639,27 @@ class TypoMutatedEvalTest {
         // Measured baseline recovery counts. The un-suffixed pins hold the bonus-off arm (the
         // pre-bonus ranking); the _GEO pins hold the production arm (the TATAR policy with the
         // geometry-neighbor bonus armed); then the exact-only control.
-        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_184
-        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_827
-        private const val PIN_INS_ENGINE_TOP4_HITS = 2_329
-        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_158
-        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_195
-        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_823
-        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_328
-        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_155
+        private const val PIN_SUB_ENGINE_TOP4_HITS = 2_183
+        private const val PIN_DEL_ENGINE_TOP4_HITS = 1_825
+        private const val PIN_INS_ENGINE_TOP4_HITS = 2_328
+        private const val PIN_TRANS_ENGINE_TOP4_HITS = 2_157
+        private const val PIN_SUB_ENGINE_TOP4_HITS_GEO = 2_194
+        private const val PIN_DEL_ENGINE_TOP4_HITS_GEO = 1_822
+        private const val PIN_INS_ENGINE_TOP4_HITS_GEO = 2_327
+        private const val PIN_TRANS_ENGINE_TOP4_HITS_GEO = 2_154
         private const val PIN_SUB_ENGINE_TOP4_HITS_EXACTONLY = 0
         // The exact-only control: only a last-position deletion can be a prefix hit.
-        private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 326
+        private const val PIN_DEL_ENGINE_TOP4_HITS_EXACTONLY = 325
         private const val PIN_INS_ENGINE_TOP4_HITS_EXACTONLY = 0
         private const val PIN_TRANS_ENGINE_TOP4_HITS_EXACTONLY = 0
         private const val PIN_AUTOCORRECT_FALSE_TRIGGERS = 0
 
-        private const val PIN_VALID_OOV_ROWS = 215
-        private const val PIN_VALID_OOV_SET_BYTES = 7_755
+        private const val PIN_VALID_OOV_ROWS = 213
+        private const val PIN_VALID_OOV_SET_BYTES = 7_669
         private const val PIN_VALID_OOV_SET_SHA256 =
-            "c17bc5efc8c823bd4874a0ccb71a0d35a76049ec78ee3c04b669340fe6c19588"
+            "958a351679e21ce00613efdb06c8bdfb8b118800406e0b905591264c51613040"
         private const val PIN_VALID_OOV_SEEN_FORM_WORDS = 6
-        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 96
+        private const val PIN_VALID_OOV_NEW_FORM_WORDS = 94
         private const val PIN_VALID_OOV_UNSEEN_STEM_WORDS = 113
         private const val PIN_VALID_OOV_SEEN_FORM_FALSE_REPLACEMENTS = 0
         private const val PIN_VALID_OOV_NEW_FORM_FALSE_REPLACEMENTS = 0

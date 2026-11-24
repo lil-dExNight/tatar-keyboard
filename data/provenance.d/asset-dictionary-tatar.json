@@ -1,11 +1,11 @@
 {
   "id": "asset-dictionary-tatar-top100k-v1",
   "revision": "tatar_top100k_v1",
-  "size_bytes": 610928,
-  "sha256": "514e3c09b408a140e0236979a10cd74b9ffcbd298b69289ea2373739ce99a856",
+  "size_bytes": 609634,
+  "sha256": "286608d5e439a391f9ea3f22451d8f3f4c4dad560c365452d3cebcb24f9206dc",
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles",
   "source_role": "generated_dictionary",
   "split_rule": "training output; excludes final evaluation records",
-  "generation_command": "python3 scripts/rebuild_assets.py --only tatar --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
+  "generation_command": "python3 scripts/rebuild_assets.py --only tatar --shipped-sources --baseline <local-baseline-dir> --corpus-dir <local-corpus-dir>",
   "path": "app/src/main/assets/dictionaries/tatar_top100k_v1.tdict.zlib"
 }

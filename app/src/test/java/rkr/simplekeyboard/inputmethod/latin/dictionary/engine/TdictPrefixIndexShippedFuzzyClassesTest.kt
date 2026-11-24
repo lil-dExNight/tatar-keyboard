@@ -58,14 +58,22 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
      * same-length bonus.
      */
     @Test
-    fun theTatarPolicyRunsClassesOneAndFourWithTheSameLengthBonus() {
+    fun theTatarPolicyRunsClassesOneFourAndFiveWithTheSameLengthBonus() {
         assertEquals(
-            listOf(TdictPrefixIndex.EDIT_CLASS_LONG_PRESS, TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION),
+            listOf(
+                TdictPrefixIndex.EDIT_CLASS_LONG_PRESS,
+                TdictPrefixIndex.EDIT_CLASS_SUBSTITUTION,
+                TdictPrefixIndex.EDIT_CLASS_CHAT_SUBSTITUTION,
+            ),
             FuzzyEditPolicy.TATAR.editClasses.toList(),
         )
         assertTrue(FuzzyEditPolicy.TATAR.sameLengthBonus)
         assertFalse(FuzzyEditPolicy.TATAR.sameLengthBonusOnlyInDl1)
         assertTrue(FuzzyEditPolicy.TATAR.geometryNeighborBonus)
+        assertFalse(
+            FuzzyEditPolicy.TATAR.autocorrectClasses
+                .contains(TdictPrefixIndex.EDIT_CLASS_CHAT_SUBSTITUTION),
+        )
     }
 
     /**
@@ -202,6 +210,10 @@ class TdictPrefixIndexShippedFuzzyClassesTest {
         assertTrue(
             "the Tatar engine ships FuzzyEditPolicy.TATAR, the Russian engine FuzzyEditPolicy.RUSSIAN",
             source.contains("tatarEngine ? FuzzyEditPolicy.TATAR : FuzzyEditPolicy.RUSSIAN"),
+        )
+        assertTrue(
+            "only the Tatar engine carries the chat-spelling substitution table",
+            source.contains("tatarEngine ? TatarChatSpellingRules.INSTANCE : null"),
         )
     }
 }

@@ -141,6 +141,7 @@ import rkr.simplekeyboard.inputmethod.latin.glide.GlideKeyGeometry;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.InlineAutofillBinder;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.InlineAutofillGate;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.MappedEngineHandle;
+import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarChatSpellingRules;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferEnvironment;
 import rkr.simplekeyboard.inputmethod.latin.suggestions.OfferFlagStore;
@@ -848,6 +849,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             final boolean tatarEngine = dictionaryArtifact != null
                     && PersonalSubtypes.TATAR_RU.equals(dictionaryArtifact.getLanguageTag());
             final TatarSuffixRules suffixRules = tatarEngine ? TatarSuffixRules.INSTANCE : null;
+            final TatarChatSpellingRules chatSubstitutions =
+                    tatarEngine ? TatarChatSpellingRules.INSTANCE : null;
             // Typo recovery policy: the Tatar engine uses FuzzyEditPolicy.TATAR; the Russian
             // engine uses FuzzyEditPolicy.RUSSIAN (same-length bonus only inside the DL-1 tier,
             // so class #1 outside the tier domain ranks exactly as before).
@@ -883,7 +886,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                     : null;
             return MappedEngineHandle.start(catalog, resultCallback, personalCandidates, suffixRules,
                     fuzzyEditPolicy, fallbackWordsFactory, personalBigrams, glideConstants,
-                    autocorrectFloor, wordformAcceptorLoader);
+                    autocorrectFloor, wordformAcceptorLoader, chatSubstitutions);
         };
 
         mSuggestionsController = new SuggestionsController(

@@ -293,7 +293,7 @@ class ShippedAssetTest(unittest.TestCase):
         bundled = {
             entry for entry in entries_out if entry.word in dictionary_words
         }
-        self.assertEqual(15_645, len(bundled))
+        self.assertEqual(15_658, len(bundled))
         for entry in bundled:
             self.assertTrue(
                 entry.flags & (pack.FLAG_NOUN_CHAIN | pack.FLAG_VERB_CHAIN),

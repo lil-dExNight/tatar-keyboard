@@ -21,6 +21,7 @@ import java.io.File
 import java.io.InputStream
 import java.nio.ByteBuffer
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.AutocorrectPolicy
+import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ChatSubstitutionTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.DictionaryIdentity
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.FuzzyEditPolicy
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.ImmutableUtf8Prefix
@@ -36,6 +37,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLea
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.TdictValidator
 import rkr.simplekeyboard.inputmethod.latin.morphology.TatarMorphologicalAcceptor
 import rkr.simplekeyboard.inputmethod.latin.suggestions.ProperNameIndex
+import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarChatSpellingRules
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarSuffixRules
 import rkr.simplekeyboard.inputmethod.latin.suggestions.TatarWordUtils
 
@@ -73,6 +75,9 @@ internal class SpellCheckerDictionaries(
 
     override fun typoCandidates(normalizedWord: String): SpellCheckerTypoCandidates =
         synchronized(tatarMonitor) {
+            // Class #5 admits acceptor-only forms; publishing the acceptor at the correction
+            // seam keeps its load off the dictionary-load path.
+            tatar.updateWordformAcceptor(acceptor())
             val words = tatar.lookup(
                 ImmutableUtf8Prefix.copyOf(TatarWordUtils.toLookupBytes(normalizedWord)),
             )
@@ -107,6 +112,7 @@ internal class SpellCheckerDictionaryLoader(
                 FuzzyEditPolicy.TATAR,
                 AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 leases,
+                chatSubstitutions = TatarChatSpellingRules,
             ).also { it.updateKeyNeighbors(neighbors) }
             val russian = openIndex(
                 DictionaryArtifactSpec.RUSSIAN_TOP100K_V1,
@@ -114,6 +120,7 @@ internal class SpellCheckerDictionaryLoader(
                 FuzzyEditPolicy.RUSSIAN,
                 AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_RU,
                 leases,
+                chatSubstitutions = null,
             )
             SpellCheckerDictionaries(
                 tatar,
@@ -135,9 +142,11 @@ internal class SpellCheckerDictionaryLoader(
         policy: FuzzyEditPolicy,
         autocorrectFloor: Long,
         leases: MutableList<DictionaryFileLease>,
+        chatSubstitutions: ChatSubstitutionTable?,
     ): TdictPrefixIndex {
-        val index = openPublishedIndex(spec, suffixTable, policy, autocorrectFloor, leases)
-            ?: openBundledIndex(spec, suffixTable, policy, autocorrectFloor)
+        val index = openPublishedIndex(
+            spec, suffixTable, policy, autocorrectFloor, leases, chatSubstitutions,
+        ) ?: openBundledIndex(spec, suffixTable, policy, autocorrectFloor, chatSubstitutions)
         index.setAutocorrectAdviceEnabled(false)
         return index
     }
@@ -148,6 +157,7 @@ internal class SpellCheckerDictionaryLoader(
         policy: FuzzyEditPolicy,
         autocorrectFloor: Long,
         leases: MutableList<DictionaryFileLease>,
+        chatSubstitutions: ChatSubstitutionTable?,
     ): TdictPrefixIndex? {
         val lease = try {
             leaseSource?.acquire(spec)
@@ -180,6 +190,7 @@ internal class SpellCheckerDictionaryLoader(
                 policy,
                 autocorrectFloor,
                 token,
+                chatSubstitutions,
             ) ?: return null
             leases += lease
             retained = true
@@ -196,6 +207,7 @@ internal class SpellCheckerDictionaryLoader(
         suffixTable: InflectedSuffixTable?,
         policy: FuzzyEditPolicy,
         autocorrectFloor: Long,
+        chatSubstitutions: ChatSubstitutionTable?,
     ): TdictPrefixIndex {
         val output = ByteArrayOutputStream()
         opener.open(spec.assetPath).use { source ->
@@ -216,6 +228,7 @@ internal class SpellCheckerDictionaryLoader(
                 suffixTable,
                 policy,
                 autocorrectFloor,
+                chatSubstitutions = chatSubstitutions,
             ),
         )
     }
