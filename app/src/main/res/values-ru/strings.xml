@@ -130,7 +130,7 @@
     <string name="glide_typing">Набор свайпом</string>
     <string name="glide_typing_summary">Проведите пальцем по буквам, чтобы набрать слово</string>
     <string name="personal_dictionary">Личный словарь</string>
-    <string name="personal_dictionary_summary">Запоминать слова, которые вы набираете</string>
+    <string name="personal_dictionary_summary">Запоминать слова, которые вы набираете, и хранить их на этом устройстве</string>
     <string name="incognito_mode">Пауза обучения</string>
     <string name="incognito_mode_summary">Ничего нового не запоминается</string>
     <string name="personal_dictionary_screen">Сохранённые слова</string>

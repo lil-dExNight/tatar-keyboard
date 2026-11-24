@@ -220,7 +220,7 @@
     <!-- Option to remember words the user types and suggest them later -->
     <string name="personal_dictionary">Personal dictionary</string>
     <!-- Description for the personal dictionary option -->
-    <string name="personal_dictionary_summary">Remember the words you type</string>
+    <string name="personal_dictionary_summary">Remember the words you type and keep them on this device</string>
     <!-- Option to pause learning of personal words, word pairs and emoji and the recording of recent emoji. ON means nothing new is learned or recorded; what is already saved keeps appearing. -->
     <string name="incognito_mode">Pause learning</string>
     <!-- Description for the pause-learning option -->

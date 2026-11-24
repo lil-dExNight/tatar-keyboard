@@ -129,7 +129,7 @@
     <string name="glide_typing">Шудырып язу</string>
     <string name="glide_typing_summary">Сүз язу өчен бармакны хәрефләр буйлап шудырыгыз</string>
     <string name="personal_dictionary">Шәхси сүзлек</string>
-    <string name="personal_dictionary_summary">Сез язган сүзләрне истә калдыру</string>
+    <string name="personal_dictionary_summary">Сез язган сүзләрне истә калдыру. Сүзләр җиһазда саклана.</string>
     <string name="incognito_mode">Өйрәнүне туктатып тору</string>
     <string name="incognito_mode_summary">Яңа берни дә истә калдырылмый</string>
     <string name="personal_dictionary_screen">Сакланган сүзләр</string>

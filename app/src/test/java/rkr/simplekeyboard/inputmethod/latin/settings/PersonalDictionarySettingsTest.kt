@@ -23,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The personal dictionary setting: ONE toggle, default OFF, and an enterprise restriction that
+ * The personal dictionary setting: ONE toggle, default ON, and an enterprise restriction that
  * applies in the RESTRICTIVE direction only.
  *
  * The two direction tests are real JVM tests, not greps: the decision they cover lives in
@@ -163,9 +163,19 @@ class PersonalDictionarySettingsTest {
             assertFalse("the toggle must not erase anything: $verb",
                 toggleNeighbourhood.contains(verb, ignoreCase = true))
         }
-        val english = File(sourceRoot(), "res/values/strings.xml").readText()
-        val summary = english.substringAfter("<string name=\"personal_dictionary_summary\">")
-            .substringBefore("</string>")
-        assertTrue("the summary says what the switch does", summary.contains("Remember"))
+        val summaries = mapOf(
+            "values" to listOf("Remember the words you type", "on this device"),
+            "values-ru" to listOf("Запоминать слова, которые вы набираете", "на этом устройстве"),
+            "values-tt" to listOf("Сез язган сүзләрне истә калдыру", "җиһазда саклана"),
+        )
+        summaries.forEach { (directory, expectedParts) ->
+            val strings = File(sourceRoot(), "res/$directory/strings.xml").readText()
+            val summary = strings
+                .substringAfter("<string name=\"personal_dictionary_summary\">")
+                .substringBefore("</string>")
+            expectedParts.forEach { expected ->
+                assertTrue("$directory summary lacks '$expected'", summary.contains(expected))
+            }
+        }
     }
 }
