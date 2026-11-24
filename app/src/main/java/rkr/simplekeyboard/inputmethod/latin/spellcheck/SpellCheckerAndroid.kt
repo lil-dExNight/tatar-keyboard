@@ -20,8 +20,11 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.os.UserManager
 import java.io.File
+import java.util.concurrent.Callable
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 import rkr.simplekeyboard.inputmethod.compat.PreferenceManagerCompat
 import rkr.simplekeyboard.inputmethod.latin.dictionary.engine.KeyNeighborTable
 import rkr.simplekeyboard.inputmethod.latin.dictionary.personal.PersonalDictionary
@@ -74,7 +77,7 @@ internal class AndroidSpellCheckerDictionaryLeaseSource(
     }
 }
 
-/** The process-wide spell-checker engine; its layout and source loads run on one worker. */
+/** The process-wide spell-checker engine; independent layout, dictionary and acceptor loads overlap. */
 internal object SharedSpellCheckerEngine {
     @Volatile
     private var engine: SpellCheckerEngine? = null
@@ -91,27 +94,49 @@ internal object SharedSpellCheckerEngine {
     private val loadExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "spell-checker").apply { isDaemon = true }
     }
+    private val morphologyExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "spell-morphology").apply { isDaemon = true }
+    }
+    private val layoutExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "spell-layout").apply { isDaemon = true }
+    }
+    @Volatile
+    private var layoutLoad: Future<KeyNeighborTable?>? = null
 
     /** Queues layout construction and source preparation so binder callbacks never block. */
     fun prepare(context: Context) {
         val personalContext = context.applicationContext
         try {
             loadExecutor.execute {
-                glideTrace("TT#spellPrepareTask") {
-                    if (neighbors == null) {
-                        val built = glideTrace("TT#spellLayout") {
+                if (neighbors == null && layoutLoad == null) {
+                    val task = FutureTask(Callable<KeyNeighborTable?> {
+                        glideTrace("TT#spellLayout") {
                             try {
                                 KeyNeighborTableBuilder.fromTatarLayout(personalContext)
                             } catch (_: Exception) {
                                 null
                             }
                         }
-                        if (built != null) {
-                            synchronized(lock) {
-                                if (neighbors == null) neighbors = built
+                    })
+                    layoutLoad = task
+                    try {
+                        layoutExecutor.execute(task)
+                    } catch (_: Exception) {
+                        layoutLoad = null
+                    }
+                }
+                if (readEnabled(PreferenceManagerCompat.getDeviceContext(personalContext))) {
+                    try {
+                        morphologyExecutor.execute {
+                            glideTrace("TT#spellMorphPreload") {
+                                SharedTatarMorphology.get(personalContext)
                             }
                         }
+                    } catch (_: Exception) {
+                        // The source load warms the acceptor itself when preloading cannot start.
                     }
+                }
+                glideTrace("TT#spellPrepareTask") {
                     get(personalContext).prepare()
                 }
             }
@@ -142,6 +167,20 @@ internal object SharedSpellCheckerEngine {
         true
     }
 
+    private fun awaitNeighbors(): KeyNeighborTable {
+        val built = try {
+            layoutLoad?.get()
+        } catch (_: Exception) {
+            null
+        }
+        if (built != null) {
+            synchronized(lock) {
+                if (neighbors == null) neighbors = built
+            }
+        }
+        return neighbors ?: emptyNeighbors
+    }
+
     private fun load(deviceContext: Context, personalContext: Context): SpellCheckerWordSource? =
         try {
             val opener = SpellCheckerAssetOpener { path ->
@@ -152,12 +191,11 @@ internal object SharedSpellCheckerEngine {
                     opener,
                     { SharedTatarMorphology.getIfLoaded() },
                     AndroidPersonalDictionarySource.create(personalContext),
-                    neighbors ?: emptyNeighbors,
+                    { awaitNeighbors() },
                     AndroidSpellCheckerDictionaryLeaseSource(deviceContext),
                 ).load()
             }
-            // Warming stays behind the dictionaries: the acceptor asset is read on this worker,
-            // never inside a binder call.
+            // Publication waits for the shared acceptor; its asset is never read on a binder call.
             glideTrace("TT#morphLoad") {
                 if (loaded != null) SharedTatarMorphology.get(personalContext)
             }

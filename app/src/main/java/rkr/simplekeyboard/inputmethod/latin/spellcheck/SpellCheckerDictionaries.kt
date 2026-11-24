@@ -100,9 +100,17 @@ internal class SpellCheckerDictionaryLoader(
     private val opener: SpellCheckerAssetOpener,
     private val acceptor: () -> TatarMorphologicalAcceptor?,
     private val personal: PersonalDictionarySource,
-    private val neighbors: KeyNeighborTable,
+    private val neighbors: () -> KeyNeighborTable,
     private val leaseSource: SpellCheckerDictionaryLeaseSource? = null,
 ) {
+    constructor(
+        opener: SpellCheckerAssetOpener,
+        acceptor: () -> TatarMorphologicalAcceptor?,
+        personal: PersonalDictionarySource,
+        neighbors: KeyNeighborTable,
+        leaseSource: SpellCheckerDictionaryLeaseSource? = null,
+    ) : this(opener, acceptor, personal, { neighbors }, leaseSource)
+
     fun load(): SpellCheckerDictionaries? {
         val leases = ArrayList<DictionaryFileLease>(2)
         return try {
@@ -113,7 +121,7 @@ internal class SpellCheckerDictionaryLoader(
                 AutocorrectPolicy.MIN_CANDIDATE_FREQUENCY_TT,
                 leases,
                 chatSubstitutions = TatarChatSpellingRules,
-            ).also { it.updateKeyNeighbors(neighbors) }
+            )
             val russian = openIndex(
                 DictionaryArtifactSpec.RUSSIAN_TOP100K_V1,
                 null,
@@ -122,6 +130,7 @@ internal class SpellCheckerDictionaryLoader(
                 leases,
                 chatSubstitutions = null,
             )
+            tatar.updateKeyNeighbors(neighbors())
             SpellCheckerDictionaries(
                 tatar,
                 russian,
