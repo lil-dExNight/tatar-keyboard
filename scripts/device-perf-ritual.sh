@@ -77,10 +77,11 @@
 #      budgeted RESULT lines into result.txt. This leg needs the debug
 #      androidTest APK; without an installed runner it reports SKIP.
 #   spellcheck) opt-in TextServicesManager measurements in a self-targeted
-#      instrumentation process. With a fresh IME process and its keyboard shown,
-#      the warm probe checks a 200-word Tatar paragraph, waits for the first
-#      checked answer, then samples PSS before and after it; their delta is held
-#      to the acceptor's resident-memory ceiling. Every warm sample is checked.
+#      instrumentation process. With a fresh IME process and its keyboard shown
+#      and used for one typed word, the warm probe checks a 200-word Tatar
+#      paragraph, waits for the first checked answer, then samples PSS before and
+#      after it; their delta is held to the acceptor's resident-memory ceiling.
+#      Every warm sample is checked.
 #      Before each cold start the ritual deselects the IME, goes home and kills
 #      the process without a force-stop. The cold arm reports the first callback
 #      separately and budgets the first checked answer. Without the androidTest
@@ -1552,6 +1553,13 @@ if leg_on spellcheck; then
         elif ! select_ours || ! raise_keyboard_over_setup; then
             result FAIL spellcheck-warm "keyboard did not raise over SetupActivity"
         else
+            # A user who reaches spell checking has typed on the keyboard: one typed word
+            # starts the engine and loads the shared acceptor, so the baseline is an in-use
+            # keyboard instead of a freshly shown one. The field text does not affect the
+            # paragraph the spell test checks.
+            if globe_to tt; then
+                type_text tt "сәләм " 0.08 || true
+            fi
             sleep 2
             pss_point spellcheck-before
             SHOT spellcheck-before.png

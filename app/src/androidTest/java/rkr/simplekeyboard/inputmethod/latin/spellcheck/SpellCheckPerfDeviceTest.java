@@ -393,7 +393,7 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
         throw new AssertionFailedError("timed out waiting for the host PSS sample");
     }
 
-    private static String statsLine(
+    private String statsLine(
             String header,
             List<Double> samples,
             double budgetMs,
@@ -415,7 +415,22 @@ public final class SpellCheckPerfDeviceTest extends InstrumentationTestCase {
         return header + " median_ms=" + fmt(median) + " p95_ms=" + fmt(p95)
                 + " min_ms=" + fmt(sorted.get(0)) + " max_ms=" + fmt(sorted.get(n - 1))
                 + " values_ms=" + values + " budget_ms=" + fmt(budgetMs)
-                + " over_budget=" + (p95 >= budgetMs) + " build=debug " + protocol;
+                + " over_budget=" + (p95 >= budgetMs) + " build=" + buildLabel() + " " + protocol;
+    }
+
+    /**
+     * Build type of the package under test, read from the package manager rather than assumed:
+     * a release-like bench build is not debuggable even though it carries the debug key.
+     */
+    private String buildLabel() {
+        final String dump = shell("dumpsys package " + appPackage());
+        for (String line : dump.split("\n")) {
+            final String trimmed = line.trim();
+            if (trimmed.startsWith("pkgFlags=[") || trimmed.startsWith("flags=[")) {
+                return trimmed.contains("DEBUGGABLE") ? "debug" : "release";
+            }
+        }
+        return "unknown";
     }
 
     private static String fmt(double value) {
