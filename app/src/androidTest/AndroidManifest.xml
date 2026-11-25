@@ -12,7 +12,7 @@
 
     <!-- The build injects the regular runner into the first instrumentation element; the later
          self-targeted runners keep helpers out of the keyboard process (QuickReplySelfRunner,
-         SpellCheckPerfSelfRunner). -->
+         SpellCheckPerfSelfRunner, FirstGlidePerfSelfRunner). -->
     <instrumentation
         android:name="android.test.InstrumentationTestRunner"
         android:targetPackage="org.tatarkeyboard.ime.debug" />
@@ -24,11 +24,20 @@
         android:name="rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner"
         android:targetPackage="${applicationId}"
         android:label="spell check performance self runner" />
+    <instrumentation
+        android:name="rkr.simplekeyboard.inputmethod.latin.glide.FirstGlidePerfSelfRunner"
+        android:targetPackage="${applicationId}"
+        android:label="first glide performance self runner" />
 
     <application>
         <uses-library
             android:name="android.test.runner"
             android:required="false" />
+        <activity
+            android:name="rkr.simplekeyboard.inputmethod.latin.glide.FirstGlidePerfActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
         <!-- BackupExportTestDocumentsProvider is declared in the debug app manifest instead:
              an exported DocumentsProvider in this separate test UID would need the
              signature-level MANAGE_DOCUMENTS permission, which the test APK cannot hold. -->
