@@ -18,6 +18,7 @@ package rkr.simplekeyboard.inputmethod.latin.glide
 
 import android.app.Instrumentation
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.test.InstrumentationTestCase
 import android.util.Log
@@ -29,6 +30,7 @@ import rkr.simplekeyboard.inputmethod.keyboard.Key
 import rkr.simplekeyboard.inputmethod.keyboard.KeyboardSwitcher
 import rkr.simplekeyboard.inputmethod.latin.common.Constants
 import rkr.simplekeyboard.inputmethod.latin.suggestions.SuggestionStripView
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -323,9 +325,47 @@ class GlideUiDeviceTest : InstrumentationTestCase() {
         val values = samples.joinToString(",") { fmt(it) }
         val line = "RESULT|INFO|$check|runs=$n median_ms=${fmt(median)} p95_ms=${fmt(p95)} " +
             "min_ms=${fmt(sorted.first())} max_ms=${fmt(sorted.last())} values_ms=$values " +
-            "budget_ms=${fmt(budgetMs)} over_budget=${p95 > budgetMs} build=debug $protocol"
+            "budget_ms=${fmt(budgetMs)} over_budget=${p95 > budgetMs} " +
+            "build=${buildLabel()} $protocol"
         Log.i(TAG, line)
         instrumentation.sendStatus(0, Bundle().apply { putString("tt_perf_result", line) })
+    }
+
+    /**
+     * Build type of the package under test, read from the package manager rather than assumed:
+     * a release-like bench build is not debuggable even though it carries the debug key.
+     */
+    private fun buildLabel(): String {
+        val output = try {
+            val input = ParcelFileDescriptor.AutoCloseInputStream(
+                instrumentation.uiAutomation.executeShellCommand(
+                    "dumpsys package " + instrumentation.targetContext.packageName,
+                ),
+            )
+            try {
+                val buffer = ByteArray(4096)
+                val bytes = java.io.ByteArrayOutputStream()
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    bytes.write(buffer, 0, read)
+                }
+                bytes.toString("UTF-8")
+            } finally {
+                input.close()
+            }
+        } catch (_: IOException) {
+            return "unknown"
+        }
+        val reader = java.io.BufferedReader(java.io.StringReader(output))
+        while (true) {
+            val line = reader.readLine() ?: break
+            val trimmed = line.trim()
+            if (trimmed.startsWith("pkgFlags=[") || trimmed.startsWith("flags=[")) {
+                return if (trimmed.contains("DEBUGGABLE")) "debug" else "release"
+            }
+        }
+        return "unknown"
     }
 
     private fun fmt(value: Double): String = String.format(java.util.Locale.ROOT, "%.3f", value)
