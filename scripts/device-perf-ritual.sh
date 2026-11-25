@@ -6,8 +6,8 @@
 # $OUTDIR/result.txt; raw evidence such as meminfo dumps, framestats, traces and
 # screencaps goes to $OUTDIR). Every budgeted line carries budget_* and
 # over_budget=true|false; --strict turns an over_budget=true INFO into FAIL,
-# while measurement-only lines (the PSS smaps split and the battery no-section
-# row) stay INFO either way:
+# while measurement-only lines (the PSS smaps split, memory-detail lines and
+# the battery no-section row) stay INFO either way:
 #   cold) cold start: process start (field 22 of /proc/<pid>/stat, CLK_TCK=100,
 #      CLOCK_BOOTTIME, corrected to CLOCK_MONOTONIC) -> first FrameCompleted of
 #      the InputMethod window (gfxinfo framestats). Host field: Chrome's omnibox
@@ -36,7 +36,9 @@
 #      Each scenario also saves /proc/<pid>/smaps_rollup (its anon/file split
 #      — RssAnon/RssFile or Pss_Anon/Pss_File by kernel — joins the result
 #      line; skipped with an INFO note when the process or the file is
-#      unreadable) and an App-Summary per-category extract.
+#      unreadable) and an App-Summary per-category extract. A measurement-only
+#      pss-memory line adds app-owned fields and a live-heap private-dirty
+#      value that substitutes Dalvik Heap Alloc for GC-sensitive Dalvik pages.
 #   frames) frame stats: gfxinfo reset -> fixed 32-event Tatar typing
 #      script ("сәләм дөнья мин сине яратам дус ": 27 letters + 5 spaces,
 #      0.35 s between taps) -> the InputMethod window's last <=120 PROFILEDATA
@@ -82,6 +84,8 @@
 #      and used for one typed word, the warm probe checks a 200-word Tatar
 #      paragraph, waits for the first checked answer, then samples PSS before and
 #      after it; their delta is held to the acceptor's resident-memory ceiling.
+#      A measurement-only detail line separates live heap, dictionary-file RSS,
+#      GC-sensitive private pages and framework ART/native-library categories.
 #      Every warm sample is checked.
 #      Before each cold start the ritual deselects the IME, goes home and kills
 #      the process without a force-stop. The cold arm reports the first callback
@@ -741,6 +745,30 @@ meminfo_categories() {
     grep -E '^[[:space:]]+(Java Heap|Native Heap|Code|Graphics|Private Other|System|TOTAL):' \
         "$1" > "$2" 2>/dev/null || true
 }
+# meminfo_owned <dump>: numeric fields used by the measurement-only memory lines.
+# Columns are total private dirty/clean/RSS, Java and native heap allocation,
+# other-mmap RSS, ART and native-library PSS, native-library RSS and Dalvik private dirty.
+meminfo_owned() {
+    awk '
+        /^[[:space:]]*TOTAL[[:space:]]+[0-9]/ { pd=$3; pc=$4; rss=$6 }
+        /^[[:space:]]*Dalvik Heap[[:space:]]/ { java=$9; dalvik_pd=$4 }
+        /^[[:space:]]*Native Heap[[:space:]]/ { native=$9 }
+        /^[[:space:]]*Other mmap[[:space:]]/ { other_rss=$7 }
+        /^[[:space:]]*\.art mmap[[:space:]]/ { art_pss=$3 }
+        /^[[:space:]]*\.so mmap[[:space:]]/ { so_pss=$3; so_rss=$7 }
+        END { print pd+0, pc+0, rss+0, java+0, native+0, other_rss+0,
+                    art_pss+0, so_pss+0, so_rss+0, dalvik_pd+0 }
+    ' "$1"
+}
+# spellcheck_memory_detail <before-dump> <after-dump>: separate live app growth
+# and dictionary-file residency from GC and framework sharing effects.
+spellcheck_memory_detail() {
+    local bpd bpc brss bjava bnative bother bart bsopss bsorss bdalvikpd
+    local apd apc arss ajava anative aother aart asopss asorss adalvikpd
+    read -r bpd bpc brss bjava bnative bother bart bsopss bsorss bdalvikpd <<<"$(meminfo_owned "$1")"
+    read -r apd apc arss ajava anative aother aart asopss asorss adalvikpd <<<"$(meminfo_owned "$2")"
+    result INFO spellcheck-memory-detail "private_dirty_delta_kb=$((apd - bpd)) private_clean_delta_kb=$((apc - bpc)) rss_delta_kb=$((arss - brss)) java_heap_alloc_delta_kb=$((ajava - bjava)) native_heap_alloc_delta_kb=$((anative - bnative)) live_heap_plus_other_rss_delta_kb=$((ajava - bjava + anative - bnative + aother - bother)) other_mmap_rss_delta_kb=$((aother - bother)) art_mmap_pss_delta_kb=$((aart - bart)) so_mmap_pss_delta_kb=$((asopss - bsopss)) so_mmap_rss_delta_kb=$((asorss - bsorss))"
+}
 # smaps_rollup <pid> <out>: /proc/<pid>/smaps_rollup of the package process.
 # A shell read works where ptrace rules allow it; run-as is the fallback for a
 # debuggable package. The anon/file field names vary by kernel: RssAnon/RssFile
@@ -754,8 +782,11 @@ smaps_rollup() {
 }
 pss_point() { # pss_point <scenario>
     local kb sw over pid anon file
+    local pd pc rss java native other_rss art_pss so_pss so_rss dalvik_pd pd_live
     read -r kb sw <<<"$(meminfo_total "$1")"
     meminfo_categories "$OUTDIR/meminfo-$1.txt" "$OUTDIR/meminfo-categories-$1.txt"
+    read -r pd pc rss java native other_rss art_pss so_pss so_rss dalvik_pd <<<"$(meminfo_owned "$OUTDIR/meminfo-$1.txt")"
+    pd_live=$((pd - dalvik_pd + java))
     anon=""; file=""
     pid=$(SHELL pidof "$PKG" 2>/dev/null | tr -d '\r')
     if [ -z "$pid" ]; then
@@ -770,6 +801,7 @@ pss_point() { # pss_point <scenario>
     else
         over=$( [ "$kb" -gt "$PSS_BUDGET_KB" ] && echo true || echo false )
         result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw anon_kb=${anon:-unknown} file_kb=${file:-unknown} budget_kb=$PSS_BUDGET_KB over_budget=$over build=$BUILD"
+        result INFO pss-memory "scenario=$1 private_dirty_kb=$pd private_clean_kb=$pc rss_kb=$rss java_heap_alloc_kb=$java native_heap_alloc_kb=$native other_mmap_rss_kb=$other_rss private_dirty_live_heap_kb=$pd_live art_mmap_pss_kb=$art_pss so_mmap_pss_kb=$so_pss so_mmap_rss_kb=$so_rss"
     fi
 }
 
@@ -1613,6 +1645,8 @@ if leg_on spellcheck; then
             if [[ "$spellcheck_before" =~ ^[0-9]+$ && "$spellcheck_after" =~ ^[0-9]+$ ]]; then
                 spellcheck_delta=$((spellcheck_after - spellcheck_before))
                 result INFO spellcheck-memory "before_kb=$spellcheck_before after_kb=$spellcheck_after delta_kb=$spellcheck_delta budget_kb=$SPELLCHECK_PSS_DELTA_BUDGET_KB over_budget=$(gt "$spellcheck_delta" "$SPELLCHECK_PSS_DELTA_BUDGET_KB") build=$BUILD keyboard_shown=true protocol=pss-delta-first-checked-answer"
+                spellcheck_memory_detail "$OUTDIR/meminfo-spellcheck-before.txt" \
+                    "$OUTDIR/meminfo-spellcheck-after.txt"
             else
                 result FAIL spellcheck-memory "PSS endpoints unreadable (before='${spellcheck_before:-}' after='${spellcheck_after:-}')"
             fi
