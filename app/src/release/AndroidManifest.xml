@@ -21,11 +21,11 @@
     <application>
 
         <!-- Memory budget for the perceptible state, the state of a bound input method.
-             Above the budget the system reclaims pages of this process instead of killing it,
-             so the value must not undercut the working set: it is PSS_BUDGET_RELEASE_KB of
-             scripts/device-perf-ritual.sh rounded up to whole MiB. Foreground (settings
-             screens) and background stay unbudgeted. API 37.2+; older platforms ignore the
-             element, so UnusedAttribute is expected. -->
+             Above the budget the system reclaims pages of this process instead of killing it.
+             The value is SYSTEM_MEMORY_CEILING_RELEASE_MB of scripts/device-perf-ritual.sh:
+             total process memory, so it must not undercut the working set and is not the
+             app-owned budget. Foreground (settings screens) and background stay unbudgeted.
+             API 37.2+; older platforms ignore the element, so UnusedAttribute is expected. -->
         <memory-budget
             android:maxMb="68"
             android:state="perceptible"

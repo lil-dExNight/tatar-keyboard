@@ -23,8 +23,8 @@ import org.junit.Test
 
 /**
  * Source contract: the release manifest declares one perceptible `<memory-budget>` whose maxMb
- * is the release PSS ceiling of the device performance script rounded up to whole MiB, and the
- * main manifest (shared with debug builds) declares none.
+ * is the system memory ceiling of the device performance script, and the main manifest (shared
+ * with debug builds) declares none.
  */
 class MemoryBudgetManifestSourceContractTest {
 
@@ -35,15 +35,15 @@ class MemoryBudgetManifestSourceContractTest {
     private fun stripXmlComments(xml: String): String =
         Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL).replace(xml, "")
 
-    private fun releasePssCeilingKb(): Int {
+    private fun systemMemoryCeilingMb(): Int {
         val script = repoFile("scripts/device-perf-ritual.sh").readText()
-        val match = Regex("""(?m)^PSS_BUDGET_RELEASE_KB=(\d+)$""").find(script)
-            ?: error("PSS_BUDGET_RELEASE_KB not found")
+        val match = Regex("""(?m)^SYSTEM_MEMORY_CEILING_RELEASE_MB=(\d+)$""").find(script)
+            ?: error("SYSTEM_MEMORY_CEILING_RELEASE_MB not found")
         return match.groupValues[1].toInt()
     }
 
     @Test
-    fun releaseManifestDeclaresPerceptibleBudgetFromPssCeiling() {
+    fun releaseManifestDeclaresPerceptibleBudgetFromSystemCeiling() {
         val xml = stripXmlComments(repoFile("app/src/release/AndroidManifest.xml").readText())
         val elements = Regex("""<memory-budget\b([^>]*)/>""").findAll(xml).toList()
         assertEquals("exactly one <memory-budget>", 1, elements.size)
@@ -52,8 +52,7 @@ class MemoryBudgetManifestSourceContractTest {
             Regex("""android:$name="([^"]*)"""").find(attrs)?.groupValues?.get(1)
 
         assertEquals("perceptible", attr("state"))
-        val expectedMb = (releasePssCeilingKb() + 1023) / 1024
-        assertEquals(expectedMb.toString(), attr("maxMb"))
+        assertEquals(systemMemoryCeilingMb().toString(), attr("maxMb"))
         assertEquals(null, attr("feature"))
         assertEquals(null, attr("additionalBytesPerDisplayPixel"))
         assertEquals(null, attr("additionalMbPerDensity"))

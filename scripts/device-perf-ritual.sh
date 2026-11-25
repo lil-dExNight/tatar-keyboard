@@ -236,6 +236,9 @@ JANK_BUDGET_PCT=1.0
 APP_MEMORY_BUDGET_DEBUG_KB=72700
 APP_MEMORY_BUDGET_RELEASE_KB=44000
 SPELLCHECK_APP_MEMORY_DELTA_BUDGET_KB=2560
+# Total-process memory ceiling of the release manifest's perceptible <memory-budget>:
+# the system enforces it on the whole process, so it stays above the app-owned budgets.
+SYSTEM_MEMORY_CEILING_RELEASE_MB=68
 # Idle-window CPU ceiling of the battery legs: an observability assertion (it
 # catches a stuck worker or a wake loop), not a tuned budget. The debug build
 # gets its own ceiling: it runs the JIT and more GC. The deallocate pass has
@@ -783,7 +786,7 @@ smaps_rollup() {
     grep -qE '^(RssAnon|Pss_Anon):' "$2" 2>/dev/null
 }
 pss_point() { # pss_point <scenario>
-    local kb sw over pid anon file
+    local kb sw over pid anon file ceiling
     local pd pc rss java native other_rss art_pss so_pss so_rss dalvik_pd pd_live
     read -r kb sw <<<"$(meminfo_total "$1")"
     meminfo_categories "$OUTDIR/meminfo-$1.txt" "$OUTDIR/meminfo-categories-$1.txt"
@@ -802,7 +805,13 @@ pss_point() { # pss_point <scenario>
         result FAIL pss "scenario=$1 unreadable (process dead?)"
     else
         over=$( [ "$pd_live" -gt "$APP_MEMORY_BUDGET_KB" ] && echo true || echo false )
-        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw anon_kb=${anon:-unknown} file_kb=${file:-unknown} build=$BUILD"
+        # Total PSS carries no verdict; on release builds the manifest's system
+        # ceiling (debug manifests declare none) gives the total its context.
+        ceiling=""
+        if [ "$BUILD" = release ]; then
+            ceiling=" system_ceiling_kb=$((SYSTEM_MEMORY_CEILING_RELEASE_MB * 1024))"
+        fi
+        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw anon_kb=${anon:-unknown} file_kb=${file:-unknown}${ceiling} build=$BUILD"
         result INFO pss-memory "scenario=$1 private_dirty_kb=$pd private_clean_kb=$pc rss_kb=$rss java_heap_alloc_kb=$java native_heap_alloc_kb=$native other_mmap_rss_kb=$other_rss private_dirty_live_heap_kb=$pd_live art_mmap_pss_kb=$art_pss so_mmap_pss_kb=$so_pss so_mmap_rss_kb=$so_rss budget_kb=$APP_MEMORY_BUDGET_KB over_budget=$over build=$BUILD"
     fi
 }
