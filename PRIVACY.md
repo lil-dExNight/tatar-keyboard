@@ -143,11 +143,11 @@ Tatar Keyboard includes a Tatar spell checker for other apps. Android uses it on
 
 To return verdicts and corrections, the spell checker reads its bundled language data: the Tatar and Russian dictionaries, reviewed Tatar proper names and the Tatar morphological acceptor. After the first unlock following a restart, it also reads the Tatar and Russian personal dictionaries read-only while the personal dictionary switch is on. It reads that switch on every request. When the switch is off, no personal words are used for verdicts or corrections, including cached snapshots. Pause learning does not gate this read-only use. Before that first unlock, no personal file is read. The app's "Check Tatar words" switch, on by default, turns checking off without changing the system selection or stopping Android submissions.
 
-The spell checker keeps no submitted text or verdict beyond the request, stores no checked text, learns nothing from it and writes no log. The first time it needs a bundled dictionary that the keyboard has not published yet, it writes that bundled file into device-protected storage; that one-time publication is its only write. Its process-wide caches hold only language and layout data and read-only personal snapshots.
+The spell checker keeps no submitted text or verdict beyond the request, stores no checked text, learns nothing from it and writes no log. The first time it needs a bundled dictionary that the keyboard has not installed yet, it writes that bundled file into device-protected storage; that one-time installation is its only write. Its process-wide caches hold only language and layout data and read-only personal snapshots.
 
 ## Feedback email
 
-Settings → Information → "Send feedback" opens your email app with the feedback address and a subject naming the keyboard version already filled in. The keyboard supplies no message body or attachments. Nothing is sent until you choose to send the message in that app. The email app and your email provider, not Tatar Keyboard, transmit and store the message under their own privacy terms. If the device has no email app, the keyboard shows the address.
+Settings → Information → "Send feedback" opens your email app with the feedback address and a subject naming the keyboard version already filled in. The keyboard supplies no message body or attachments. Nothing is sent until you choose to send the message in that app. The email app and your email provider, not Tatar Keyboard, transmit and store the message under their own privacy terms. If the device has no email app, the keyboard only shows the address.
 
 ## Contact
 
