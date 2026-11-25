@@ -215,7 +215,8 @@ class BackupRestoreDeviceTest : InstrumentationTestCase() {
             managedPersonalDictionary = false
         }
 
-        assertEquals(BackupImportResult.IMPORTED, BackupTransfer.import(target, archive))
+        // The default-on personal dictionary becomes off under managed policy.
+        assertEquals(BackupImportResult.IMPORTED_PRIVACY_CHANGED, BackupTransfer.import(target, archive))
         assertLiveState(TATAR, TATAR, checkCurrentPreference = false)
         assertEquals("the imported restriction cache was restored",
             setOf(Settings.PREF_ENABLED_SUBTYPES, Settings.PREF_PERSONAL_DICTIONARY),
