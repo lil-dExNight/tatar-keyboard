@@ -656,12 +656,19 @@ class SuggestionStripView @JvmOverloads constructor(
                     // The clip cell gives its marker's reserve up front, so the ellipsized text
                     // (shifted right in onDraw) still clears the glyph.
                     if (state.isClipCell(cell)) clipMarkerReservePx else 0f
-                val display = TextUtils.ellipsize(
-                    suggestion,
-                    paint,
-                    availableWidth.coerceAtLeast(0f),
-                    TextUtils.TruncateAt.END,
-                ).toString()
+                val cellWidth = availableWidth.coerceAtLeast(0f)
+                // A word that fits needs no ellipsize pass or its temporary spans; only an
+                // overflowing cell pays the platform ellipsizer, whose output is unchanged.
+                val display = if (paint.measureText(suggestion) <= cellWidth) {
+                    suggestion
+                } else {
+                    TextUtils.ellipsize(
+                        suggestion,
+                        paint,
+                        cellWidth,
+                        TextUtils.TruncateAt.END,
+                    ).toString()
+                }
                 if (state.isEmphasized(cell)) {
                     // The underline spans exactly the drawn text; measure it here, at
                     // content-set time, so the draw loop never measures.
