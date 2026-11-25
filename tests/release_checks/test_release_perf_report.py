@@ -43,8 +43,15 @@ def report_lines() -> list[str]:
         )
     for scenario in PSS_SCENARIOS:
         lines.append(
-            f"RESULT|INFO|pss|scenario={scenario} total_kb=48000 swap_kb=0 anon_kb=18000 "
-            "file_kb=30000 budget_kb=69000 over_budget=false build=release"
+            f"RESULT|INFO|pss|scenario={scenario} total_kb=76000 swap_kb=0 anon_kb=18000 "
+            "file_kb=58000 build=release"
+        )
+        lines.append(
+            f"RESULT|INFO|pss-memory|scenario={scenario} private_dirty_kb=40000 "
+            "private_clean_kb=5000 rss_kb=76000 java_heap_alloc_kb=8000 native_heap_alloc_kb=9000 "
+            "other_mmap_rss_kb=3000 private_dirty_live_heap_kb=38000 art_mmap_pss_kb=5000 "
+            "so_mmap_pss_kb=9000 so_mmap_rss_kb=45000 budget_kb=44000 over_budget=false "
+            "build=release"
         )
     lines.append(f"RESULT|SUMMARY|strict=1 fail=0 skip=0 sample_skips=0 legs={LEGS} p0_signoff=ready|outdir=fixture")
     return lines
@@ -54,7 +61,13 @@ def spellcheck_report_lines() -> list[str]:
     return [
         "RESULT|INFO|spellcheck-warm|runs=31 words=200 p95_ms=20.0 budget_ms=100.0 over_budget=false",
         "RESULT|INFO|spellcheck-cold|runs=1 words=200 p95_ms=400.0 budget_ms=500.0 over_budget=false",
-        "RESULT|INFO|spellcheck-memory|delta_kb=3000 budget_kb=3584 over_budget=false",
+        "RESULT|INFO|spellcheck-memory|before_kb=70000 after_kb=75000 delta_kb=5000 "
+        "build=release keyboard_shown=true protocol=pss-delta-first-checked-answer",
+        "RESULT|INFO|spellcheck-memory-detail|private_dirty_delta_kb=-2000 "
+        "private_clean_delta_kb=100 rss_delta_kb=5000 java_heap_alloc_delta_kb=250 "
+        "native_heap_alloc_delta_kb=50 live_heap_plus_other_rss_delta_kb=1900 "
+        "other_mmap_rss_delta_kb=1600 art_mmap_pss_delta_kb=1700 so_mmap_pss_delta_kb=-200 "
+        "so_mmap_rss_delta_kb=0 budget_kb=2560 over_budget=false",
         "RESULT|SUMMARY|strict=1 fail=0 skip=0 sample_skips=0 legs=spellcheck p0_signoff=ready|outdir=fixture",
     ]
 
@@ -107,10 +120,14 @@ class StrictPerformanceReportTest(unittest.TestCase):
 
     def test_spellcheck_leg_requires_budgeted_memory_evidence(self) -> None:
         lines = spellcheck_report_lines()
-        lines[2] = lines[2].replace(" over_budget=false", "")
+        index = line_index(lines, "|spellcheck-memory-detail|")
+        lines[index] = lines[index].replace(" over_budget=false", "")
         result = self.run_validator(lines, legs="spellcheck")
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertIn("required leg spellcheck has no budgeted spellcheck-memory result", result.stdout)
+        self.assertIn(
+            "required leg spellcheck has no budgeted spellcheck-memory-detail result",
+            result.stdout,
+        )
 
     def test_touch_p95_within_reference_budget_passes(self) -> None:
         lines = report_lines()
@@ -140,11 +157,17 @@ class StrictPerformanceReportTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual("6", match.group(1))
 
-    def test_spellcheck_pss_delta_budget_pin(self) -> None:
+    def test_app_memory_budget_pin(self) -> None:
         body = DEVICE_PERF.read_text(encoding="utf-8")
-        match = re.search(r"(?m)^SPELLCHECK_PSS_DELTA_BUDGET_KB=(\d+)$", body)
+        match = re.search(r"(?m)^APP_MEMORY_BUDGET_RELEASE_KB=(\d+)$", body)
         self.assertIsNotNone(match)
-        self.assertEqual("3584", match.group(1))
+        self.assertEqual("44000", match.group(1))
+
+    def test_spellcheck_app_memory_delta_budget_pin(self) -> None:
+        body = DEVICE_PERF.read_text(encoding="utf-8")
+        match = re.search(r"(?m)^SPELLCHECK_APP_MEMORY_DELTA_BUDGET_KB=(\d+)$", body)
+        self.assertIsNotNone(match)
+        self.assertEqual("2560", match.group(1))
 
     def test_explicit_skip_blocks_signoff(self) -> None:
         lines = report_lines()
@@ -181,24 +204,29 @@ class StrictPerformanceReportTest(unittest.TestCase):
 
     def test_over_budget_info_cannot_be_relabelled_as_ready(self) -> None:
         lines = report_lines()
-        index = line_index(lines, "scenario=keyboard-idle")
+        index = line_index(lines, "|pss-memory|scenario=keyboard-idle")
         lines[index] = lines[index].replace("over_budget=false", "over_budget=true")
         result = self.run_validator(lines)
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertIn("over budget pss", result.stdout)
+        self.assertIn("over budget pss-memory", result.stdout)
 
     def test_a_missing_pss_scenario_cannot_pass(self) -> None:
         result = self.run_validator(drop(report_lines(), "scenario=idle-30s"))
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertIn("required pss scenario idle-30s has no result", result.stdout)
+        self.assertIn(
+            "required pss scenario idle-30s has no app-owned memory result", result.stdout,
+        )
 
     def test_a_pss_scenario_without_a_budget_verdict_cannot_pass(self) -> None:
         lines = report_lines()
-        index = line_index(lines, "scenario=after-50-words")
+        index = line_index(lines, "|pss-memory|scenario=after-50-words")
         lines[index] = lines[index].replace(" over_budget=false", "")
         result = self.run_validator(lines)
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertIn("required pss scenario after-50-words has no budgeted result", result.stdout)
+        self.assertIn(
+            "required pss scenario after-50-words has no budgeted app-owned result",
+            result.stdout,
+        )
 
     def test_missing_jank_evidence_cannot_pass(self) -> None:
         result = self.run_validator(drop(report_lines(), "|jank|"))

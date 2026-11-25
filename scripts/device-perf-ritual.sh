@@ -6,8 +6,7 @@
 # $OUTDIR/result.txt; raw evidence such as meminfo dumps, framestats, traces and
 # screencaps goes to $OUTDIR). Every budgeted line carries budget_* and
 # over_budget=true|false; --strict turns an over_budget=true INFO into FAIL,
-# while measurement-only lines (the PSS smaps split, memory-detail lines and
-# the battery no-section row) stay INFO either way:
+# while diagnostics without a budget verdict stay INFO either way:
 #   cold) cold start: process start (field 22 of /proc/<pid>/stat, CLK_TCK=100,
 #      CLOCK_BOOTTIME, corrected to CLOCK_MONOTONIC) -> first FrameCompleted of
 #      the InputMethod window (gfxinfo framestats). Host field: Chrome's omnibox
@@ -28,17 +27,17 @@
 #        back after every run and restored on exit.
 #      The first --cold-warmup runs after an install are discarded (one-time
 #      first-start work).
-#   pss) PSS via dumpsys meminfo after four scenarios on our own SetupActivity
-#      try-it field: keyboard open idle; after 50 scripted words (25 tt + 25 ru);
-#      emoji panel open (the expected peak) and after close; after 30 s hidden
-#      (the idle-release path fires at 10 s: glide + emoji indexes drop). The
-#      ceiling depends on the build: debuggable builds run on the debug scale.
-#      Each scenario also saves /proc/<pid>/smaps_rollup (its anon/file split
-#      — RssAnon/RssFile or Pss_Anon/Pss_File by kernel — joins the result
-#      line; skipped with an INFO note when the process or the file is
-#      unreadable) and an App-Summary per-category extract. A measurement-only
-#      pss-memory line adds app-owned fields and a live-heap private-dirty
-#      value that substitutes Dalvik Heap Alloc for GC-sensitive Dalvik pages.
+#   pss) Memory via dumpsys meminfo on our own SetupActivity try-it field:
+#      keyboard open idle; after 50 scripted words (25 tt + 25 ru); emoji panel
+#      open (the expected peak) and after close; after 30 s hidden (the
+#      idle-release path fires at 10 s: glide + emoji indexes drop). The
+#      app-owned ceiling depends on the build: debuggable builds run on the
+#      debug scale. Each scenario also saves /proc/<pid>/smaps_rollup (its
+#      anon/file split — RssAnon/RssFile or Pss_Anon/Pss_File by kernel — joins
+#      the result line; skipped with an INFO note when the process or the file
+#      is unreadable) and an App-Summary per-category extract. The pss-memory
+#      line substitutes Dalvik Heap Alloc for GC-sensitive Dalvik pages and
+#      carries the budget; total PSS stays INFO.
 #   frames) frame stats: gfxinfo reset -> fixed 32-event Tatar typing
 #      script ("сәләм дөнья мин сине яратам дус ": 27 letters + 5 spaces,
 #      0.35 s between taps) -> the InputMethod window's last <=120 PROFILEDATA
@@ -82,10 +81,10 @@
 #   spellcheck) opt-in TextServicesManager measurements in a self-targeted
 #      instrumentation process. With a fresh IME process and its keyboard shown
 #      and used for one typed word, the warm probe checks a 200-word Tatar
-#      paragraph, waits for the first checked answer, then samples PSS before and
-#      after it; their delta is held to the acceptor's resident-memory ceiling.
-#      A measurement-only detail line separates live heap, dictionary-file RSS,
-#      GC-sensitive private pages and framework ART/native-library categories.
+#      paragraph, waits for the first checked answer, then samples memory before
+#      and after it. The detail line budgets the live-heap plus other-mmap RSS
+#      delta and separates dictionary-file RSS, GC-sensitive private pages and
+#      framework ART/native-library categories; total PSS delta stays INFO.
 #      Every warm sample is checked.
 #      Before each cold start the ritual deselects the IME, goes home and kills
 #      the process without a force-stop. The cold arm reports the first callback
@@ -225,8 +224,8 @@ case "$BATTERY_SCREENOFF_SECONDS" in ''|*[!0-9]*) echo "bad --battery-screenoff-
 case "$BATTERY_DEALLOC_SECONDS" in ''|*[!0-9]*) echo "bad --battery-dealloc-seconds: $BATTERY_DEALLOC_SECONDS" >&2; exit 2 ;; esac
 leg_on() { case ",$LEGS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
-# Budgets printed with the RESULT lines. The PSS ceiling of a debuggable build is
-# on the debug scale (a debug build holds far more memory than a release build).
+# Budgets printed with the RESULT lines. The app-owned ceiling of a debuggable
+# build is on the debug scale (a debug build holds more memory than a release build).
 COLD_BUDGET_MS=400
 WARM_BUDGET_MS=150
 TOUCH_BUDGET_MS=6
@@ -234,9 +233,9 @@ SUGGEST_BUDGET_MS=32
 FIRST_SUGGESTION_BUDGET_MS=400
 FRAME_BUDGET_MS=16.7
 JANK_BUDGET_PCT=1.0
-PSS_BUDGET_DEBUG_KB=114000
-PSS_BUDGET_RELEASE_KB=69000
-SPELLCHECK_PSS_DELTA_BUDGET_KB=3584
+APP_MEMORY_BUDGET_DEBUG_KB=72700
+APP_MEMORY_BUDGET_RELEASE_KB=44000
+SPELLCHECK_APP_MEMORY_DELTA_BUDGET_KB=2560
 # Idle-window CPU ceiling of the battery legs: an observability assertion (it
 # catches a stuck worker or a wake loop), not a tuned budget. The debug build
 # gets its own ceiling: it runs the JIT and more GC. The deallocate pass has
@@ -398,10 +397,10 @@ if SHELL dumpsys package "$PKG" 2>/dev/null | grep -E '^[[:space:]]*(pkgFlags|fl
     A shell "run-as $PKG true" >/dev/null 2>&1 && RUN_AS_OK=1
 fi
 if [ "$RUN_AS_OK" = 1 ]; then
-    BUILD=debug; PSS_BUDGET_KB=$PSS_BUDGET_DEBUG_KB; BATTERY_CPU_BUDGET=$BATTERY_IDLE_CPU_BUDGET_DEBUG_MS
+    BUILD=debug; APP_MEMORY_BUDGET_KB=$APP_MEMORY_BUDGET_DEBUG_KB; BATTERY_CPU_BUDGET=$BATTERY_IDLE_CPU_BUDGET_DEBUG_MS
     [ -n "$COLD_TRIGGER" ] || COLD_TRIGGER=tap
 else
-    BUILD=release; PSS_BUDGET_KB=$PSS_BUDGET_RELEASE_KB; BATTERY_CPU_BUDGET=$BATTERY_IDLE_CPU_BUDGET_MS
+    BUILD=release; APP_MEMORY_BUDGET_KB=$APP_MEMORY_BUDGET_RELEASE_KB; BATTERY_CPU_BUDGET=$BATTERY_IDLE_CPU_BUDGET_MS
     [ -n "$COLD_TRIGGER" ] || COLD_TRIGGER=switch
 fi
 VER=$(SHELL dumpsys package "$PKG" 2>/dev/null | grep -m1 versionName | grep -oP '= *\K\S+')
@@ -745,7 +744,7 @@ meminfo_categories() {
     grep -E '^[[:space:]]+(Java Heap|Native Heap|Code|Graphics|Private Other|System|TOTAL):' \
         "$1" > "$2" 2>/dev/null || true
 }
-# meminfo_owned <dump>: numeric fields used by the measurement-only memory lines.
+# meminfo_owned <dump>: numeric fields used by the memory result lines.
 # Columns are total private dirty/clean/RSS, Java and native heap allocation,
 # other-mmap RSS, ART and native-library PSS, native-library RSS and Dalvik private dirty.
 meminfo_owned() {
@@ -765,9 +764,12 @@ meminfo_owned() {
 spellcheck_memory_detail() {
     local bpd bpc brss bjava bnative bother bart bsopss bsorss bdalvikpd
     local apd apc arss ajava anative aother aart asopss asorss adalvikpd
+    local owned_delta over
     read -r bpd bpc brss bjava bnative bother bart bsopss bsorss bdalvikpd <<<"$(meminfo_owned "$1")"
     read -r apd apc arss ajava anative aother aart asopss asorss adalvikpd <<<"$(meminfo_owned "$2")"
-    result INFO spellcheck-memory-detail "private_dirty_delta_kb=$((apd - bpd)) private_clean_delta_kb=$((apc - bpc)) rss_delta_kb=$((arss - brss)) java_heap_alloc_delta_kb=$((ajava - bjava)) native_heap_alloc_delta_kb=$((anative - bnative)) live_heap_plus_other_rss_delta_kb=$((ajava - bjava + anative - bnative + aother - bother)) other_mmap_rss_delta_kb=$((aother - bother)) art_mmap_pss_delta_kb=$((aart - bart)) so_mmap_pss_delta_kb=$((asopss - bsopss)) so_mmap_rss_delta_kb=$((asorss - bsorss))"
+    owned_delta=$((ajava - bjava + anative - bnative + aother - bother))
+    over=$( [ "$owned_delta" -gt "$SPELLCHECK_APP_MEMORY_DELTA_BUDGET_KB" ] && echo true || echo false )
+    result INFO spellcheck-memory-detail "private_dirty_delta_kb=$((apd - bpd)) private_clean_delta_kb=$((apc - bpc)) rss_delta_kb=$((arss - brss)) java_heap_alloc_delta_kb=$((ajava - bjava)) native_heap_alloc_delta_kb=$((anative - bnative)) live_heap_plus_other_rss_delta_kb=$owned_delta other_mmap_rss_delta_kb=$((aother - bother)) art_mmap_pss_delta_kb=$((aart - bart)) so_mmap_pss_delta_kb=$((asopss - bsopss)) so_mmap_rss_delta_kb=$((asorss - bsorss)) budget_kb=$SPELLCHECK_APP_MEMORY_DELTA_BUDGET_KB over_budget=$over"
 }
 # smaps_rollup <pid> <out>: /proc/<pid>/smaps_rollup of the package process.
 # A shell read works where ptrace rules allow it; run-as is the fallback for a
@@ -799,9 +801,9 @@ pss_point() { # pss_point <scenario>
     if [ -z "${kb:-}" ]; then
         result FAIL pss "scenario=$1 unreadable (process dead?)"
     else
-        over=$( [ "$kb" -gt "$PSS_BUDGET_KB" ] && echo true || echo false )
-        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw anon_kb=${anon:-unknown} file_kb=${file:-unknown} budget_kb=$PSS_BUDGET_KB over_budget=$over build=$BUILD"
-        result INFO pss-memory "scenario=$1 private_dirty_kb=$pd private_clean_kb=$pc rss_kb=$rss java_heap_alloc_kb=$java native_heap_alloc_kb=$native other_mmap_rss_kb=$other_rss private_dirty_live_heap_kb=$pd_live art_mmap_pss_kb=$art_pss so_mmap_pss_kb=$so_pss so_mmap_rss_kb=$so_rss"
+        over=$( [ "$pd_live" -gt "$APP_MEMORY_BUDGET_KB" ] && echo true || echo false )
+        result INFO pss "scenario=$1 total_kb=$kb swap_kb=$sw anon_kb=${anon:-unknown} file_kb=${file:-unknown} build=$BUILD"
+        result INFO pss-memory "scenario=$1 private_dirty_kb=$pd private_clean_kb=$pc rss_kb=$rss java_heap_alloc_kb=$java native_heap_alloc_kb=$native other_mmap_rss_kb=$other_rss private_dirty_live_heap_kb=$pd_live art_mmap_pss_kb=$art_pss so_mmap_pss_kb=$so_pss so_mmap_rss_kb=$so_rss budget_kb=$APP_MEMORY_BUDGET_KB over_budget=$over build=$BUILD"
     fi
 }
 
@@ -1192,7 +1194,7 @@ if leg_on cold; then
     fi
 fi
 
-# ── leg: PSS across four scenarios ───────────────────────────────────────────
+# ── leg: app-owned memory across keyboard scenarios ─────────────────────────
 
 if leg_on pss; then
     kill_app || true
@@ -1644,7 +1646,7 @@ if leg_on spellcheck; then
                 "$OUTDIR/meminfo-spellcheck-after.txt" 2>/dev/null)
             if [[ "$spellcheck_before" =~ ^[0-9]+$ && "$spellcheck_after" =~ ^[0-9]+$ ]]; then
                 spellcheck_delta=$((spellcheck_after - spellcheck_before))
-                result INFO spellcheck-memory "before_kb=$spellcheck_before after_kb=$spellcheck_after delta_kb=$spellcheck_delta budget_kb=$SPELLCHECK_PSS_DELTA_BUDGET_KB over_budget=$(gt "$spellcheck_delta" "$SPELLCHECK_PSS_DELTA_BUDGET_KB") build=$BUILD keyboard_shown=true protocol=pss-delta-first-checked-answer"
+                result INFO spellcheck-memory "before_kb=$spellcheck_before after_kb=$spellcheck_after delta_kb=$spellcheck_delta build=$BUILD keyboard_shown=true protocol=pss-delta-first-checked-answer"
                 spellcheck_memory_detail "$OUTDIR/meminfo-spellcheck-before.txt" \
                     "$OUTDIR/meminfo-spellcheck-after.txt"
             else

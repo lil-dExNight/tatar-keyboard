@@ -20,22 +20,25 @@ LEG_CHECKS = {
     "suggest": ("suggest",),
     "first-suggestion": ("first-suggestion",),
     "first-glide": ("cold-first-glide", "warm-decode"),
-    "spellcheck": ("spellcheck-warm", "spellcheck-cold", "spellcheck-memory"),
+    "spellcheck": (
+        "spellcheck-warm", "spellcheck-cold", "spellcheck-memory", "spellcheck-memory-detail",
+    ),
     "battery": ("battery.idle", "battery.screenoff", "battery.suggest-off", "battery.dealloc"),
     "uimode": ("uimode",),
     "fontscale": ("fontscale",),
 }
 BUDGETED = {
-    "cold-start", "pss", "frames", "jank", "warm-show", "touch", "suggest", "first-suggestion",
+    "cold-start", "frames", "jank", "warm-show", "touch", "suggest", "first-suggestion",
     "cold-first-glide", "warm-decode",
-    "spellcheck-warm", "spellcheck-cold", "spellcheck-memory",
+    "spellcheck-warm", "spellcheck-cold", "spellcheck-memory-detail",
 }
 # The reference-device touch budget is also checked against the measured p95, so a
 # hand-edited over_budget=false cannot make an over-budget report pass.
 TOUCH_BUDGET_MS = 6.0
-# The PSS leg is one check line per scenario in device-perf-ritual.sh; strict
-# evidence must cover all four of them, each with its own budget verdict.
-PSS_SCENARIOS = ("keyboard-idle", "after-50-words", "emoji-panel-open", "idle-30s")
+# Strict evidence requires an app-owned memory verdict for every scenario.
+PSS_SCENARIOS = (
+    "keyboard-idle", "after-50-words", "emoji-panel-open", "emoji-panel-closed", "idle-30s",
+)
 SKIPPED_SAMPLES = re.compile(r"(?:^|\s)skips=([1-9][0-9]*)(?:\s|$)")
 
 
@@ -135,16 +138,16 @@ def validate(path: Path, legs: list[str]) -> list[str]:
                 issues.append(f"required leg {leg} has no budgeted {check} result")
 
     if "pss" in legs:
-        pss_details = checks.get("pss", [])
+        memory_details = checks.get("pss-memory", [])
         for scenario in PSS_SCENARIOS:
             matching = [
-                detail for detail in pss_details
+                detail for detail in memory_details
                 if parse_fields(detail).get("scenario") == scenario
             ]
             if not matching:
-                issues.append(f"required pss scenario {scenario} has no result")
-            elif not any("over_budget=" in detail for detail in matching):
-                issues.append(f"required pss scenario {scenario} has no budgeted result")
+                issues.append(f"required pss scenario {scenario} has no app-owned memory result")
+            elif any("over_budget=" not in detail for detail in matching):
+                issues.append(f"required pss scenario {scenario} has no budgeted app-owned result")
 
     if "frames" in legs:
         # Jank evidence is complete only when every measured frame run has a
