@@ -115,6 +115,12 @@ class StrictPerformanceReportTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual("6", match.group(1))
 
+    def test_spellcheck_pss_delta_budget_pin(self) -> None:
+        body = DEVICE_PERF.read_text(encoding="utf-8")
+        match = re.search(r"(?m)^SPELLCHECK_PSS_DELTA_BUDGET_KB=(\d+)$", body)
+        self.assertIsNotNone(match)
+        self.assertEqual("3584", match.group(1))
+
     def test_explicit_skip_blocks_signoff(self) -> None:
         lines = report_lines()
         lines[line_index(lines, "|touch|")] = "RESULT|SKIP|touch|instrumentation unavailable"

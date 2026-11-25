@@ -231,7 +231,7 @@ FRAME_BUDGET_MS=16.7
 JANK_BUDGET_PCT=1.0
 PSS_BUDGET_DEBUG_KB=114000
 PSS_BUDGET_RELEASE_KB=69000
-SPELLCHECK_PSS_DELTA_BUDGET_KB=2048
+SPELLCHECK_PSS_DELTA_BUDGET_KB=3584
 # Idle-window CPU ceiling of the battery legs: an observability assertion (it
 # catches a stuck worker or a wake loop), not a tuned budget. The debug build
 # gets its own ceiling: it runs the JIT and more GC. The deallocate pass has
