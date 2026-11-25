@@ -1,8 +1,8 @@
 {
   "id": "asset-bigram-tatar-v2",
   "revision": "tatar_bigrams_v2",
-  "size_bytes": 1124117,
-  "sha256": "5b3be7ea1502418770c304cc64b7448c34b16c2837d8dd9f3f584496588dd294",
+  "size_bytes": 1124113,
+  "sha256": "2d5db89f816f0da4b11187a267b078f5c1ab98938cc58687230e066f366f592f",
   "license": "CC-BY-4.0 AND CC-BY-2.0-FR AND LicenseRef-OpenSubtitles",
   "source_role": "generated_bigram_table",
   "split_rule": "training output; excludes final evaluation records",

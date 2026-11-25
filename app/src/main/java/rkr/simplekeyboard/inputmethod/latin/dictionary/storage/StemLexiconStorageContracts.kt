@@ -42,15 +42,15 @@ data class StemLexiconArtifactSpec(
             family = "tatar_stems",
             languageTag = PersonalSubtypes.TATAR_RU,
             assetPath = "dictionaries/tatar_stems_v1.tstem.zlib",
-            expectedCompressedSize = 240_289,
+            expectedCompressedSize = 240_291,
             expectedCompressedSha256 =
-                "0cd6601f67803fb79a96c8748a1c27935a8199cd15c9580608ffda49bc664302",
+                "fc12666fe28c9f7f56b1c56b960099e903ceab20c097bfb13d98b527f448671b",
             expectedRawSize = 642_469,
             expectedRawSha256 =
-                "31a583770a782f705778e9647ffa228dc84d993bae6fbf3742d226abb7ea392d",
+                "71edec7f58af2f6131c0af40ea1211cd7b181a97fbbe1ba376c8566c446c0453",
             expectedStemCount = 49_931,
             expectedDictionaryRawSha256 =
-                "448c1fecd43bf485c0207f4ed9c33147edbef313f973d63b149774500a7ec090",
+                "5e59cd687670b9331ff5473c50132c8b7550ab031f29c48f84adfab357ea4a94",
             expectedApertiumLexiconSha256 =
                 "43438bc2710beae9472e1d5e09a2403793d0d059c48ff9a9e5c9100387716e73",
         )

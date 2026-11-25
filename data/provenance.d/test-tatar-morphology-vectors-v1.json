@@ -2,7 +2,7 @@
   "id": "test-tatar-morphology-vectors-v1",
   "revision": "tatar-morphology-vectors/v1",
   "size_bytes": 1062010,
-  "sha256": "27bb7f535101a1791af8b8c2865ee701579607929c730ec9760740a8fdcd8d6a",
+  "sha256": "66817fa5c6baa8ac3d1e60465a010b57ebf22297c1b322791dbed0a214b79a20",
   "license": "GPL-3.0-only AND CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles",
   "source_role": "morphology_regression_vectors",
   "split_rule": "not-applicable",

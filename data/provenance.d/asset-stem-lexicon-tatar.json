@@ -1,8 +1,8 @@
 {
   "id": "asset-stem-lexicon-tatar-v1",
   "revision": "tatar_stems_v1+apertium-tat@18fe9e45d5672d6f6113291197449e7522df1b3e",
-  "size_bytes": 240289,
-  "sha256": "0cd6601f67803fb79a96c8748a1c27935a8199cd15c9580608ffda49bc664302",
+  "size_bytes": 240291,
+  "sha256": "fc12666fe28c9f7f56b1c56b960099e903ceab20c097bfb13d98b527f448671b",
   "license": "GPL-3.0-only AND CC-BY-4.0 AND CC-BY-2.0-FR AND CC-BY-SA-4.0 AND CC0-1.0 AND LicenseRef-OpenSubtitles",
   "source_role": "generated_stem_lexicon",
   "split_rule": "training output; retains Apertium chain stems that also ship as dictionary forms; excludes final evaluation records",
