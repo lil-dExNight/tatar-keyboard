@@ -1,0 +1,6 @@
+• Tatar spell checking in other apps with corrections; known Russian words and English text stay unchecked
+• Tatar word forms and multi-letter chat spellings are recognized; new recovery is display-only
+• Personal dictionary on by default; the spell checker follows its switch
+• Tatar dictionary and word forms rebuilt with Russian-letter cleanup
+• Parallel initialization for suggestions, glide typing and spell checking
+• Send feedback; fixed a setting-change startup crash

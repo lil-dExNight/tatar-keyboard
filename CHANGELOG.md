@@ -14,6 +14,40 @@ These hold for every release:
 
 ## [Unreleased]
 
+## [5.0.0] — 2026-11-25
+
+### Added
+
+- A Tatar spell checker for other apps. Select it in Android settings to underline likely
+  mistakes and choose Tatar corrections; known Russian words and all English words are left
+  alone, and submitted text is not stored or used for learning.
+- Tatar word-form recognition accepts more valid inflected and derived forms in the spell checker
+  and in chat-spelling recovery. These forms are not added to the dictionary or admitted into
+  autocorrect.
+- The suggestion strip and spell checker can offer standard Tatar spellings for words written
+  with two or more Russian partner letters. This multi-letter chat-spelling recovery is
+  display-only and never supplies autocorrect advice; existing one-edit typo recovery is
+  unchanged.
+- The Information screen has a feedback row. It opens a blank email with the feedback address and
+  a subject naming the app and its version.
+
+### Changed
+
+- The personal dictionary is on by default when you have never chosen a setting; an explicit off
+  choice still wins. The spell checker follows the same switch, and Pause learning still stops
+  only new learning.
+- The Tatar dictionary, word-pair table, companion list and word-form data were rebuilt with
+  reviewed Russian-letter spelling cleanup and more word stems.
+- First suggestions no longer wait for Tatar word-form loading, cold glide indexing builds its
+  per-word channels in parallel, and the spell checker overlaps layout, dictionary and word-form
+  loading. When published dictionary files exist, the spell checker maps them read-only instead
+  of making heap copies; bundled assets remain the fallback.
+
+### Fixed
+
+- Changing a setting while the keyboard starts no longer crashes the keyboard.
+- The first cleanly typed word of a session now counts toward personal-dictionary learning.
+
 ## [4.0.4] — 2026-11-23
 
 ### Fixed
