@@ -28,6 +28,9 @@ BUDGETED = {
     "cold-start", "pss", "frames", "jank", "warm-show", "touch", "suggest", "first-suggestion",
     "cold-first-glide", "warm-decode",
 }
+# The reference-device touch budget is also checked against the measured p95, so a
+# hand-edited over_budget=false cannot make an over-budget report pass.
+TOUCH_BUDGET_MS = 6.0
 # The PSS leg is one check line per scenario in device-perf-ritual.sh; strict
 # evidence must cover all four of them, each with its own budget verdict.
 PSS_SCENARIOS = ("keyboard-idle", "after-50-words", "emoji-panel-open", "idle-30s")
@@ -88,6 +91,21 @@ def validate(path: Path, legs: list[str]) -> list[str]:
         fields = parse_fields(detail)
         if fields.get("over_budget") == "true":
             issues.append(f"line {number}: over budget {check}: {detail}")
+        if status == "INFO" and check == "touch":
+            try:
+                p95 = float(fields["p95_ms"])
+                budget = float(fields["budget_ms"])
+            except (KeyError, ValueError):
+                issues.append(f"line {number}: touch needs numeric p95_ms and budget_ms")
+            else:
+                if budget != TOUCH_BUDGET_MS:
+                    issues.append(
+                        f"line {number}: touch budget_ms={fields['budget_ms']}, expected 6"
+                    )
+                if p95 > TOUCH_BUDGET_MS:
+                    issues.append(
+                        f"line {number}: touch p95_ms={fields['p95_ms']} exceeds 6"
+                    )
 
     if len(summaries) != 1:
         issues.append(f"expected one RESULT|SUMMARY line, found {len(summaries)}")

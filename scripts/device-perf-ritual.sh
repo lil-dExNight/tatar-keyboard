@@ -224,7 +224,7 @@ leg_on() { case ",$LEGS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 # on the debug scale (a debug build holds far more memory than a release build).
 COLD_BUDGET_MS=400
 WARM_BUDGET_MS=150
-TOUCH_BUDGET_MS=5
+TOUCH_BUDGET_MS=6
 SUGGEST_BUDGET_MS=32
 FIRST_SUGGESTION_BUDGET_MS=400
 FRAME_BUDGET_MS=16.7

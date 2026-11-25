@@ -23,7 +23,14 @@ def report_lines() -> list[str]:
         "cold-start", "warm-show", "touch", "suggest",
         "first-suggestion", "cold-first-glide", "warm-decode",
     )
-    lines = [f"RESULT|INFO|{check}|runs=5 skips=0 over_budget=false" for check in checks]
+    lines = [
+        (
+            "RESULT|INFO|touch|events=64 p50_ms=2.4 p95_ms=5.5 max_ms=5.8 "
+            "event_to_handled_p50_ms=2.5 event_to_handled_p95_ms=5.7 "
+            "budget_ms=6 over_budget=false build=release script=32-event-tt"
+        ) if check == "touch" else f"RESULT|INFO|{check}|runs=5 skips=0 over_budget=false"
+        for check in checks
+    ]
     lines.append("RESULT|INFO|frames-proof|try-it field holds the tt script tail as typed")
     for run in FRAME_RUNS:
         lines.append(
@@ -79,6 +86,34 @@ class StrictPerformanceReportTest(unittest.TestCase):
         result = self.run_validator(report_lines(), wrapper=True)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertIn("RELEASE_PERF|PASS|", result.stdout)
+
+    def test_touch_p95_within_reference_budget_passes(self) -> None:
+        lines = report_lines()
+        lines[line_index(lines, "|touch|")] = (
+            "RESULT|INFO|touch|events=64 p50_ms=2.4 p95_ms=5.5 max_ms=5.8 "
+            "event_to_handled_p50_ms=2.5 event_to_handled_p95_ms=5.7 "
+            "budget_ms=6 over_budget=false build=release script=32-event-tt"
+        )
+        result = self.run_validator(lines)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("RELEASE_PERF|PASS|", result.stdout)
+
+    def test_touch_p95_over_reference_budget_fails(self) -> None:
+        lines = report_lines()
+        lines[line_index(lines, "|touch|")] = (
+            "RESULT|INFO|touch|events=64 p50_ms=2.4 p95_ms=6.1 max_ms=6.4 "
+            "event_to_handled_p50_ms=2.5 event_to_handled_p95_ms=6.2 "
+            "budget_ms=6 over_budget=false build=release script=32-event-tt"
+        )
+        result = self.run_validator(lines)
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("touch p95_ms=6.1 exceeds 6", result.stdout)
+
+    def test_touch_budget_pin_is_six_ms(self) -> None:
+        body = DEVICE_PERF.read_text(encoding="utf-8")
+        match = re.search(r"(?m)^TOUCH_BUDGET_MS=(\d+)$", body)
+        self.assertIsNotNone(match)
+        self.assertEqual("6", match.group(1))
 
     def test_explicit_skip_blocks_signoff(self) -> None:
         lines = report_lines()
