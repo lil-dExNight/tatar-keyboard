@@ -13,7 +13,9 @@ no business targeting them). No device is needed.
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
+import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -189,6 +191,44 @@ class TatarKeyCoordinatesContractTest(unittest.TestCase):
         self.assertTrue(taps)
         self.assertEqual((self.geometry["ә"][1], self.row_y(DEVICE_PERF, 0)), taps[0])
         self.assertEqual("45 1110", f"{taps[0][0]} {taps[0][1]}")
+
+    def test_layout_probe_raises_the_keyboard_with_the_field_helper(self) -> None:
+        # probe_layout hides the keyboard to read the field. The field's center on
+        # the hidden screen is under the navigation bar, so raising it must use the
+        # clamped tap_setup_field, never tap_node's center tap.
+        body = DEVICE_PERF.read_text(encoding="utf-8")
+        match = re.search(r"(?ms)^probe_layout\(\) \{.*?^\}\n", body)
+        self.assertIsNotNone(match)
+        self.assertIn("tap_setup_field </dev/null && wait_keyboard 5", match.group(0))
+        self.assertNotIn("tap_node setup_test_field", match.group(0))
+
+    def test_setup_field_tap_clamps_above_the_navigation_bar(self) -> None:
+        # The try-it field extends under the 720x1640 screen's navigation bar.
+        # Tapping its center would not raise the keyboard; the helper must clamp.
+        body = DEVICE_PERF.read_text(encoding="utf-8")
+        match = re.search(r"(?ms)^tap_setup_field\(\) \{.*?^\}\n", body)
+        self.assertIsNotNone(match)
+        with tempfile.TemporaryDirectory() as tmp:
+            ui = Path(tmp) / "ui.xml"
+            taps = Path(tmp) / "taps.txt"
+            ui.write_text(
+                '<hierarchy><node text="" '
+                'resource-id="org.example:id/setup_test_field" '
+                'bounds="[48,1498][672,1640]" /></hierarchy>',
+                encoding="utf-8",
+            )
+            script = (
+                "WH=720x1640\n"
+                f"SHELL() {{ printf '%s\\n' \"$*\" >> {shlex.quote(str(taps))}; }}\n"
+                f"dump_ui() {{ cat {shlex.quote(str(ui))}; }}\n"
+                + match.group(0)
+                + "\ntap_setup_field\n"
+            )
+            result = subprocess.run(
+                ["bash", "-c", script], check=False, capture_output=True, text=True
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("input tap 360 1530\n", taps.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -621,7 +621,9 @@ probe_layout() {
     after=$(field_text)
     last=$(python3 -c 'import sys; t = sys.argv[1]; print(t[-1].lower() if t else "")' "$after")
     case "$last" in ә) lay=tt ;; й) lay=ru ;; q) lay=en ;; *) lay=unknown; log "probe read '${after: -20}'" ;; esac
-    tap_node setup_test_field </dev/null && wait_keyboard 5 </dev/null
+    # The hidden field's center sits under the navigation bar on this screen, so the
+    # clamped field tap is required to raise the keyboard again.
+    tap_setup_field </dev/null && wait_keyboard 5 </dev/null
     sleep 0.5
     cursor_to_end
     case "$lay" in
