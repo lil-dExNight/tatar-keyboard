@@ -42,6 +42,17 @@ object AndroidDictionaryStorageFactory {
             store,
         )
     }
+
+    /**
+     * The file [create] publishes for [artifact]. A caller that only needs to know whether the
+     * artifact is already published reads this path instead of constructing a store.
+     */
+    @JvmStatic
+    fun publishedFile(context: Context, artifact: DictionaryArtifactSpec): File =
+        File(
+            context.createDeviceProtectedStorageContext().filesDir,
+            artifact.storageDirectoryName,
+        ).resolve(artifact.finalFileName)
 }
 
 /**

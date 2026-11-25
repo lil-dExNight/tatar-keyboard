@@ -143,7 +143,7 @@ Tatar Keyboard includes a Tatar spell checker for other apps. Android uses it on
 
 To return verdicts and corrections, the spell checker reads its bundled language data: the Tatar and Russian dictionaries, reviewed Tatar proper names and the Tatar morphological acceptor. After the first unlock following a restart, it also reads the Tatar and Russian personal dictionaries read-only while the personal dictionary switch is on. It reads that switch on every request. When the switch is off, no personal words are used for verdicts or corrections, including cached snapshots. Pause learning does not gate this read-only use. Before that first unlock, no personal file is read. The app's "Check Tatar words" switch, on by default, turns checking off without changing the system selection or stopping Android submissions.
 
-The spell checker keeps no submitted text or verdict beyond the request, stores no checked text, learns nothing from it and writes no log. Its process-wide caches hold only language and layout data and read-only personal snapshots.
+The spell checker keeps no submitted text or verdict beyond the request, stores no checked text, learns nothing from it and writes no log. The first time it needs a bundled dictionary that the keyboard has not published yet, it writes that bundled file into device-protected storage; that one-time publication is its only write. Its process-wide caches hold only language and layout data and read-only personal snapshots.
 
 ## Feedback email
 

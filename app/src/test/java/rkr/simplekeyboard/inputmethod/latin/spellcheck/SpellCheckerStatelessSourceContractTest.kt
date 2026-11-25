@@ -17,6 +17,7 @@
 package rkr.simplekeyboard.inputmethod.latin.spellcheck
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,6 +48,26 @@ class SpellCheckerStatelessSourceContractTest {
                 "${file.name} must not put input into an exception",
                 Regex("(?:Exception|Error)\\([^\\n]*\\$\\{").containsMatchIn(source),
             )
+        }
+    }
+
+    @Test
+    fun onlyTheMissingDictionaryPublicationPreparesStorage() {
+        val token = ".prepare {"
+        for (file in sourceFiles()) {
+            val source = file.readText()
+            if (file.name == "SpellCheckerAndroid.kt") {
+                val publish = source.indexOf("override fun publish(")
+                assertTrue("publish must exist", publish >= 0)
+                assertEquals(
+                    "the storage preparation must sit inside publish",
+                    1,
+                    source.split(token).size - 1,
+                )
+                assertTrue("publish must prepare storage", source.indexOf(token) > publish)
+            } else {
+                assertFalse("${file.name} must not prepare storage", source.contains(token))
+            }
         }
     }
 

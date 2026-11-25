@@ -85,9 +85,19 @@ internal class SpellCheckerDictionaries(
         }
 }
 
-/** Acquires an already published dictionary without preparing or cleaning storage. */
-internal fun interface SpellCheckerDictionaryLeaseSource {
+/**
+ * Acquires a published dictionary and can publish a missing one. [acquire] never prepares or
+ * cleans storage; [publish] writes the bundled asset only when no published file exists.
+ */
+internal interface SpellCheckerDictionaryLeaseSource {
     fun acquire(spec: DictionaryArtifactSpec): DictionaryFileLease?
+
+    /**
+     * Publishes [spec] from its bundled asset when the catalog holds no file for it, and reports
+     * whether a published file is now available. An existing file is never replaced, so a corrupt
+     * or leased file keeps the bundled fallback instead of being repaired here.
+     */
+    fun publish(spec: DictionaryArtifactSpec): Boolean
 }
 
 /** An opener for one read-only APK asset. */
@@ -95,7 +105,10 @@ internal fun interface SpellCheckerAssetOpener {
     fun open(path: String): InputStream
 }
 
-/** Loads published dictionaries as read-only mappings, with pinned APK assets as the fallback. */
+/**
+ * Loads dictionaries as read-only mappings of the published files, publishing a missing file from
+ * its pinned APK asset once; the bundled asset is the fallback when publication is impossible.
+ */
 internal class SpellCheckerDictionaryLoader(
     private val opener: SpellCheckerAssetOpener,
     private val acceptor: () -> TatarMorphologicalAcceptor?,
@@ -168,11 +181,7 @@ internal class SpellCheckerDictionaryLoader(
         leases: MutableList<DictionaryFileLease>,
         chatSubstitutions: ChatSubstitutionTable?,
     ): TdictPrefixIndex? {
-        val lease = try {
-            leaseSource?.acquire(spec)
-        } catch (_: Exception) {
-            null
-        } ?: return null
+        val lease = acquireOrPublish(spec) ?: return null
         var retained = false
         try {
             val dictionary = lease.dictionary
@@ -208,6 +217,33 @@ internal class SpellCheckerDictionaryLoader(
             return null
         } finally {
             if (!retained) lease.close()
+        }
+    }
+
+    /**
+     * Acquires the published file, or publishes the missing artifact once and acquires it. The
+     * spell checker needs both languages, while the IME publishes a dictionary only for a layout
+     * the user has activated, so the other language would otherwise stay inflated in the heap for
+     * the life of every spell-checker process.
+     */
+    private fun acquireOrPublish(spec: DictionaryArtifactSpec): DictionaryFileLease? {
+        val source = leaseSource ?: return null
+        val published = try {
+            source.acquire(spec)
+        } catch (_: Exception) {
+            null
+        }
+        if (published != null) return published
+        val created = try {
+            source.publish(spec)
+        } catch (_: Exception) {
+            false
+        }
+        if (!created) return null
+        return try {
+            source.acquire(spec)
+        } catch (_: Exception) {
+            null
         }
     }
 

@@ -18,7 +18,6 @@ package rkr.simplekeyboard.inputmethod.latin.spellcheck
 
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -57,7 +56,7 @@ class SpellCheckerDictionaryLoaderTest {
     }
 
     @Test
-    fun missingPublishedFilesFallBackToBundledAssets() {
+    fun missingPublishedFilesArePublishedThenMapped() {
         val stores = stores(publish = false)
         var dictionaryAssetOpens = 0
 
@@ -65,10 +64,11 @@ class SpellCheckerDictionaryLoaderTest {
 
         assertTrue(dictionaries.tatarBaseWord("бүген"))
         assertTrue(dictionaries.russianBaseWord("и"))
-        assertEquals(2, dictionaryAssetOpens)
+        assertEquals(0, dictionaryAssetOpens)
         for (harness in stores.values) {
-            assertFalse(finalFile(harness.spec).exists())
+            assertTrue(finalFile(harness.spec).isFile)
             assertTrue(harness.operations.deleted.isEmpty())
+            assertEquals(1, harness.store.fullValidationCount)
         }
     }
 
@@ -124,8 +124,15 @@ class SpellCheckerDictionaryLoaderTest {
         acceptor = { null },
         personal = PersonalDictionarySource { PersonalDictionary.EMPTY },
         neighbors = TatarLayoutTestFixtures.tatarNeighborTable(),
-        leaseSource = SpellCheckerDictionaryLeaseSource { spec ->
-            stores.getValue(spec).store.acquireLatestForActivation()
+        leaseSource = object : SpellCheckerDictionaryLeaseSource {
+            override fun acquire(spec: DictionaryArtifactSpec) =
+                stores.getValue(spec).store.acquireLatestForActivation()
+
+            override fun publish(spec: DictionaryArtifactSpec): Boolean {
+                if (finalFile(spec).isFile) return false
+                val result = stores.getValue(spec).store.ensurePublished(spec)
+                return result is PreparationResult.Published
+            }
         },
     ).load()
 

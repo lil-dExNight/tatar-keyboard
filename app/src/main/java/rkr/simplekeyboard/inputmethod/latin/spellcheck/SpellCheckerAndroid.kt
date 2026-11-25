@@ -33,6 +33,7 @@ import rkr.simplekeyboard.inputmethod.latin.dictionary.personalstore.AndroidPers
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.AndroidDictionaryStorageFactory
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryArtifactSpec
 import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.DictionaryFileLease
+import rkr.simplekeyboard.inputmethod.latin.dictionary.storage.PreparationResult
 import rkr.simplekeyboard.inputmethod.latin.morphology.SharedTatarMorphology
 import rkr.simplekeyboard.inputmethod.latin.settings.Settings
 import rkr.simplekeyboard.inputmethod.latin.suggestions.KeyNeighborTableBuilder
@@ -59,7 +60,10 @@ internal object AndroidPersonalDictionarySource {
     }
 }
 
-/** Uses only the catalog's read-only activation path; the spell checker never prepares storage. */
+/**
+ * Acquires the published dictionary, or publishes the missing one from its bundled asset through
+ * the same store the IME uses. A published file that exists is never replaced.
+ */
 internal class AndroidSpellCheckerDictionaryLeaseSource(
     context: Context,
 ) : SpellCheckerDictionaryLeaseSource {
@@ -70,6 +74,18 @@ internal class AndroidSpellCheckerDictionaryLeaseSource(
             .acquireLatestForActivation()
     } catch (_: Exception) {
         null
+    }
+
+    override fun publish(spec: DictionaryArtifactSpec): Boolean {
+        if (AndroidDictionaryStorageFactory.publishedFile(appContext, spec).isFile) return false
+        var published = false
+        try {
+            AndroidDictionaryStorageFactory.create(appContext, DIRECT_EXECUTOR, spec)
+                .prepare { result -> published = result is PreparationResult.Published }
+        } catch (_: Exception) {
+            return false
+        }
+        return published
     }
 
     private companion object {

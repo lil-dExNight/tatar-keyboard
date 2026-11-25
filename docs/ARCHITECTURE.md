@@ -797,22 +797,25 @@ device-protected preferences on every request, is on. When it is off, neither Ta
 personal words can affect a verdict or correction, and cached snapshots are not consulted. Pause
 learning remains write-only and does not gate these reads.
 
-For each language, the loader first uses the existing catalog's read-only activation path. An
+For each language, the loader acquires the existing catalog's activation path. An
 active-generation published file that passes the catalog's validation is mapped read-only with
 `MappedDictionaryEngine.FILE_MAPPER`. Its store validation token lets `TdictPrefixIndex.open`
 skip another full structural walk after the same file-freshness check the IME uses. The spell
 checker holds the file lease for the source's process lifetime, so catalog retention cannot
 remove the mapping's file. If corruption is found later, that lease also makes an in-process
 repair wait until process death; both consumers fall back to the bundled asset meanwhile. A
-missing, unreadable or invalid published file affects only that language: the loader falls back
-to inflating the pinned APK asset into a read-only heap buffer.
+missing published file is published once from the bundled asset through the same store the IME
+uses and then mapped; a file that exists but is unreadable or invalid is left in place, and the
+loader falls back to inflating the pinned APK asset into a read-only heap buffer.
 Published files live in device-protected storage and are usable during Direct Boot; asset fallback
-also covers first run before publication and a published file rejected by the catalog. The service
-never calls publication, cleanup or quarantine APIs; the IME is the only catalog writer. Source
-publication reuses the dictionary mappings and proper-name table on later requests, and repeated
-mappings of one file share its clean file-backed pages. While the personal dictionary is enabled,
-personal snapshots are cached per language and reloaded when the file's path, length or
-modification time changes.
+also covers a published file rejected by the catalog and a publication that cannot write. The IME
+publishes a dictionary only for a layout the user has activated, while spell checking always needs
+both languages, so the spell checker publishes the other language on its first load instead of
+keeping it inflated in the heap for every process; that one-time publication is its only storage
+write. It never calls cleanup or quarantine APIs. Source publication reuses the dictionary
+mappings and proper-name table on later requests, and repeated mappings of one file share its
+clean file-backed pages. While the personal dictionary is enabled, personal snapshots are cached
+per language and reloaded when the file's path, length or modification time changes.
 
 Binder threads may call concurrently: a monitor serializes membership and lookup calls through
 each index's mutable scratch; the acceptor's `@Synchronized` methods serialize access to its fixed
@@ -824,8 +827,9 @@ publication return accepted verdicts without corrections. Later lookups run on c
 threads; personal snapshots are read and cached under their own lock.
 
 The service retains no submitted text or per-word verdict beyond the call and performs no
-logging, storage writes, learning or input caching. It starts no editor, keyboard-view or learning
-machinery. Every submitted word receives its own `SuggestionsInfo` with its offset and length
+logging, learning or input caching; its only storage write is the one-time dictionary
+publication. It starts no editor, keyboard-view or learning machinery. Every submitted word
+receives its own `SuggestionsInfo` with its offset and length
 (`SpellCheckerWords`), the shape underlines need on API 31 and newer, and request cookies and
 sequence numbers are preserved.
 
