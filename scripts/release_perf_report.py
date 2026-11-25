@@ -20,6 +20,7 @@ LEG_CHECKS = {
     "suggest": ("suggest",),
     "first-suggestion": ("first-suggestion",),
     "first-glide": ("cold-first-glide", "warm-decode"),
+    "spellcheck": ("spellcheck-warm", "spellcheck-cold", "spellcheck-memory"),
     "battery": ("battery.idle", "battery.screenoff", "battery.suggest-off", "battery.dealloc"),
     "uimode": ("uimode",),
     "fontscale": ("fontscale",),
@@ -27,6 +28,7 @@ LEG_CHECKS = {
 BUDGETED = {
     "cold-start", "pss", "frames", "jank", "warm-show", "touch", "suggest", "first-suggestion",
     "cold-first-glide", "warm-decode",
+    "spellcheck-warm", "spellcheck-cold", "spellcheck-memory",
 }
 # The reference-device touch budget is also checked against the measured p95, so a
 # hand-edited over_budget=false cannot make an over-budget report pass.

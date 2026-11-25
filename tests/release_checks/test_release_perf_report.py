@@ -50,6 +50,15 @@ def report_lines() -> list[str]:
     return lines
 
 
+def spellcheck_report_lines() -> list[str]:
+    return [
+        "RESULT|INFO|spellcheck-warm|runs=31 words=200 p95_ms=20.0 budget_ms=100.0 over_budget=false",
+        "RESULT|INFO|spellcheck-cold|runs=1 words=200 p95_ms=400.0 budget_ms=500.0 over_budget=false",
+        "RESULT|INFO|spellcheck-memory|delta_kb=3000 budget_kb=3584 over_budget=false",
+        "RESULT|SUMMARY|strict=1 fail=0 skip=0 sample_skips=0 legs=spellcheck p0_signoff=ready|outdir=fixture",
+    ]
+
+
 def line_index(lines: list[str], needle: str) -> int:
     for index, line in enumerate(lines):
         if needle in line:
@@ -67,12 +76,16 @@ class StrictPerformanceReportTest(unittest.TestCase):
         self.addCleanup(self.temporary_directory.cleanup)
         self.report = Path(self.temporary_directory.name) / "result.txt"
 
-    def run_validator(self, lines: list[str], *, wrapper: bool = False) -> subprocess.CompletedProcess[str]:
+    def run_validator(
+        self, lines: list[str], *, wrapper: bool = False, legs: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         self.report.write_text("\n".join(lines) + "\n", encoding="utf-8")
         if wrapper:
             command = ["bash", str(DEVICE_PERF), "--verify-report", str(self.report)]
         else:
             command = ["python3", str(VALIDATOR), str(self.report)]
+        if legs is not None:
+            command.extend(["--legs", legs])
         environment = os.environ.copy()
         environment["ADB"] = "/nonexistent/adb"
         return subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
@@ -86,6 +99,18 @@ class StrictPerformanceReportTest(unittest.TestCase):
         result = self.run_validator(report_lines(), wrapper=True)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertIn("RELEASE_PERF|PASS|", result.stdout)
+
+    def test_spellcheck_only_report_passes_through_the_wrapper(self) -> None:
+        result = self.run_validator(spellcheck_report_lines(), wrapper=True, legs="spellcheck")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("RELEASE_PERF|PASS|strict=1 skip=0 sample_skips=0 legs=spellcheck", result.stdout)
+
+    def test_spellcheck_leg_requires_budgeted_memory_evidence(self) -> None:
+        lines = spellcheck_report_lines()
+        lines[2] = lines[2].replace(" over_budget=false", "")
+        result = self.run_validator(lines, legs="spellcheck")
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("required leg spellcheck has no budgeted spellcheck-memory result", result.stdout)
 
     def test_touch_p95_within_reference_budget_passes(self) -> None:
         lines = report_lines()
@@ -214,6 +239,125 @@ class StrictPerformanceReportTest(unittest.TestCase):
         result = self.run_validator(report_lines()[:-1])
         self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertIn("expected one RESULT|SUMMARY line", result.stdout)
+
+
+class DeviceProbeDiscoveryTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.instrumentation = Path(self.temporary_directory.name) / "instrumentation.txt"
+
+    def find_runner(self, lines: list[str]) -> subprocess.CompletedProcess[str]:
+        self.instrumentation.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        body = DEVICE_PERF.read_text(encoding="utf-8")
+        match = re.search(r"(?ms)^self_targeted_runner\(\) \{.*?^\}$", body)
+        self.assertIsNotNone(match)
+        environment = os.environ.copy()
+        environment["INSTRUMENTATION_FILE"] = str(self.instrumentation)
+        harness = """PKG=org.tatarkeyboard.ime
+SHELL() { cat "$INSTRUMENTATION_FILE"; }
+""" + match.group(0) + """
+self_targeted_runner rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner
+"""
+        return subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
+                              env=environment, check=False)
+
+    def test_matching_test_package_is_preferred(self) -> None:
+        debug = (
+            "instrumentation:org.tatarkeyboard.ime.debug.test/"
+            "rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner "
+            "(target=org.tatarkeyboard.ime.debug.test)"
+        )
+        release = (
+            "instrumentation:org.tatarkeyboard.ime.test/"
+            "rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner "
+            "(target=org.tatarkeyboard.ime.test)"
+        )
+        result = self.find_runner([debug, release])
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(release.split()[0].removeprefix("instrumentation:"), result.stdout.strip())
+
+    def test_other_self_targeted_package_is_accepted_but_foreign_target_is_not(self) -> None:
+        self_targeted = (
+            "instrumentation:org.tatarkeyboard.ime.debug.test/"
+            "rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner "
+            "(target=org.tatarkeyboard.ime.debug.test)"
+        )
+        foreign_target = (
+            "instrumentation:org.tatarkeyboard.ime.test/"
+            "rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner "
+            "(target=org.tatarkeyboard.ime.debug)"
+        )
+        result = self.find_runner([foreign_target, self_targeted])
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(self_targeted.split()[0].removeprefix("instrumentation:"), result.stdout.strip())
+        result = self.find_runner([foreign_target])
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stdout.strip())
+
+
+class ReleaseGlobeSwitchTest(unittest.TestCase):
+    def run_switch(self, order: str, target: str) -> subprocess.CompletedProcess[str]:
+        body = DEVICE_PERF.read_text(encoding="utf-8")
+        match = re.search(r"(?ms)^globe_to\(\) \{.*?^\}$", body)
+        self.assertIsNotNone(match)
+        harness = """RUN_AS_OK=0
+ORDER=$1
+TARGET=$2
+STATE=$3
+INDEX=0
+TAPS=0
+VISITS=
+load_state() { [ ! -f "$STATE" ] || source "$STATE"; }
+save_state() { printf 'ORDER=%q\nINDEX=%q\nTAPS=%q\nVISITS=%q\n' "$ORDER" "$INDEX" "$TAPS" "$VISITS" > "$STATE"; }
+save_state
+sleep() { :; }
+log() { :; }
+SHELL() {
+    [ "$1" = input ] && [ "$2" = tap ] && [ "$3" = 216 ] || return 0
+    load_state
+    local items=($ORDER)
+    INDEX=$((INDEX + 1))
+    if [ "$INDEX" -ge "${#items[@]}" ]; then INDEX=0; fi
+    TAPS=$((TAPS + 1))
+    save_state
+}
+probe_layout() {
+    load_state
+    local items=($ORDER) current=${ORDER%% *} rotated=() k
+    current=${items[$INDEX]}
+    VISITS=$VISITS${VISITS:+,}$current
+    if [ "$INDEX" -gt 0 ]; then
+        rotated=("${items[$INDEX]}")
+        for ((k = 0; k < INDEX; k++)); do rotated+=("${items[$k]}"); done
+        for ((k = INDEX + 1; k < ${#items[@]}; k++)); do rotated+=("${items[$k]}"); done
+        ORDER=${rotated[*]}
+    fi
+    INDEX=0
+    save_state
+    echo "$current"
+}
+""" + match.group(0) + """
+if globe_to "$TARGET"; then rc=0; else rc=$?; fi
+load_state
+printf 'current=%s visits=%s taps=%s\\n' "${ORDER%% *}" "$VISITS" "$TAPS"
+exit "$rc"
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state"
+            return subprocess.run(["bash", "-c", harness, "bash", order, target, str(state)],
+                                  capture_output=True, text=True, check=False)
+
+    def test_every_enabled_subtype_is_reachable_despite_probe_cycle_resets(self) -> None:
+        for order in ("tt en ru", "tt en ru qwerty qwertz"):
+            languages = order.split()
+            for index, target in enumerate(languages):
+                with self.subTest(order=order, target=target):
+                    result = self.run_switch(order, target)
+                    self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                    self.assertIn(f"current={target} ", result.stdout)
+                    self.assertIn(f"visits={','.join(languages[:index + 1])} ", result.stdout)
+                    self.assertIn(f"taps={index * (index + 1) // 2}", result.stdout)
 
 
 class StrictResultFunctionTest(unittest.TestCase):

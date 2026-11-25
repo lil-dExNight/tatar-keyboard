@@ -71,11 +71,12 @@
 #      TT#suggestLookup slice, so a key press without a visible answer is not a
 #      valid sample.
 #   first-glide) cold first glide after a 12 s keyboard-hidden idle window and
-#      warm decode, five runs each in GlideUiDeviceTest. The test injects the
-#      real сәләм gesture and records ACTION_UP -> the try-it field's first
-#      frame commit containing the decoded word. The script streams its two
-#      budgeted RESULT lines into result.txt. This leg needs the debug
-#      androidTest APK; without an installed runner it reports SKIP.
+#      warm decode, five runs each. GlideUiDeviceTest measures in the target
+#      process when its signature permits; otherwise FirstGlidePerfDeviceTest
+#      owns the field in a self-targeted test process. Both inject the real
+#      сәләм gesture and record ACTION_UP -> the field's decoded commit. The
+#      script streams the two budgeted RESULT lines into result.txt. Without
+#      either androidTest runner this leg reports SKIP.
 #   spellcheck) opt-in TextServicesManager measurements in a self-targeted
 #      instrumentation process. With a fresh IME process and its keyboard shown
 #      and used for one typed word, the warm probe checks a 200-word Tatar
@@ -387,7 +388,11 @@ if ! SHELL ime list -s 2>/dev/null | tr -d '\r' | grep -qx "$NEUTRAL_IME"; then
 fi
 [ -n "$NEUTRAL_IME" ] || { result FAIL neutral-ime "no second IME to dance through"; exit 1; }
 RUN_AS_OK=0
-A shell "run-as $PKG true" >/dev/null 2>&1 && RUN_AS_OK=1
+# A release package must never receive a run-as call, even a probe that the OS would deny.
+if SHELL dumpsys package "$PKG" 2>/dev/null | grep -E '^[[:space:]]*(pkgFlags|flags)=\[' \
+        | grep -q DEBUGGABLE; then
+    A shell "run-as $PKG true" >/dev/null 2>&1 && RUN_AS_OK=1
+fi
 if [ "$RUN_AS_OK" = 1 ]; then
     BUILD=debug; PSS_BUDGET_KB=$PSS_BUDGET_DEBUG_KB; BATTERY_CPU_BUDGET=$BATTERY_IDLE_CPU_BUDGET_DEBUG_MS
     [ -n "$COLD_TRIGGER" ] || COLD_TRIGGER=tap
@@ -694,14 +699,20 @@ type_text() { # type_text tt|ru "text" <gap-seconds>
 globe_to() { # globe_to tt|ru|en -> 0 when the wanted layout is active
     local want="$1" i poll pref=""
     if [ "$RUN_AS_OK" != 1 ]; then
-        for i in 1 2 3 4; do
+        # probe_layout hides the IME, and hiding resets the MRU cycle to the current subtype.
+        # Increase the tap run after each probe: one tap reaches the second subtype, two reach
+        # the third, and so on. Repeating one tap would alternate only the first two forever.
+        local j
+        for i in 0 1 2 3 4; do
+            for ((j = 0; j < i; j++)); do
+                SHELL input tap 216 1490 </dev/null >/dev/null 2>&1   # globe
+                sleep 1.2
+            done
             pref=$(probe_layout)
             # a probe tap that lands during the show animation reads back nothing: probe again
             [ "$pref" = unknown ] && { sleep 1; pref=$(probe_layout); }
             log "layout probe: $pref (want $want)"
             [ "$pref" = "$want" ] && return 0
-            SHELL input tap 216 1490 </dev/null >/dev/null 2>&1   # globe
-            sleep 1.2
         done
         return 1
     fi
@@ -1402,6 +1413,31 @@ if leg_on first-suggestion; then
     fi
 fi
 
+# self_targeted_runner <class> -> an installed runner whose target is its own
+# package. Prefer the test package derived from the measured app, but accept another
+# test package: these probes select the app through ttPackage and never enter its process.
+self_targeted_runner() {
+    local class="$1" line runner target owner fallback=""
+    while IFS= read -r line; do
+        case "$line" in
+            instrumentation:*"/$class (target="*) ;;
+            *) continue ;;
+        esac
+        runner=${line#instrumentation:}
+        runner=${runner%% *}
+        target=${line##*"(target="}
+        target=${target%)}
+        owner=${runner%%/*}
+        [ "$target" = "$owner" ] || continue
+        if [ "$owner" = "$PKG.test" ]; then
+            echo "$runner"
+            return 0
+        fi
+        [ -z "$fallback" ] && fallback=$runner
+    done < <(SHELL pm list instrumentation 2>/dev/null | tr -d '\r')
+    [ -z "$fallback" ] || echo "$fallback"
+}
+
 # ── leg: first glide after idle and warm decode (on-screen device test) ──────
 
 if leg_on first-glide; then
@@ -1409,12 +1445,16 @@ if leg_on first-glide; then
     hide_keyboard || true
     runner=$(SHELL pm list instrumentation 2>/dev/null | tr -d '\r' \
         | grep -F " (target=$PKG)" | head -1 | grep -oP '^instrumentation:\K\S+' || true)
+    glide_test="rkr.simplekeyboard.inputmethod.latin.glide.GlideUiDeviceTest#testFirstVisibleGlideAfterIdleAndWarmDecode"
     if [ -z "$runner" ]; then
-        result SKIP first-glide "no installed instrumentation targets $PKG; install its androidTest APK"
+        runner=$(self_targeted_runner "rkr.simplekeyboard.inputmethod.latin.glide.FirstGlidePerfSelfRunner")
+        glide_test="rkr.simplekeyboard.inputmethod.latin.glide.FirstGlidePerfDeviceTest#testFirstVisibleGlideAfterIdleAndWarmDecode"
+    fi
+    if [ -z "$runner" ]; then
+        result SKIP first-glide "no installed in-process or self-targeted first-glide runner for $PKG; install its androidTest APK"
     else
-        glide_test="rkr.simplekeyboard.inputmethod.latin.glide.GlideUiDeviceTest#testFirstVisibleGlideAfterIdleAndWarmDecode"
-        log "first-glide: running $glide_test"
-        SHELL am instrument -w -r -e class "$glide_test" "$runner" \
+        log "first-glide: running $glide_test with -e ttPackage $PKG"
+        SHELL am instrument -w -r -e class "$glide_test" -e ttPackage "$PKG" "$runner" \
             > "$OUTDIR/first-glide-instrumentation.txt" 2>&1
         instrument_rc=$?
         cold_results=0
@@ -1542,9 +1582,7 @@ run_spellcheck_probe() {
 if leg_on spellcheck; then
     SPELLCHECK_TEST="rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfDeviceTest"
     spellcheck_runner_class="rkr.simplekeyboard.inputmethod.latin.spellcheck.SpellCheckPerfSelfRunner"
-    spellcheck_runner=$(SHELL pm list instrumentation 2>/dev/null | tr -d '\r' \
-        | grep -F "instrumentation:$PKG.test/$spellcheck_runner_class " | head -1 \
-        | grep -oP '^instrumentation:\K\S+' || true)
+    spellcheck_runner=$(self_targeted_runner "$spellcheck_runner_class")
     if [ -z "$spellcheck_runner" ]; then
         result SKIP spellcheck "no installed self-targeted spellcheck runner for $PKG; install its androidTest APK"
     else
