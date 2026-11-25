@@ -65,6 +65,15 @@ android {
             if (keystorePropsFile.exists() && !project.hasProperty('skipReleaseSigning')) {
                 signingConfig signingConfigs.release
             }
+            // -PbenchPackage builds the release variant as a separate bench package under the
+            // debug key, so device measurements never touch an installed release build. The R8
+            // run, resource shrinking and packaged baseline profile stay as in release; the
+            // bench rules only keep the names and members the androidTest APK links against.
+            if (project.hasProperty('benchPackage')) {
+                applicationIdSuffix ".bench"
+                signingConfig signingConfigs.debug
+                proguardFile 'bench-proguard-rules.pro'
+            }
         }
     }
     namespace 'rkr.simplekeyboard.inputmethod'
@@ -93,6 +102,17 @@ android {
         baseline = file("lint-baseline.xml")
         abortOnError true
     }
+}
+
+// -PbenchPackage also points the instrumentation APK at the release variant, so the bench
+// package is the target its tests link against. The test APK's own rules keep its classes
+// unshrunk and unobfuscated; the app keeps are in bench-proguard-rules.pro. The backup export
+// device test needs the documents provider declared by the debug app only, so the bench test
+// APK leaves it out.
+if (project.hasProperty('benchPackage')) {
+    android.testBuildType = 'release'
+    android.defaultConfig.testProguardFile 'bench-test-proguard-rules.pro'
+    android.sourceSets.androidTest.kotlin.exclude '**/BackupExportDocumentDeviceTest.kt'
 }
 
 // Production Java compilation fails on Error Prone errors. Test-only compilation
